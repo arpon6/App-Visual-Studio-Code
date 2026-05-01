@@ -5,6 +5,7 @@ import Plantilla from './pages/Plantilla';
 import Calendario from './pages/Calendario';
 import PlanDePartido from './pages/PlanDePartido';
 import AnalisisDePartido from './pages/AnalisisDePartido';
+import CortadorDeVideo from './pages/CortadorDeVideo';
 import DesarrolloIndividual from './pages/DesarrolloIndividual';
 import Estadisticas from './pages/Estadisticas';
 import ResultadosYClasif from './pages/ResultadosYClasif';
@@ -23,6 +24,7 @@ const pages = {
   Estadísticas: <Estadisticas />,
   'Resultados y Clasif.': <ResultadosYClasif />,
   'Repositorio ABP': <RepositorioABP />,
+  'Cortador de vídeo': <CortadorDeVideo />,
   'Otras Informaciones': <OtrasInformaciones />,
   Configuración: <Configuracion />,
 };
