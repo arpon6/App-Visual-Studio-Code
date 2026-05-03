@@ -1,70 +1,130 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import './Calendario.css';
 
 interface Event {
   id: string;
   date: string;
-  type: 'partido' | 'entrenamiento' | 'otro';
+  type: 'partido' | 'entrenamiento' | 'cumpleaños' | 'otro';
   customType?: string;
   place: string;
+  time?: string;
   description?: string;
+  playerName?: string;
   pdfFile?: {
     name: string;
-    data: string;
+    data?: string;    // base64, si se subió como archivo
+    url?: string;     // URL directa (Supabase Storage u otra)
   };
 }
 
 function Calendario() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 4, 1));
+  const [loaded, setLoaded] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
+  const [savedEvents, setSavedEvents] = useState<Event[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     type: 'partido' as 'partido' | 'entrenamiento' | 'otro',
     customType: '',
     place: '',
+    time: '10:00',
     description: '',
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pdfUrl, setPdfUrl] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   // Cargar eventos del localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('calendarEvents');
-    if (saved) {
+    let saved: Event[] = [];
+    const raw = localStorage.getItem('calendarEvents');
+    if (raw) {
       try {
-        setEvents(JSON.parse(saved));
+        saved = JSON.parse(raw);
+        setEvents(saved);
       } catch (e) {
         console.error('Error loading events:', e);
       }
     }
+    setSavedEvents(saved);
+    loadBirthdayEvents(saved, currentDate.getFullYear());
+    setLoaded(true);
   }, []);
 
-  // Guardar eventos en localStorage
+  const loadBirthdayEvents = async (baseEvents: Event[] = [], year: number = new Date().getFullYear()) => {
+    try {
+      const { data, error } = await supabase
+        .from('plantilla')
+        .select('first_name, last_name1, last_name2, birth_date');
+
+      if (error) throw error;
+
+      if (data) {
+        const birthdayEvents: Event[] = data
+          .filter(player => player.birth_date)
+          .map(player => {
+            const fullName = [player.first_name, player.last_name1, player.last_name2].filter(Boolean).join(' ');
+            const birthDate = new Date(player.birth_date);
+            const dateStr = `${String(birthDate.getDate()).padStart(2, '0')}/${String(birthDate.getMonth() + 1).padStart(2, '0')}/${year}`;
+            return {
+              id: `birthday-${fullName}-${year}`,
+              date: dateStr,
+              type: 'cumpleaños' as const,
+              place: 'N/A',
+              playerName: fullName,
+              description: `Cumpleaños de ${fullName}`,
+            };
+          });
+
+        // Combinar con eventos guardados, evitando duplicados
+        const nonBirthday = baseEvents.filter(e => e.type !== 'cumpleaños');
+        setEvents([...nonBirthday, ...birthdayEvents]);
+      }
+    } catch (error) {
+      console.error('Error loading birthdays:', error);
+    }
+  };
+
+  // Guardar eventos en localStorage (solo los que no son cumpleaños)
   useEffect(() => {
-    localStorage.setItem('calendarEvents', JSON.stringify(events));
-  }, [events]);
+    if (!loaded) return;
+    const toSave = events.filter(e => e.type !== 'cumpleaños');
+    setSavedEvents(toSave);
+    localStorage.setItem('calendarEvents', JSON.stringify(toSave));
+  }, [events, loaded]);
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const getFirstDayOfMonth = (date: Date) => {
+    const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    return (day + 6) % 7; // 0=Lun, 1=Mar, ..., 6=Dom
+  };
 
   const monthDays = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
   const monthName = currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1);
+    setCurrentDate(newDate);
+    loadBirthdayEvents(savedEvents, newDate.getFullYear());
   };
 
   const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1);
+    setCurrentDate(newDate);
+    loadBirthdayEvents(savedEvents, newDate.getFullYear());
   };
 
-  const handleDayClick = (day: number) => {
+  const handleDayClick = (day: number, e: React.MouseEvent) => {
+    // Solo abrir modal de nuevo evento si el clic fue directamente en el día, no en un evento
+    if ((e.target as HTMLElement).closest('.event-label')) return;
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
     setSelectedDate(dateStr);
-    setFormData({ type: 'partido', customType: '', place: '', description: '' });
+    setFormData({ type: 'partido', customType: '', place: '', time: '10:00', description: '' });
     setSelectedFile(null);
+    setPdfUrl('');
     setEditingEventId(null);
     setShowModal(true);
   };
@@ -95,41 +155,40 @@ function Calendario() {
       type: formData.type,
       customType: formData.customType,
       place: formData.place,
+      time: formData.time,
       description: formData.description,
     };
 
-    if (selectedFile) {
+    const saveEvent = (evt: Event) => {
+      if (editingEventId) {
+        setEvents(events.map(e => e.id === editingEventId ? evt : e));
+      } else {
+        setEvents([...events, evt]);
+      }
+      resetModal();
+    };
+
+    if (pdfUrl.trim()) {
+      newEvent.pdfFile = { name: pdfUrl.split('/').pop() || 'documento.pdf', url: pdfUrl.trim() };
+      saveEvent(newEvent);
+    } else if (selectedFile) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        newEvent.pdfFile = {
-          name: selectedFile.name,
-          data: e.target?.result as string,
-        };
-
-        if (editingEventId) {
-          setEvents(events.map(evt => evt.id === editingEventId ? newEvent : evt));
-        } else {
-          setEvents([...events, newEvent]);
-        }
-
-        resetModal();
+        newEvent.pdfFile = { name: selectedFile.name, data: e.target?.result as string };
+        saveEvent(newEvent);
       };
       reader.readAsDataURL(selectedFile);
     } else {
-      if (editingEventId) {
-        setEvents(events.map(evt => evt.id === editingEventId ? newEvent : evt));
-      } else {
-        setEvents([...events, newEvent]);
-      }
-      resetModal();
+      saveEvent(newEvent);
     }
   };
 
   const resetModal = () => {
     setShowModal(false);
     setSelectedDate(null);
-    setFormData({ type: 'partido', customType: '', place: '', description: '' });
+    setFormData({ type: 'partido', customType: '', place: '', time: '10:00', description: '' });
     setSelectedFile(null);
+    setPdfUrl('');
     setEditingEventId(null);
   };
 
@@ -142,25 +201,28 @@ function Calendario() {
   const handleEditEvent = (event: Event) => {
     setSelectedDate(event.date);
     setFormData({
-      type: event.type,
+      type: event.type as 'partido' | 'entrenamiento' | 'otro',
       customType: event.customType || '',
       place: event.place,
+      time: event.time || '10:00',
       description: event.description || '',
     });
+    setSelectedFile(null);
+    setPdfUrl(event.pdfFile?.url || '');
     setEditingEventId(event.id);
     setShowModal(true);
   };
 
-  const downloadPDF = (event: Event) => {
-    if (event.pdfFile) {
-      const link = document.createElement('a');
-      link.href = event.pdfFile.data;
-      link.download = event.pdfFile.name;
-      link.click();
-    }
+  const openPDF = (event: Event) => {
+    if (!event.pdfFile) return;
+    const src = event.pdfFile.url || event.pdfFile.data;
+    if (src) window.open(src, '_blank');
   };
 
   const getEventTypeLabel = (event: Event): string => {
+    if (event.type === 'cumpleaños') {
+      return 'Cumpleaños';
+    }
     if (event.type === 'otro' && event.customType) {
       return event.customType;
     }
@@ -190,9 +252,9 @@ function Calendario() {
 
   const calendarDays = Array.from({ length: firstDay }).concat(
     Array.from({ length: monthDays }, (_, i) => i + 1)
-  );
+  ) as (number | undefined)[];
 
-  const getEventsForDay = (day: number | null) => {
+  const getEventsForDay = (day: number | undefined) => {
     if (!day) return [];
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
     return events.filter(evt => evt.date === dateStr);
@@ -217,29 +279,43 @@ function Calendario() {
           </div>
 
           <div className="calendar-weekdays">
-            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
+            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
               <div key={day} className="weekday">{day}</div>
             ))}
           </div>
 
           <div className="calendar-grid">
             {calendarDays.map((day, idx) => {
-              const dayEvents = getEventsForDay(day as number | null);
+              const dayEvents = getEventsForDay(day);
               return (
                 <div
                   key={idx}
                   className={`calendar-day ${!day ? 'empty' : ''} ${dayEvents.length > 0 ? 'has-events' : ''}`}
-                  onClick={() => day && handleDayClick(day as number)}
+                  onClick={(e) => day && handleDayClick(day, e)}
                 >
                   {day && (
                     <>
-                      <span className="day-number">{day}</span>
+                      <div className="day-header">
+                        <span className="day-number">{day}</span>
+                        <span className="day-add-btn" onClick={(e) => { e.stopPropagation(); handleDayClick(day, e); }} title="Añadir evento">+</span>
+                      </div>
                       {dayEvents.length > 0 && (
                         <div className="day-events-indicator">
-                          {dayEvents.slice(0, 2).map(evt => (
-                            <span key={evt.id} className={`event-dot type-${evt.type}`}></span>
+                          {dayEvents.slice(0, 3).map(evt => (
+                            <span
+                              key={evt.id}
+                              className={`event-label type-${evt.type}`}
+                              onClick={(e) => { e.stopPropagation(); if (evt.type !== 'cumpleaños') handleEditEvent(evt); }}
+                              title={evt.type !== 'cumpleaños' ? 'Clic para editar' : evt.description}
+                            >
+                              <span className="event-label-type">{getEventTypeLabel(evt)}</span>
+                              {evt.type === 'cumpleaños' && evt.playerName && <span className="event-label-place">{evt.playerName}</span>}
+                              {evt.time && evt.type !== 'cumpleaños' && <span className="event-label-time">{evt.time}</span>}
+                              {evt.place && evt.type !== 'cumpleaños' && <span className="event-label-place">{evt.place}</span>}
+                              {evt.pdfFile && <span className="event-label-pdf">📄</span>}
+                            </span>
                           ))}
-                          {dayEvents.length > 2 && <span className="more-events">+{dayEvents.length - 2}</span>}
+                          {dayEvents.length > 3 && <span className="more-events">+{dayEvents.length - 3}</span>}
                         </div>
                       )}
                     </>
@@ -263,20 +339,25 @@ function Calendario() {
                 <div key={evt.id} className="event-item">
                   <div className="event-header">
                     <span className={`event-type type-${evt.type}`}>{getEventTypeLabel(evt)}</span>
-                    <span className="event-date">{evt.date}</span>
+                    <span className="event-date">{evt.date} {evt.time && `· ${evt.time}`}</span>
                   </div>
                   <div className="event-details">
                     <strong>{evt.place}</strong>
+                    {evt.playerName && <p><em>📅 {evt.playerName}</em></p>}
                     {evt.description && <p>{evt.description}</p>}
                   </div>
                   <div className="event-actions">
                     {evt.pdfFile && (
-                      <button className="action-btn pdf-btn" onClick={() => downloadPDF(evt)}>
+                      <button className="action-btn pdf-btn" onClick={() => openPDF(evt)}>
                         📄 {evt.pdfFile.name}
                       </button>
                     )}
-                    <button className="action-btn edit-btn" onClick={() => handleEditEvent(evt)}>✏️</button>
-                    <button className="action-btn delete-btn" onClick={() => handleDeleteEvent(evt.id)}>🗑️</button>
+                    {evt.type !== 'cumpleaños' && (
+                      <>
+                        <button className="action-btn edit-btn" onClick={() => handleEditEvent(evt)}>✏️</button>
+                        <button className="action-btn delete-btn" onClick={() => handleDeleteEvent(evt.id)}>🗑️</button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))
@@ -321,15 +402,43 @@ function Calendario() {
               </div>
             )}
 
-            <div className="form-group">
-              <label htmlFor="place">Lugar *</label>
-              <input
-                id="place"
-                type="text"
-                value={formData.place}
-                onChange={e => setFormData({ ...formData, place: e.target.value })}
-                placeholder="Ej: Estadio Municipal, Cancha 3, etc."
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="place">Lugar *</label>
+                <input
+                  id="place"
+                  type="text"
+                  value={formData.place}
+                  onChange={e => setFormData({ ...formData, place: e.target.value })}
+                  placeholder="Ej: Estadio Municipal, Cancha 3, etc."
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="time">Hora *</label>
+                <select
+                  id="time"
+                  value={formData.time}
+                  onChange={e => setFormData({ ...formData, time: e.target.value })}
+                >
+                  {Array.from({ length: 24 }).map((_, i) => {
+                    const hour = String(i).padStart(2, '0');
+                    return (
+                      <option key={hour} value={`${hour}:00`}>
+                        {hour}:00
+                      </option>
+                    );
+                  })}
+                  {Array.from({ length: 24 }).map((_, i) => {
+                    const hour = String(i).padStart(2, '0');
+                    return (
+                      <option key={`${hour}:30`} value={`${hour}:30`}>
+                        {hour}:30
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
             </div>
 
             <div className="form-group">
@@ -344,12 +453,23 @@ function Calendario() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="pdf">Adjuntar PDF (opcional)</label>
+              <label htmlFor="pdfUrl">URL del documento (Supabase Storage u otra)</label>
+              <input
+                id="pdfUrl"
+                type="url"
+                value={pdfUrl}
+                onChange={e => { setPdfUrl(e.target.value); setSelectedFile(null); }}
+                placeholder="https://...supabase.co/storage/v1/object/public/documentos/archivo.pdf"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="pdf">O subir archivo PDF</label>
               <input
                 id="pdf"
                 type="file"
                 accept=".pdf"
-                onChange={handleFileChange}
+                onChange={e => { handleFileChange(e); setPdfUrl(''); }}
+                disabled={!!pdfUrl}
               />
               {selectedFile && <p className="file-info">✓ {selectedFile.name}</p>}
             </div>

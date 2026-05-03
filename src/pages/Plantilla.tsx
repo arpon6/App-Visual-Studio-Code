@@ -1,65 +1,73 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
-const players = [
-  {
-    name: 'Sergio López',
-    position: 'Portero',
-    age: 24,
-    dorsal: 1,
-    photo: 'https://via.placeholder.com/150',
-    birthDate: '2000-05-15',
-    residence: 'Madrid, España',
-    height: '1.85 m',
-    weight: '80 kg'
-  },
-  {
-    name: 'Álvaro Pinto',
-    position: 'Defensa',
-    age: 27,
-    dorsal: 4,
-    photo: 'https://via.placeholder.com/150',
-    birthDate: '1997-03-22',
-    residence: 'Barcelona, España',
-    height: '1.78 m',
-    weight: '75 kg'
-  },
-  {
-    name: 'Cristian M.',
-    position: 'Centrocampista',
-    age: 22,
-    dorsal: 8,
-    photo: 'https://via.placeholder.com/150',
-    birthDate: '2002-11-10',
-    residence: 'Valencia, España',
-    height: '1.75 m',
-    weight: '70 kg'
-  },
-  {
-    name: 'Víctor Molina',
-    position: 'Delantero',
-    age: 25,
-    dorsal: 9,
-    photo: 'https://via.placeholder.com/150',
-    birthDate: '1999-07-05',
-    residence: 'Sevilla, España',
-    height: '1.82 m',
-    weight: '78 kg'
-  },
-  {
-    name: 'Daniel Castro',
-    position: 'Lateral',
-    age: 23,
-    dorsal: 2,
-    photo: 'https://via.placeholder.com/150',
-    birthDate: '2001-01-30',
-    residence: 'Bilbao, España',
-    height: '1.80 m',
-    weight: '76 kg'
-  },
-];
+interface Player {
+  name: string;
+  position: string;
+  age: number | string;
+  dorsal: number;
+  photo: string;
+  birthDate: string;
+  residence: string;
+  height: string;
+  weight: string;
+}
 
 function Plantilla() {
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPlayers = async () => {
+      const { data, error } = await supabase
+        .from('plantilla')
+        .select('*');
+
+      setLoading(false);
+
+      if (error) {
+        setFetchError('No se han podido cargar los jugadores. Revisa la tabla plantilla en Supabase.');
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setFetchError('No hay jugadores en la tabla plantilla.');
+        return;
+      }
+
+      const mappedPlayers: Player[] = (data as any[]).map(player => ({
+        name: [player.first_name, player.last_name1, player.last_name2].filter(Boolean).join(' '),
+        position: player.position || 'Sin posición',
+        age: calculateAge(player.birth_date),
+        dorsal: player.number || 0,
+        photo: player.photo || 'https://via.placeholder.com/150',
+        birthDate: player.birth_date || 'No especificado',
+        residence: player.residence || 'No especificado',
+        height: player.stats?.height ? `${player.stats.height} cm` : 'No especificado',
+        weight: player.stats?.weight ? `${player.stats.weight} kg` : 'No especificado'
+      }));
+
+      const order: Record<string, number> = { 'Portero': 0, 'Defensa': 1, 'Centrocampista': 2, 'Delantero': 3 };
+      mappedPlayers.sort((a, b) => (order[a.position] ?? 99) - (order[b.position] ?? 99));
+      setPlayers(mappedPlayers);
+    };
+
+    fetchPlayers();
+  }, []);
+
+  const calculateAge = (birthDate: string): number | string => {
+    if (!birthDate) return 'No especificado';
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   if (selectedPlayer) {
     return (
@@ -100,12 +108,16 @@ function Plantilla() {
         </div>
       </div>
 
+      {loading && <p>Cargando jugadores...</p>}
+      {fetchError && <p>{fetchError}</p>}
+
       <div className="grid-3">
         {players.map((player) => (
-          <div key={player.name} className="card" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelectedPlayer(player)}>
+          <div key={`${player.name}-${player.dorsal}`} className="card" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelectedPlayer(player)}>
             <img src={player.photo} alt={player.name} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px' }} />
             <h3>{player.name}</h3>
             <p>Dorsal: {player.dorsal}</p>
+            <p>{player.position}</p>
           </div>
         ))}
       </div>

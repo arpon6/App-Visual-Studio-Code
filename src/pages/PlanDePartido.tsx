@@ -1,20 +1,9 @@
 import { useState } from 'react';
 import './PlanDePartido.css';
-
-const formations = ['1-4-4-2', '1-4-3-3', '1-3-4-2', '1-5-2-1'];
-const substitutes = [
-  { number: 13, name: 'Rubén' },
-  { number: 26, name: 'Darín' },
-  { number: 14, name: 'Diego' },
-  { number: 18, name: 'Guillermo' },
-  { number: 19, name: 'David' },
-  { number: 20, name: 'Samuel' },
-  { number: 6, name: 'Sergio' },
-];
+import { TacticalBoardContainer } from '../components/TacticalBoard';
 
 function PlanDePartido() {
-  const [formation, setFormation] = useState(formations[0]);
-  const [opponentFormation, setOpponentFormation] = useState(formations[1]);
+  const [opponentFormation] = useState('1-4-3-3');
 
   return (
     <section className="page-section plan-page">
@@ -30,59 +19,15 @@ function PlanDePartido() {
 
       <div className="card plan-card plan-card--heading">
         <div className="section-header card-header-row">
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span className="section-badge section-badge--green">A</span>
-              <div>
-                <h2>Alineación inicial</h2>
-                <small>Sistema y posicionamiento base</small>
-              </div>
-            </div>
-          </div>
-          <div className="tactical-controls">
-            <div className="data-pill">
-              <strong>{formation}</strong> Mi sistema
-            </div>
-            <div className="data-pill">
-              <strong>{opponentFormation}</strong> Sistema rival
-            </div>
-            <select
-              className="select-compact"
-              value={formation}
-              onChange={(event) => setFormation(event.target.value)}
-            >
-              {formations.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="lineup-board">
-          <div className="lineup-schematic">
-            <div className="lineup-row">
-              <div className="player-node goalkeeper">1</div>
-              <span className="player-node subtle">Adrián G.</span>
-            </div>
-            <div className="lineup-row">
-              <div className="player-node">4</div>
-              <div className="player-node">5</div>
-              <div className="player-node">22</div>
-            </div>
-            <div className="lineup-row">
-              <div className="player-node">21</div>
-              <div className="player-node">11</div>
-              <div className="player-node">5</div>
-              <div className="player-node">2</div>
-            </div>
-            <div className="lineup-row">
-              <div className="player-node">17</div>
-              <div className="player-node">10</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="section-badge section-badge--green">A</span>
+            <div>
+              <h2>Alineación inicial</h2>
+              <small>Sistema y posicionamiento base</small>
             </div>
           </div>
         </div>
+        <TacticalBoardContainer />
       </div>
 
       <div className="plan-grid plan-grid-2">
@@ -90,24 +35,6 @@ function PlanDePartido() {
           <div className="section-header">
             <div>
               <span className="section-badge">B</span>
-              <h2>Convocatoria y suplentes</h2>
-              <small>Jugadores disponibles en el banquillo</small>
-            </div>
-          </div>
-          <div className="plan-grid plan-grid-4" style={{ marginTop: 18 }}>
-            {substitutes.map((player) => (
-              <div key={player.number} className="substitute-card">
-                <div className="substitute-number">{player.number}</div>
-                <div className="substitute-name">{player.name}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="card plan-card">
-          <div className="section-header">
-            <div>
-              <span className="section-badge">C</span>
               <h2>ABP Ofensivo</h2>
               <small>Pizarras estratégicas de balón parado</small>
             </div>
@@ -164,7 +91,7 @@ function PlanDePartido() {
             <small>Análisis predictivo vs oponente</small>
           </div>
           <div className="data-pill">
-            <strong>{formation}</strong> vs <strong>{opponentFormation}</strong>
+            <strong>{opponentFormation}</strong> Sistema rival
           </div>
         </div>
         <div className="plan-grid plan-grid-2" style={{ marginTop: 18 }}>
