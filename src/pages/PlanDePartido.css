@@ -1,4 +1,4 @@
-.plan-page {
+﻿.plan-page {
   display: grid;
   gap: 18px;
 }
@@ -285,7 +285,7 @@
   }
 }
 
-/* ── TacticalBoard ── */
+/* â”€â”€ TacticalBoard â”€â”€ */
 .tb-wrapper {
   display: flex;
   flex-direction: column;
@@ -573,7 +573,7 @@
   background: rgba(61, 153, 255, 0.06);
 }
 
-/* ── Suplentes ── */
+/* â”€â”€ Suplentes â”€â”€ */
 .subs-section {
   background: linear-gradient(180deg, rgba(9, 16, 26, 0.96), rgba(15, 24, 40, 0.96));
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -688,7 +688,7 @@
   }
 }
 
-/* ── Mini Tactical Boards ── */
+/* â”€â”€ Mini Tactical Boards â”€â”€ */
 .mini-boards-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -747,4 +747,660 @@
   .mini-boards-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* â”€â”€ ABP Board â”€â”€ */
+.abp-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.abp-toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.abp-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(24, 36, 58, 0.7);
+  color: #a1b0d6;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: 0.15s ease;
+  white-space: nowrap;
+}
+
+.abp-tool-btn:hover {
+  background: rgba(36, 56, 86, 0.9);
+  color: #cdd4f1;
+}
+
+.abp-tool-btn.active {
+  background: rgba(61, 153, 255, 0.18);
+  border-color: rgba(61, 153, 255, 0.5);
+  color: #3d99ff;
+}
+
+.abp-tool-btn.abp-tool-clear {
+  margin-left: auto;
+  color: rgba(255, 100, 100, 0.8);
+  border-color: rgba(255, 100, 100, 0.2);
+}
+
+.abp-tool-btn.abp-tool-clear:hover {
+  background: rgba(255, 80, 80, 0.1);
+  color: #ff6464;
+}
+
+.abp-field {
+  aspect-ratio: 68 / 52;
+  max-height: 420px;
+  cursor: crosshair;
+}
+
+.abp-field.tb-field {
+  background: linear-gradient(180deg, #0d3320 0%, #0f4228 60%, #0a2a18 100%);
+}
+
+.abp-svg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.abp-svg-layer line,
+.abp-svg-layer circle {
+  pointer-events: all;
+}
+
+.abp-player {
+  z-index: 3;
+}
+
+.abp-focus {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px dashed #ffd700;
+  background: rgba(255, 220, 0, 0.1);
+  cursor: move;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abp-focus-remove {
+  display: none;
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 80, 80, 0.85);
+  border: none;
+  color: #fff;
+  font-size: 0.55rem;
+  cursor: pointer;
+  place-items: center;
+  padding: 0;
+}
+
+.abp-focus:hover .abp-focus-remove {
+  display: grid;
+}
+
+/* Tabs */
+.abp-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.abp-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 10px 10px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  background: rgba(16, 28, 44, 0.6);
+  color: #a1b0d6;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: 0.12s ease;
+}
+
+.abp-tab:hover {
+  background: rgba(24, 36, 58, 0.9);
+  color: #cdd4f1;
+}
+
+.abp-tab.active {
+  background: rgba(24, 36, 58, 0.95);
+  color: #cdd4f1;
+  border-color: rgba(61, 153, 255, 0.3);
+}
+
+.abp-tab-remove {
+  background: none;
+  border: none;
+  color: rgba(161, 176, 214, 0.5);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.abp-tab-remove:hover {
+  color: #ff6464;
+}
+
+.abp-tab-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(61, 153, 255, 0.5);
+  color: #cdd4f1;
+  font-size: 0.85rem;
+  outline: none;
+  width: 100px;
+}
+
+/* â”€â”€ ABP play name â”€â”€ */
+.abp-play-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.abp-play-name-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #cdd4f1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s;
+}
+
+.abp-play-name-text:hover {
+  border-bottom-color: rgba(61, 153, 255, 0.4);
+}
+
+.abp-play-name-edit {
+  font-size: 0.8rem;
+  color: #3d99ff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.abp-play-name-text:hover .abp-play-name-edit {
+  opacity: 1;
+}
+
+.abp-play-name-input {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #cdd4f1;
+  background: rgba(61, 153, 255, 0.08);
+  border: 1px solid rgba(61, 153, 255, 0.4);
+  border-radius: 8px;
+  padding: 4px 10px;
+  outline: none;
+  min-width: 220px;
+}
+
+/* â”€â”€ ABP portero â”€â”€ */
+.abp-gk .tb-player-circle {
+  background: rgba(255, 171, 0, 0.25) !important;
+  border-color: #ffab00 !important;
+  color: #ffdb9a !important;
+}
+
+/* â”€â”€ ABP bloqueo handle â”€â”€ */
+.abp-block-handle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid #ff6464;
+  background: rgba(255, 100, 100, 0.15);
+  border-radius: 3px;
+  cursor: move;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abp-block-handle:hover .abp-focus-remove {
+  display: grid;
+}
+
+/* â”€â”€ ABP vÃ­deo â”€â”€ */
+.abp-video-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.abp-video-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.abp-video-label {
+  font-size: 0.88rem;
+  color: #a1b0d6;
+  font-weight: 600;
+}
+
+.abp-video-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.abp-video-input {
+  flex: 1;
+  min-width: 200px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #cdd4f1;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.abp-video-input:focus {
+  border-color: rgba(61, 153, 255, 0.5);
+}
+
+.abp-video-embed {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+}
+
+.abp-video-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* â”€â”€ ABP portero (fix especificidad) â”€â”€ */
+.tb-player.tb-player--mini.abp-gk .tb-player-circle,
+.tb-player.tb-player--mini.abp-gk.tb-player--filled .tb-player-circle {
+  background: rgba(255, 171, 0, 0.28) !important;
+  border-color: #ffab00 !important;
+  color: #ffdb9a !important;
+}
+
+/* â”€â”€ Guardar en repositorio â”€â”€ */
+.abp-repo-save-wrap {
+  position: relative;
+}
+
+.abp-repo-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #0f1e30;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 50;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.abp-repo-menu button {
+  display: block;
+  width: 100%;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  color: #cdd4f1;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background 0.12s;
+}
+
+.abp-repo-menu button:hover {
+  background: rgba(61, 153, 255, 0.12);
+  color: #3d99ff;
+}
+
+.btn.abp-repo-saved {
+  background: rgba(61, 255, 186, 0.15);
+  border-color: rgba(61, 255, 186, 0.4);
+  color: #3dffba;
+}
+
+/* â”€â”€ Instrucciones Generales â”€â”€ */
+
+
+/* ── Instrucciones Generales ── */
+.ig-editor-wrap {
+  position: relative;
+  margin-top: 14px;
+}
+
+.ig-editor-content {
+  background: rgba(16, 28, 44, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 14px 16px;
+  min-height: 120px;
+  color: #cdd4f1;
+  font-size: 0.95rem;
+  line-height: 1.8;
+  outline: none;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ig-editor-content:focus {
+  border-color: rgba(61, 153, 255, 0.3);
+}
+
+.ig-editor-content:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(161, 176, 214, 0.4);
+  pointer-events: none;
+}
+
+.ig-mention-inline {
+  display: inline;
+  background: rgba(61, 153, 255, 0.15);
+  border: 1px solid rgba(61, 153, 255, 0.35);
+  color: #3d99ff;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: default;
+  user-select: all;
+}
+
+.ig-mention-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 16px;
+  background: #0f1e30;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  min-width: 220px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.ig-mention-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  color: #cdd4f1;
+  font-size: 0.88rem;
+  transition: background 0.1s;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.ig-mention-option:hover {
+  background: rgba(61, 153, 255, 0.12);
+  color: #3d99ff;
+}
+
+.ig-mention-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(61, 153, 255, 0.2);
+  border: 1px solid rgba(61, 153, 255, 0.35);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #3d99ff;
+  flex-shrink: 0;
+}
+
+.ig-mention-empty {
+  padding: 12px 16px;
+  color: #a1b0d6;
+  font-size: 0.85rem;
+}
+
+/* ── Enfrentamiento de sistemas ── */
+.ef-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ef-rival-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(16, 28, 44, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+}
+
+.ef-label {
+  font-size: 0.85rem;
+  color: #a1b0d6;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ef-section {
+  margin-top: 22px;
+}
+
+.ef-section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #cdd4f1;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.ef-advice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ef-advice-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #cdd4f1;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: rgba(24, 36, 58, 0.5);
+  border-radius: 10px;
+  border-left: 3px solid rgba(61, 255, 186, 0.4);
+}
+
+.ef-advice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3dffba;
+  flex-shrink: 0;
+  margin-top: 7px;
+}
+
+.ef-empty {
+  color: #a1b0d6;
+  font-size: 0.9rem;
+  padding: 16px;
+  background: rgba(24, 36, 58, 0.4);
+  border-radius: 12px;
+  margin: 0;
+}
+
+.ef-players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.ef-player-card {
+  background: rgba(24, 36, 58, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ef-player-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ef-player-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(61, 153, 255, 0.2);
+  border: 1px solid rgba(61, 153, 255, 0.4);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #3d99ff;
+  flex-shrink: 0;
+}
+
+.ef-player-name {
+  font-weight: 700;
+  color: #cdd4f1;
+  font-size: 0.92rem;
+}
+
+.ef-player-role {
+  font-size: 0.75rem;
+  color: #a1b0d6;
+  margin-top: 2px;
+}
+
+.ef-player-advice {
+  margin: 0;
+  font-size: 0.87rem;
+  color: #a1b0d6;
+  line-height: 1.6;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+}
+
+/* ── Pizarra dual enfrentamiento ── */
+.ef-field-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 18px auto 0;
+  aspect-ratio: 68 / 105;
+  background: linear-gradient(180deg, #0a2a18 0%, #0f4228 50%, #0a2a18 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+/* ── Pizarra dual enfrentamiento ── */
+.ef-field-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 68 / 105;
+  max-height: 560px;
+  background: linear-gradient(180deg, #0d3320 0%, #0f4228 40%, #0d3320 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-top: 18px;
+}
+
+.ef-field-wrap .tb-field-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ef-field-legend {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+
+.ef-legend-item {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ef-legend-my {
+  color: #3d99ff;
+}
+
+.ef-legend-rival {
+  color: #ff5050;
 }

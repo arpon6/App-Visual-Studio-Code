@@ -42,12 +42,19 @@
   color: #f4f7ff;
 }
 
+.cortador-video-page .editor-main-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  align-items: start;
+}
+
 .cortador-video-page .video-wrapper {
   margin-top: 16px;
   border-radius: 20px;
   overflow: hidden;
   background: #000;
-  min-height: 360px;
+  min-height: 420px;
   position: relative;
 }
 
@@ -80,25 +87,30 @@
 
 .cortador-video-page .video-wrapper .video-embed iframe {
   width: 100%;
-  min-height: 360px;
+  min-height: 420px;
 }
 
 .cortador-video-page .category-toolbar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-bottom: 12px;
 }
 
 .cortador-video-page .category-button {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
   text-align: left;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
+  border-radius: 8px;
   color: #f4f7ff;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  width: 100%;
 }
 
 .cortador-video-page .category-button.selected,
@@ -109,6 +121,37 @@
 
 .cortador-video-page .category-button small {
   color: #7f96bc;
+}
+
+.cortador-video-page .shortcut-label {
+  color: #7f96bc;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  font-size: 0.78rem;
+}
+
+.cortador-video-page .shortcut-label:hover {
+  color: #00ff8d;
+}
+
+.cortador-video-page .shortcut-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #7f96bc;
+}
+
+.cortador-video-page .shortcut-edit input {
+  width: 120px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #00ff8d;
+  background: rgba(0, 255, 141, 0.08);
+  color: #00ff8d;
+  font-size: 0.8rem;
+  text-align: center;
+  cursor: default;
 }
 
 .cortador-video-page .section-footer {
@@ -160,6 +203,21 @@
   align-items: center;
 }
 
+.cortador-video-page .cut-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cortador-video-page .delete-button {
+  border: none;
+  border-radius: 14px;
+  padding: 12px 18px;
+  cursor: pointer;
+  font-weight: 700;
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff6b6b;
+}
+
 .cortador-video-page .cut-item strong {
   display: block;
   color: #f4f7ff;
@@ -178,4 +236,104 @@
 
 .cortador-video-page .section-footer button {
   width: 100%;
+}
+
+.fullscreen-overlay {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  background: rgba(8, 14, 26, 0.82);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 12px 16px;
+  max-width: 90vw;
+  pointer-events: all;
+}
+
+.fullscreen-cut-btn {
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 141, 0.25);
+  background: rgba(0, 255, 141, 0.1);
+  color: #00ff8d;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  transition: background 0.15s;
+}
+
+.fullscreen-cut-btn:hover,
+.fullscreen-cut-btn:active {
+  background: rgba(0, 255, 141, 0.28);
+}
+
+.cortador-video-page .focus-toggle {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* FOCUS MODE */
+.cortador-video-page.focus-mode .page-title .badge,
+.cortador-video-page.focus-mode .page-title h1,
+.cortador-video-page.focus-mode .cortes-card,
+.cortador-video-page.focus-mode .video-helpers,
+.cortador-video-page.focus-mode .section-header h2,
+.cortador-video-page.focus-mode .section-header small,
+.cortador-video-page.focus-mode .category-add,
+.cortador-video-page.focus-mode .cortador-card .section-header,
+.cortador-video-page.focus-mode .cortador-card .video-form {
+  display: none;
+}
+
+.cortador-video-page.focus-mode .cortador-card {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.cortador-video-page.focus-mode .editor-main-grid {
+  grid-template-columns: 1fr 260px;
+  gap: 8px;
+}
+
+.cortador-video-page.focus-mode .video-wrapper {
+  margin-top: 0;
+  min-height: unset;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.cortador-video-page.focus-mode .video-wrapper .video-embed,
+.cortador-video-page.focus-mode .video-wrapper .video-embed iframe {
+  width: 100%;
+  height: 100%;
+  min-height: unset;
+  aspect-ratio: 16 / 9;
+  display: block;
+}
+
+.cortador-video-page.focus-mode .category-toolbar {
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+.app-shell.sidebar-hidden .app-main {
+  padding: 8px;
 }

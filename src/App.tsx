@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
@@ -14,30 +14,55 @@ import OtrasInformaciones from './pages/OtrasInformaciones';
 import Configuracion from './pages/Configuracion';
 import './App.css';
 
-const pages = {
-  Inicio: <Inicio />,
-  Plantilla: <Plantilla />,
-  Calendario: <Calendario />,
+const PAGE_KEYS = [
+  'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
+  'Desarrollo Individual', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
+  'Editor de vídeo propio', 'Otras Informaciones', 'Configuración',
+] as const;
+
+type PageKey = typeof PAGE_KEYS[number];
+
+const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
+  'Inicio': <Inicio />,
+  'Plantilla': <Plantilla />,
+  'Calendario': <Calendario />,
   'Plan de Partido': <PlanDePartido />,
   'Análisis de Partido': <AnalisisDePartido />,
   'Desarrollo Individual': <DesarrolloIndividual />,
-  Estadísticas: <Estadisticas />,
+  'Estadísticas': <Estadisticas />,
   'Resultados y Clasif.': <ResultadosYClasif />,
   'Repositorio ABP': <RepositorioABP />,
-  'Cortador de vídeo': <CortadorDeVideo />,
+  'Editor de vídeo propio': <CortadorDeVideo />,
   'Otras Informaciones': <OtrasInformaciones />,
-  Configuración: <Configuracion />,
+  'Configuración': <Configuracion />,
 };
 
 function App() {
-  const [activeSection, setActiveSection] = useState('Inicio');
-  const pageContent = useMemo(() => pages[activeSection as keyof typeof pages], [activeSection]);
+  const [activeSection, setActiveSection] = useState<PageKey>(
+    () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
+  );
+  const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => setFocusMode((e as CustomEvent).detail);
+    window.addEventListener('cortador-focus-mode', handler);
+    return () => window.removeEventListener('cortador-focus-mode', handler);
+  }, []);
+
+  const handleSelect = (section: string) => {
+    localStorage.setItem('app_active_section', section);
+    setActiveSection(section as PageKey);
+  };
 
   return (
-    <div className="app-shell">
-      <Sidebar activeSection={activeSection} onSelect={setActiveSection} />
+    <div className={`app-shell${focusMode ? ' sidebar-hidden' : ''}`}>
+      <Sidebar activeSection={activeSection} onSelect={handleSelect} />
       <main className="app-main">
-        {pageContent}
+        {PAGE_KEYS.map(key => (
+          <div key={key} style={{ display: activeSection === key ? 'contents' : 'none' }}>
+            {PAGE_COMPONENTS[key]}
+          </div>
+        ))}
       </main>
     </div>
   );

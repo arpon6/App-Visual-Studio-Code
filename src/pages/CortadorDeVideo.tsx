@@ -8,56 +8,55 @@ declare global {
   }
 }
 
-type Category = {
-  id: string;
-  label: string;
-  shortcut: string;
-};
-
-type Cut = {
-  id: string;
-  categoryId: string;
-  label: string;
-  start: number;
-  end: number;
-  createdAt: string;
-};
-
-type SavedState = {
-  videoUrl: string;
-  categories: Category[];
-  cuts: Cut[];
-};
+type Category = { id: string; label: string; shortcut: string };
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string };
+type SavedState = { videoUrl: string; categories: Category[]; cuts: Cut[] };
 
 const STORAGE_KEY = 'mi_club_cortador_video_v1';
 const EXAMPLE_VIDEO_ID = 'M7lc1UVf-VE';
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'ataque', label: 'Ataque', shortcut: '1' },
-  { id: 'defensa', label: 'Defensa', shortcut: '2' },
-  { id: 'transicion', label: 'Transición', shortcut: '3' },
-  { id: 'otros', label: 'Otros', shortcut: '4' },
+  { id: 'abp-ofensivo', label: 'ABP OFENSIVO', shortcut: 'Ctrl+Alt+1' },
+  { id: 'abp-defensivo', label: 'ABP DEFENSIVO', shortcut: 'Ctrl+Alt+2' },
+  { id: 'presion-alta', label: 'PRESIÓN ALTA', shortcut: 'Ctrl+Alt+3' },
+  { id: 'repliegue-total', label: 'REPLIEGUE TOTAL', shortcut: 'Ctrl+Alt+4' },
+  { id: 'repliegue-intermedio', label: 'REPLIEGUE INTERMEDIO', shortcut: 'Ctrl+Alt+5' },
+  { id: 'conquista-espalda-z3', label: 'CONQUISTA ESPALDA Z 3', shortcut: 'Ctrl+Alt+6' },
+  { id: 'ataque-area-estando', label: 'ATAQUE DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+7' },
+  { id: 'ataque-area-llegando', label: 'ATAQUE DE ÁREA LLEGANDO', shortcut: 'Ctrl+Alt+8' },
+  { id: 'defensa-area-estando', label: 'DEFENSA DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+9' },
+  { id: 'defensa-area-llegando', label: 'DEFENSA DE ÁREA LLEGANDO', shortcut: '' },
+  { id: 'reinicio-construccion-z12', label: 'REINICIO Y CONSTRUCCIÓN Z 1-2', shortcut: '' },
+  { id: 'progresion-exterior-z23', label: 'PROGRESIÓN JUEGO EXTERIOR Z 2-3', shortcut: '' },
+  { id: 'progresion-interior-z23', label: 'PROGRESIÓN JUEGO INTERIOR Z 2-3', shortcut: '' },
+  { id: 'conservar-tras-robo-z1', label: 'PRIORIZAR CONSERVAR TRAS ROBO Z 1', shortcut: '' },
+  { id: 'finalizar-tras-robo-z4', label: 'PRIORIZAR FINALIZAR TRAS ROBO Z 4', shortcut: '' },
+  { id: 'progresar-tras-robo-z23', label: 'PRIORIZAR PROGRESAR TRAS ROBO Z 2-3', shortcut: '' },
+  { id: 'recuperar-tras-perdida-z34', label: 'PRIORIZAR RECUPERAR TRAS PÉRDIDA Z 3-4', shortcut: '' },
+  { id: 'defender-espacio-z2', label: 'PRIORIZAR DEFENDER ESPACIO TRAS PÉRDIDA Z 2', shortcut: '' },
+  { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1', shortcut: '' },
 ];
 
-function parseYouTubeVideoId(url: string) {
-  const regex = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([A-Za-z0-9_-]{11})/;
-  const match = url.match(regex);
+function normalizeKey(e: KeyboardEvent): string {
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return '';
+  const parts: string[] = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+  return parts.join('+');
+}
+
+function extractYouTubeVideoId(url: string): string | null {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/))([A-Za-z0-9_-]{11})/);
   return match ? match[1] : null;
 }
 
 function loadYouTubeApi(): Promise<void> {
   return new Promise((resolve) => {
-    if (window.YT && window.YT.Player) {
-      resolve();
-      return;
-    }
-
-    const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
-    if (existingScript) {
-      window.onYouTubeIframeAPIReady = () => resolve();
-      return;
-    }
-
+    if (window.YT && window.YT.Player) { resolve(); return; }
+    const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    if (existing) { window.onYouTubeIframeAPIReady = () => resolve(); return; }
     window.onYouTubeIframeAPIReady = () => resolve();
     const script = document.createElement('script');
     script.src = 'https://www.youtube.com/iframe_api';
@@ -66,392 +65,368 @@ function loadYouTubeApi(): Promise<void> {
   });
 }
 
+function loadState(): SavedState {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {} as SavedState; }
+}
+
 function CortadorDeVideo() {
-  const [videoUrl, setVideoUrl] = useState('');
-  const [videoId, setVideoId] = useState<string | null>(null);
+  const saved = useMemo(loadState, []);
+
+  const [videoUrl, setVideoUrl] = useState<string>(saved.videoUrl || '');
+  const [videoId, setVideoId] = useState<string | null>(() => extractYouTubeVideoId(saved.videoUrl || ''));
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const c = saved.categories;
+    if (!c?.length) return DEFAULT_CATEGORIES;
+    return c.map((cat: Category) => ({ ...cat, shortcut: cat.shortcut.includes('+') ? cat.shortcut : '' }));
+  });
+  const [cuts, setCuts] = useState<Cut[]>(saved.cuts || []);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
-  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [cuts, setCuts] = useState<Cut[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
   const [playerReady, setPlayerReady] = useState(false);
-  const [playerError, setPlayerError] = useState<string>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(DEFAULT_CATEGORIES[0].id);
+  const [playerError, setPlayerError] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(DEFAULT_CATEGORIES[0].id);
+  const [editingShortcutId, setEditingShortcutId] = useState<string | null>(null);
+  const [editingShortcutValue, setEditingShortcutValue] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
+  const lastKnownTimeRef = useRef<number>(0);
 
-  const groupedCuts = useMemo(() => {
-    return categories.map((category) => ({
-      category,
-      cuts: cuts.filter((cut) => cut.categoryId === category.id),
-    }));
-  }, [categories, cuts]);
+  // Keep refs always up to date so event listeners never have stale closures
+  const categoriesRef = useRef(categories);
+  const cutsRef = useRef(cuts);
+  const playerReadyRef = useRef(playerReady);
+  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+  useEffect(() => { cutsRef.current = cuts; }, [cuts]);
+  useEffect(() => { playerReadyRef.current = playerReady; }, [playerReady]);
 
+  const groupedCuts = useMemo(() =>
+    categories.map((category) => ({ category, cuts: cuts.filter((c) => c.categoryId === category.id) })),
+    [categories, cuts]
+  );
+
+  // Persist to localStorage
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-
-    try {
-      const parsed: SavedState = JSON.parse(saved);
-      setVideoUrl(parsed.videoUrl || '');
-      setCategories(parsed.categories?.length ? parsed.categories : DEFAULT_CATEGORIES);
-      setCuts(parsed.cuts || []);
-      const storedId = parseYouTubeVideoId(parsed.videoUrl || '');
-      if (storedId) {
-        setVideoId(storedId);
-      }
-    } catch {
-      // ignore invalid localStorage state
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        videoUrl,
-        categories,
-        cuts,
-      }),
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, categories, cuts }));
   }, [videoUrl, categories, cuts]);
 
+  // Create YouTube player
   useEffect(() => {
-    if (!videoId || !playerRef.current) {
-      return;
-    }
-
+    if (!videoId || !playerRef.current) return;
     let mounted = true;
-
-    const createPlayer = () => {
-      const container = playerRef.current;
-      if (!container) return;
-
-      container.innerHTML = '';
-      if (ytPlayerRef.current?.destroy) {
-        ytPlayerRef.current.destroy();
-      }
-
-      ytPlayerRef.current = new window.YT.Player(container, {
+    loadYouTubeApi().then(() => {
+      if (!mounted || !playerRef.current) return;
+      playerRef.current.innerHTML = '';
+      ytPlayerRef.current?.destroy?.();
+      ytPlayerRef.current = new window.YT.Player(playerRef.current, {
         videoId,
         width: '100%',
         height: '360',
-        playerVars: {
-          controls: 1,
-          modestbranding: 1,
-          rel: 0,
-          origin: window.location.origin,
-          enablejsapi: 1,
-          playsinline: 1,
-        },
+        playerVars: { controls: 1, modestbranding: 1, rel: 0, origin: window.location.origin, enablejsapi: 1, playsinline: 1 },
         events: {
           onReady: () => {
             if (!mounted) return;
             setPlayerReady(true);
             setPlayerError('');
-            setStatusMessage('Vídeo cargado. Presiona un botón o usa Ctrl+Alt+[1-9] para cortar.');
+            setStatusMessage('Vídeo cargado. Usa los atajos asignados o pulsa el botón de cada categoría para guardar un corte.');
           },
           onError: (event: { data: number }) => {
             if (!mounted) return;
-            let errorText = 'No se pudo reproducir el vídeo.';
-            if (event.data === 2) {
-              errorText = 'ID de vídeo no válido.';
-            } else if (event.data === 100) {
-              errorText = 'El vídeo no está disponible.';
-            } else if (event.data === 101 || event.data === 150) {
-              errorText = 'El propietario del vídeo ha restringido la reproducción en otros sitios.';
-            }
+            const msgs: Record<number, string> = { 2: 'ID de vídeo no válido.', 100: 'El vídeo no está disponible.', 101: 'Reproducción restringida en sitios externos.', 150: 'Reproducción restringida en sitios externos.' };
+            const msg = msgs[event.data] || 'No se pudo reproducir el vídeo.';
             setPlayerReady(false);
-            setPlayerError(`${errorText} (Código de error ${event.data})`);
-            setStatusMessage(`${errorText} (Código de error ${event.data})`);
+            setPlayerError(`${msg} (Código ${event.data})`);
+            setStatusMessage(`${msg} (Código ${event.data})`);
           },
         },
       });
-    };
-
-    loadYouTubeApi()
-      .then(() => {
-        if (!mounted) return;
-        setPlayerReady(false);
-        setPlayerError('');
-        createPlayer();
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setPlayerError('No se pudo cargar el reproductor de YouTube.');
-        setStatusMessage('Error al cargar el reproductor de YouTube.');
-      });
-
-    return () => {
-      mounted = false;
-    };
+    }).catch(() => {
+      if (!mounted) return;
+      setPlayerError('No se pudo cargar el reproductor de YouTube.');
+    });
+    return () => { mounted = false; };
   }, [videoId]);
 
+  // Fullscreen detection
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
-        const category = categories.find((item) => item.shortcut === event.key);
-        if (category) {
-          event.preventDefault();
-          createCutForCategory(category.id);
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [categories, playerReady, videoId, cuts]);
-
-  useEffect(() => {
-    return () => {
-      if (ytPlayerRef.current?.destroy) {
-        ytPlayerRef.current.destroy();
-      }
-    };
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
-  const handleLoadVideo = () => {
-    const id = parseYouTubeVideoId(videoUrl);
-    if (!id) {
-      setStatusMessage('Introduce una URL de YouTube válida.');
-      setVideoId(null);
-      setPlayerError('');
-      return;
-    }
+  // Poll current time every 500ms
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const t = ytPlayerRef.current?.getCurrentTime?.();
+      if (t != null && !Number.isNaN(t)) lastKnownTimeRef.current = t;
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
-    setVideoId(id);
-    setPlayerReady(false);
-    setPlayerError('');
-    setStatusMessage('Cargando vídeo...');
+  // Keyboard shortcuts — registered once, uses refs to avoid stale closures
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.altKey) return;
+      const combo = normalizeKey(e);
+      if (!combo) return;
+      const category = categoriesRef.current.find((c) => c.shortcut === combo);
+      if (!category) return;
+      e.preventDefault();
+      const t = ytPlayerRef.current?.getCurrentTime?.();
+      const time = (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current;
+      const end = Math.floor(time);
+      const start = Math.max(0, end - 20);
+      const cut: Cut = {
+        id: `${category.id}-${Date.now()}`,
+        categoryId: category.id,
+        label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        start, end,
+        createdAt: new Date().toISOString(),
+      };
+      setCuts((prev) => {
+        const updated = [cut, ...prev];
+        try {
+          const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
+          stored[category.label] = [cut, ...(stored[category.label] || [])];
+          localStorage.setItem('analisis_cuts', JSON.stringify(stored));
+        } catch { /* ignore */ }
+        return updated;
+      });
+      setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Cleanup player on unmount
+  useEffect(() => () => { ytPlayerRef.current?.destroy?.(); }, []);
+
+  const createCutForCategory = (categoryId: string) => {
+    const category = categoriesRef.current.find((c) => c.id === categoryId);
+    if (!category) return;
+    const t = ytPlayerRef.current?.getCurrentTime?.();
+    const time = (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current;
+    const end = Math.floor(time);
+    const start = Math.max(0, end - 20);
+    const cut: Cut = {
+      id: `${categoryId}-${Date.now()}`,
+      categoryId,
+      label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      start, end,
+      createdAt: new Date().toISOString(),
+    };
+    setCuts((prev) => {
+      const updated = [cut, ...prev];
+      try {
+        const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
+        stored[category.label] = [cut, ...(stored[category.label] || [])];
+        localStorage.setItem('analisis_cuts', JSON.stringify(stored));
+      } catch { /* ignore */ }
+      return updated;
+    });
+    setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+  };
+
+  const handleLoadVideo = () => {
+    const id = extractYouTubeVideoId(videoUrl);
+    if (!id) { setStatusMessage('Introduce una URL de YouTube válida.'); setVideoId(null); setPlayerError(''); return; }
+    setVideoId(id); setPlayerReady(false); setPlayerError(''); setStatusMessage('Cargando vídeo...');
   };
 
   const handleLoadExampleVideo = () => {
-    const exampleUrl = `https://www.youtube.com/watch?v=${EXAMPLE_VIDEO_ID}`;
-    setVideoUrl(exampleUrl);
-    setVideoId(EXAMPLE_VIDEO_ID);
-    setPlayerReady(false);
-    setPlayerError('');
-    setStatusMessage('Cargando vídeo de prueba...');
-  };
-
-  const createCutForCategory = (categoryId: string) => {
-    if (!ytPlayerRef.current || !playerReady) {
-      setStatusMessage('Espera a que el vídeo esté listo, o carga uno primero.');
-      return;
-    }
-
-    const currentTime = ytPlayerRef.current.getCurrentTime?.();
-    if (currentTime == null || Number.isNaN(currentTime)) {
-      setStatusMessage('No se pudo leer el tiempo actual del vídeo.');
-      return;
-    }
-
-    const end = Math.floor(currentTime);
-    const start = Math.max(0, end - 20);
-    const category = categories.find((item) => item.id === categoryId);
-    if (!category) return;
-
-    const cutLabel = `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const nextCut: Cut = {
-      id: `${categoryId}-${Date.now()}`,
-      categoryId,
-      label: cutLabel,
-      start,
-      end,
-      createdAt: new Date().toISOString(),
-    };
-
-    setCuts((prev) => [nextCut, ...prev]);
-    setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+    const url = `https://www.youtube.com/watch?v=${EXAMPLE_VIDEO_ID}`;
+    setVideoUrl(url); setVideoId(EXAMPLE_VIDEO_ID); setPlayerReady(false); setPlayerError(''); setStatusMessage('Cargando vídeo de prueba...');
   };
 
   const handleAddCategory = () => {
     const label = newCategoryLabel.trim();
     if (!label) return;
-    const nextShortcut = String(categories.length < 9 ? categories.length + 1 : '');
-    const newCategory: Category = {
-      id: label.toLowerCase().replace(/\s+/g, '-'),
-      label,
-      shortcut: nextShortcut,
-    };
-
-    setCategories((prev) => [...prev, newCategory]);
-    setSelectedCategoryId(newCategory.id);
+    const newCat: Category = { id: label.toLowerCase().replace(/\s+/g, '-'), label, shortcut: '' };
+    setCategories((prev) => [...prev, newCat]);
+    setSelectedCategoryId(newCat.id);
     setNewCategoryLabel('');
-    setStatusMessage(`Categoría creada: ${label}${nextShortcut ? ` (Ctrl+Alt+${nextShortcut})` : ''}`);
+    setStatusMessage(`Categoría creada: ${label}`);
+  };
+
+  const handleShortcutSave = (categoryId: string, value: string) => {
+    const conflict = categories.find((c) => c.id !== categoryId && c.shortcut === value && value !== '');
+    if (conflict) { setStatusMessage(`El atajo «${value}» ya está en uso por «${conflict.label}».`); return; }
+    setCategories((prev) => prev.map((c) => c.id === categoryId ? { ...c, shortcut: value } : c));
+    setEditingShortcutId(null);
+    setStatusMessage(value ? `Atajo «${value}» asignado.` : 'Atajo eliminado.');
+  };
+
+  const handleDeleteCut = (cut: Cut, categoryLabel: string) => {
+    setCuts((prev) => prev.filter((c) => c.id !== cut.id));
+    try {
+      const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
+      if (stored[categoryLabel]) {
+        stored[categoryLabel] = stored[categoryLabel].filter((c: Cut) => c.id !== cut.id);
+        localStorage.setItem('analisis_cuts', JSON.stringify(stored));
+      }
+    } catch { /* ignore */ }
   };
 
   const handlePlayCut = (cut: Cut) => {
-    if (!ytPlayerRef.current || !playerReady) {
-      setStatusMessage('Carga primero un vídeo para reproducir el corte.');
-      return;
-    }
+    if (!ytPlayerRef.current || !playerReady) { setStatusMessage('Carga primero un vídeo para reproducir el corte.'); return; }
     ytPlayerRef.current.seekTo(cut.start, true);
     ytPlayerRef.current.playVideo();
     setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
   };
 
   return (
-    <section className="page-section cortador-video-page">
+    <section className={`page-section cortador-video-page${focusMode ? ' focus-mode' : ''}`}>
       <div className="page-title">
         <div>
           <div className="badge">HERRAMIENTA</div>
-          <h1>Cortador de vídeo</h1>
+          <h1>Editor de vídeo propio</h1>
         </div>
+        <button type="button" className={focusMode ? 'primary-button focus-toggle' : 'secondary-button focus-toggle'} onClick={() => {
+          const next = !focusMode;
+          setFocusMode(next);
+          window.dispatchEvent(new CustomEvent('cortador-focus-mode', { detail: next }));
+        }}>
+          {focusMode ? '✕ Salir del modo foco' : '⛶ Modo foco'}
+        </button>
       </div>
 
-      <div className="card cortador-card">
+      <div className="editor-main-grid">
+        <div className="card cortador-card">
         <div className="section-header">
           <div>
             <small>URL de YouTube</small>
             <h2>Inserta el vídeo que quieras cortar</h2>
           </div>
         </div>
-
         <div className="video-form">
-          <input
-            type="text"
-            value={videoUrl}
-            placeholder="https://www.youtube.com/watch?v=..."
-            onChange={(event) => setVideoUrl(event.target.value)}
-          />
+          <input type="text" value={videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => setVideoUrl(e.target.value)} />
           <div className="video-form-actions">
-            <button className="primary-button" type="button" onClick={handleLoadVideo}>
-              Cargar vídeo
-            </button>
-            <button className="secondary-button" type="button" onClick={handleLoadExampleVideo}>
-              Cargar vídeo de prueba
-            </button>
+            <button className="primary-button" type="button" onClick={handleLoadVideo}>Cargar vídeo</button>
+            <button className="secondary-button" type="button" onClick={handleLoadExampleVideo}>Cargar vídeo de prueba</button>
           </div>
         </div>
-
         <div className="video-wrapper">
-          {!videoId && (
-            <div className="video-placeholder">
-              <p>Introduce una URL de YouTube y pulsa «Cargar vídeo».</p>
-            </div>
-          )}
-
-          {videoId && !playerError && (
-            <div ref={playerRef} className="video-embed" />
-          )}
-
+          {!videoId && <div className="video-placeholder"><p>Introduce una URL de YouTube y pulsa «Cargar vídeo».</p></div>}
+          {videoId && !playerError && <div ref={playerRef} className="video-embed" />}
           {videoId && playerError && (
             <div className="video-error-fallback">
               <p>{playerError}</p>
-              <p>
-                El vídeo puede estar bloqueado para reproducirse en sitios externos.
-              </p>
-              <a
-                href={`https://www.youtube.com/watch?v=${videoId}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ver vídeo en YouTube
-              </a>
+              <p>El vídeo puede estar bloqueado para reproducirse en sitios externos.</p>
+              <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">Ver vídeo en YouTube</a>
             </div>
           )}
         </div>
-
         <div className="video-helpers">
-          <p>
-            Usa los botones para crear y clasificar cortes. Pulsa <strong>Ctrl+Alt+[1-9]</strong> para guardar los últimos 20 segundos en la categoría correspondiente.
-          </p>
+          <p>Pulsa cualquier categoría de la botonera para guardar un corte de los últimos 20 segundos, o usa los atajos de teclado asignados.</p>
           {statusMessage && <p className="status-text">{statusMessage}</p>}
         </div>
       </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <div className="section-header">
-            <div>
-              <small>Categorías</small>
-              <h2>Botonera de clasificación</h2>
-            </div>
+      <div className="card">
+        <div className="section-header">
+          <div>
+            <small>Categorías</small>
+            <h2>Botonera</h2>
           </div>
-
-          <div className="category-toolbar">
-            {categories.map((category) => (
-              <button
-                type="button"
-                key={category.id}
-                className={
-                  category.id === selectedCategoryId
-                    ? 'category-button selected'
-                    : 'category-button'
-                }
-                onClick={() => setSelectedCategoryId(category.id)}
-              >
-                <span>{category.label}</span>
-                <small>{category.shortcut ? `Ctrl+Alt+${category.shortcut}` : 'sin atajo'}</small>
-              </button>
-            ))}
-          </div>
-
-          <div className="category-add">
-            <input
-              type="text"
-              placeholder="Nueva categoría"
-              value={newCategoryLabel}
-              onChange={(event) => setNewCategoryLabel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  handleAddCategory();
-                }
-              }}
-            />
-            <button type="button" className="secondary-button" onClick={handleAddCategory}>
-              Añadir categoría
-            </button>
-          </div>
-
-          <div className="section-footer">
+        </div>
+        <div className="category-toolbar">
+          {categories.map((category) => (
             <button
               type="button"
-              className="primary-button"
-              onClick={() => createCutForCategory(selectedCategoryId)}
+              key={category.id}
+              className={category.id === selectedCategoryId ? 'category-button selected' : 'category-button'}
+              onClick={() => { setSelectedCategoryId(category.id); createCutForCategory(category.id); }}
             >
-              Guardar corte en {categories.find((item) => item.id === selectedCategoryId)?.label || 'categoría'}
-            </button>
-          </div>
-        </div>
-
-        <div className="card cortes-card">
-          <div className="section-header">
-            <div>
-              <small>Cortes guardados</small>
-              <h2>Historial por categoría</h2>
-            </div>
-          </div>
-
-          <div className="cuts-list">
-            {groupedCuts.map(({ category, cuts: categoryCuts }) => (
-              <div key={category.id} className="cut-group">
-                <div className="cut-group-header">
-                  <h3>{category.label}</h3>
-                  <span className="badge">{categoryCuts.length}</span>
+              <span>{category.label}</span>
+              {editingShortcutId === category.id ? (
+                <div className="shortcut-edit" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    autoFocus
+                    readOnly
+                    placeholder="Ctrl/Alt + tecla..."
+                    value={editingShortcutValue}
+                    onKeyDown={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      if (e.key === 'Escape') { setEditingShortcutId(null); return; }
+                      if (e.key === 'Backspace' || e.key === 'Delete') { handleShortcutSave(category.id, ''); return; }
+                      const combo = normalizeKey(e.nativeEvent);
+                      if (combo && (e.ctrlKey || e.altKey)) { setEditingShortcutValue(combo); handleShortcutSave(category.id, combo); }
+                    }}
+                  />
                 </div>
-                {categoryCuts.length === 0 ? (
-                  <p className="empty-text">No hay cortes guardados en esta categoría.</p>
-                ) : (
-                  <div className="cut-items">
-                    {categoryCuts.map((cut) => (
-                      <div key={cut.id} className="cut-item">
-                        <div>
-                          <strong>{cut.label}</strong>
-                          <p>{cut.start}s → {cut.end}s</p>
-                        </div>
-                        <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>
-                          Reproducir
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ) : (
+                <small
+                  className="shortcut-label"
+                  title="Haz clic para editar el atajo"
+                  onClick={(e) => { e.stopPropagation(); setEditingShortcutId(category.id); setEditingShortcutValue(category.shortcut); }}
+                >
+                  {category.shortcut || 'sin atajo · editar'}
+                </small>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="category-add">
+          <input
+            type="text"
+            placeholder="Nueva categoría"
+            value={newCategoryLabel}
+            onChange={(e) => setNewCategoryLabel(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
+          />
+          <button type="button" className="secondary-button" onClick={handleAddCategory}>Añadir categoría</button>
         </div>
       </div>
+      </div>
+
+      <div className="card cortes-card">
+        <div className="section-header">
+          <div>
+            <small>Cortes guardados</small>
+            <h2>Historial por categoría</h2>
+          </div>
+        </div>
+        <div className="cuts-list">
+          {groupedCuts.map(({ category, cuts: categoryCuts }) => (
+            <div key={category.id} className="cut-group">
+              <div className="cut-group-header">
+                <h3>{category.label}</h3>
+                <span className="badge">{categoryCuts.length}</span>
+              </div>
+              {categoryCuts.length === 0 ? (
+                <p className="empty-text">No hay cortes guardados en esta categoría.</p>
+              ) : (
+                <div className="cut-items">
+                  {categoryCuts.map((cut) => (
+                    <div key={cut.id} className="cut-item">
+                      <div>
+                        <strong>{cut.label}</strong>
+                        <p>{cut.start}s → {cut.end}s</p>
+                      </div>
+                      <div className="cut-item-actions">
+                        <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
+                        <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {isFullscreen && (
+        <div className="fullscreen-overlay">
+          {categories.map((cat) => (
+            <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)}>
+              {cat.label.split(' ').slice(0, 2).join(' ')}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

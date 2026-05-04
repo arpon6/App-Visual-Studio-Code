@@ -1,4 +1,24 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { Player } from '../components/TacticalBoard';
+import { AbpSection } from '../components/AbpBoard';
+
 function RepositorioABP() {
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  useEffect(() => {
+    supabase.from('plantilla').select('number, first_name, last_name1').then(({ data }) => {
+      if (!data) return;
+      const mapped: Player[] = data.map((p: any, i: number) => ({
+        id: i,
+        name: [p.first_name, p.last_name1].filter(Boolean).join(' '),
+        number: p.number || 0,
+      }));
+      mapped.sort((a, b) => a.number - b.number);
+      setPlayers(mapped);
+    });
+  }, []);
+
   return (
     <section className="page-section">
       <div className="page-title">
@@ -8,18 +28,20 @@ function RepositorioABP() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="section-header">
-          <h2>Recursos para el equipo</h2>
-        </div>
-        <div className="widget-box">
-          <ul style={{ margin: 0, paddingLeft: 18, color: '#cdd4f1' }}>
-            <li>Plan de entrenamiento semanal</li>
-            <li>Guía de trabajo cooperativo</li>
-            <li>Material de análisis de vídeo</li>
-          </ul>
-        </div>
-      </div>
+      <AbpSection
+        title="Jugadas ofensivas"
+        badge="A"
+        storageKey="abp_repo_ofensivo"
+        supabaseTitle="abp_repo_ofensivo"
+        players={players}
+      />
+      <AbpSection
+        title="Jugadas defensivas"
+        badge="B"
+        storageKey="abp_repo_defensivo"
+        supabaseTitle="abp_repo_defensivo"
+        players={players}
+      />
     </section>
   );
 }
