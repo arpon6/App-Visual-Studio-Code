@@ -28,7 +28,7 @@ function Plantilla() {
       setLoading(false);
 
       if (error) {
-        setFetchError(`Error: ${error.message} | code: ${error.code} | hint: ${error.hint}`);
+        setFetchError('No se han podido cargar los jugadores. Revisa la tabla plantilla en Supabase.');
         return;
       }
 
