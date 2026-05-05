@@ -10,7 +10,7 @@ declare global {
 
 type Category = { id: string; label: string; shortcut: string };
 type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string };
-type SavedState = { videoUrl: string; categories: Category[]; cuts: Cut[] };
+type SavedState = { videoUrl: string; videoMode: VideoMode; categories: Category[]; cuts: Cut[] };
 
 const STORAGE_KEY = 'mi_club_cortador_video_rival_v1';
 const PROPIO_STORAGE_KEY = 'mi_club_cortador_video_v1';
@@ -106,7 +106,7 @@ type VideoMode = 'url' | 'file';
 function CortadorDeVideoRival() {
   const saved = useMemo(loadState, []);
 
-  const [videoMode, setVideoMode] = useState<VideoMode>('url');
+  const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
   const [videoUrl, setVideoUrl] = useState<string>(saved.videoUrl || '');
   const [videoId, setVideoId] = useState<string | null>(() => extractYouTubeVideoId(saved.videoUrl || ''));
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
@@ -154,16 +154,16 @@ function CortadorDeVideoRival() {
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, categories, cuts }));
-  }, [videoUrl, categories, cuts]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, videoMode, categories, cuts }));
+  }, [videoUrl, videoMode, categories, cuts]);
 
   // Load persisted local video from IndexedDB on mount
   useEffect(() => {
+    if (saved.videoMode !== 'file') return;
     loadFileFromIDB().then((file) => {
       if (!file) return;
       const src = URL.createObjectURL(file);
       setLocalVideoSrc(src);
-      setVideoMode('file');
       setPlayerReady(true);
       setStatusMessage(`Vídeo cargado: ${file.name}`);
     });

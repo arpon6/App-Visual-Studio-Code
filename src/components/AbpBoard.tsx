@@ -92,7 +92,7 @@ function loadBoards(storageKey: string): AbpBoardState[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0)
-        return parsed.map((b: AbpBoardState) => ({ blocks: [], videoUrl: '', ...b }));
+        return parsed.map((b: AbpBoardState) => ({ ...b, blocks: b.blocks ?? [], videoUrl: b.videoUrl ?? '' }));
     }
   } catch { /* ignorar */ }
   return [defaultBoard('Pizarra 1')];
@@ -521,7 +521,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
     supabase.from('match_plans').select('tactics').eq('title', supabaseTitle).maybeSingle()
       .then(({ data }) => {
         if (data?.tactics && Array.isArray(data.tactics)) {
-          const loaded = (data.tactics as AbpBoardState[]).map(b => ({ blocks: [], videoUrl: '', ...b }));
+          const loaded = (data.tactics as AbpBoardState[]).map(b => ({ ...b, blocks: b.blocks ?? [], videoUrl: b.videoUrl ?? '' }));
           setBoards(loaded);
           localStorage.setItem(storageKey, JSON.stringify(loaded));
         }
