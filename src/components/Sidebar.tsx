@@ -16,6 +16,7 @@ const sections = [
   'Resultados y Clasif.',
   'Repositorio ABP',
   'Editor de vídeo propio',
+  'Editor de vídeo rival',
   'Otras Informaciones',
   'Configuración',
 ];

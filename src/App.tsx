@@ -6,6 +6,7 @@ import Calendario from './pages/Calendario';
 import PlanDePartido from './pages/PlanDePartido';
 import AnalisisDePartido from './pages/AnalisisDePartido';
 import CortadorDeVideo from './pages/CortadorDeVideo';
+import CortadorDeVideoRival from './pages/CortadorDeVideoRival';
 import DesarrolloIndividual from './pages/DesarrolloIndividual';
 import Estadisticas from './pages/Estadisticas';
 import ResultadosYClasif from './pages/ResultadosYClasif';
@@ -17,7 +18,7 @@ import './App.css';
 const PAGE_KEYS = [
   'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
   'Desarrollo Individual', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
-  'Editor de vídeo propio', 'Otras Informaciones', 'Configuración',
+  'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones', 'Configuración',
 ] as const;
 
 type PageKey = typeof PAGE_KEYS[number];
@@ -33,6 +34,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Resultados y Clasif.': <ResultadosYClasif />,
   'Repositorio ABP': <RepositorioABP />,
   'Editor de vídeo propio': <CortadorDeVideo />,
+  'Editor de vídeo rival': <CortadorDeVideoRival />,
   'Otras Informaciones': <OtrasInformaciones />,
   'Configuración': <Configuracion />,
 };
