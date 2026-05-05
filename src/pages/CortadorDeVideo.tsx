@@ -11,9 +11,41 @@ declare global {
 type Category = { id: string; label: string; shortcut: string };
 type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string };
 type SavedState = { videoUrl: string; categories: Category[]; cuts: Cut[] };
+type VideoMode = 'url' | 'file';
 
 const STORAGE_KEY = 'mi_club_cortador_video_v1';
+const IDB_NAME = 'mi_club_video_propio';
+const IDB_STORE = 'files';
+const IDB_KEY = 'local_video';
 const EXAMPLE_VIDEO_ID = 'M7lc1UVf-VE';
+
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveFileToIDB(file: File) {
+  const db = await openIDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(file, IDB_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadFileFromIDB(): Promise<File | null> {
+  const db = await openIDB();
+  return new Promise((resolve) => {
+    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(IDB_KEY);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  });
+}
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'abp-ofensivo', label: 'ABP OFENSIVO', shortcut: 'Ctrl+Alt+1' },
@@ -72,8 +104,10 @@ function loadState(): SavedState {
 function CortadorDeVideo() {
   const saved = useMemo(loadState, []);
 
+  const [videoMode, setVideoMode] = useState<VideoMode>('url');
   const [videoUrl, setVideoUrl] = useState<string>(saved.videoUrl || '');
   const [videoId, setVideoId] = useState<string | null>(() => extractYouTubeVideoId(saved.videoUrl || ''));
+  const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>(() => {
     const c = saved.categories;
     if (!c?.length) return DEFAULT_CATEGORIES;
@@ -92,7 +126,9 @@ function CortadorDeVideo() {
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const lastKnownTimeRef = useRef<number>(0);
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Keep refs always up to date so event listeners never have stale closures
   const categoriesRef = useRef(categories);
@@ -112,9 +148,21 @@ function CortadorDeVideo() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, categories, cuts }));
   }, [videoUrl, categories, cuts]);
 
+  // Load persisted local video from IndexedDB on mount
+  useEffect(() => {
+    loadFileFromIDB().then((file) => {
+      if (!file) return;
+      const src = URL.createObjectURL(file);
+      setLocalVideoSrc(src);
+      setVideoMode('file');
+      setPlayerReady(true);
+      setStatusMessage(`Vídeo cargado: ${file.name}`);
+    });
+  }, []);
+
   // Create YouTube player
   useEffect(() => {
-    if (!videoId || !playerRef.current) return;
+    if (!videoId || !playerRef.current || videoMode !== 'url') return;
     let mounted = true;
     loadYouTubeApi().then(() => {
       if (!mounted || !playerRef.current) return;
@@ -149,23 +197,41 @@ function CortadorDeVideo() {
     return () => { mounted = false; };
   }, [videoId]);
 
+  // Poll current time every 500ms
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (videoMode === 'file' && localVideoRef.current) {
+        lastKnownTimeRef.current = localVideoRef.current.currentTime;
+      } else {
+        const t = ytPlayerRef.current?.getCurrentTime?.();
+        if (t != null && !Number.isNaN(t)) lastKnownTimeRef.current = t;
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [videoMode]);
+
   // Fullscreen detection
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
-    return () => document.removeEventListener('fullscreenchange', handler);
+    document.addEventListener('webkitfullscreenchange', handler);
+    return () => {
+      document.removeEventListener('fullscreenchange', handler);
+      document.removeEventListener('webkitfullscreenchange', handler);
+    };
   }, []);
 
-  // Poll current time every 500ms
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const t = ytPlayerRef.current?.getCurrentTime?.();
-      if (t != null && !Number.isNaN(t)) lastKnownTimeRef.current = t;
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
+  const toggleFullscreen = () => {
+    const el = videoContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.() ?? (el as any).webkitRequestFullscreen?.();
+    } else {
+      document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.();
+    }
+  };
 
-  // Keyboard shortcuts — registered once, uses refs to avoid stale closures
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.altKey) return;
@@ -174,8 +240,9 @@ function CortadorDeVideo() {
       const category = categoriesRef.current.find((c) => c.shortcut === combo);
       if (!category) return;
       e.preventDefault();
-      const t = ytPlayerRef.current?.getCurrentTime?.();
-      const time = (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current;
+      const time = videoMode === 'file' && localVideoRef.current
+        ? localVideoRef.current.currentTime
+        : (() => { const t = ytPlayerRef.current?.getCurrentTime?.(); return (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current; })();
       const end = Math.floor(time);
       const start = Math.max(0, end - 20);
       const cut: Cut = {
@@ -198,7 +265,7 @@ function CortadorDeVideo() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [videoMode]);
 
   // Cleanup player on unmount
   useEffect(() => () => { ytPlayerRef.current?.destroy?.(); }, []);
@@ -206,8 +273,9 @@ function CortadorDeVideo() {
   const createCutForCategory = (categoryId: string) => {
     const category = categoriesRef.current.find((c) => c.id === categoryId);
     if (!category) return;
-    const t = ytPlayerRef.current?.getCurrentTime?.();
-    const time = (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current;
+    const time = videoMode === 'file' && localVideoRef.current
+      ? localVideoRef.current.currentTime
+      : (() => { const t = ytPlayerRef.current?.getCurrentTime?.(); return (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current; })();
     const end = Math.floor(time);
     const start = Math.max(0, end - 20);
     const cut: Cut = {
@@ -227,6 +295,17 @@ function CortadorDeVideo() {
       return updated;
     });
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (localVideoSrc) URL.revokeObjectURL(localVideoSrc);
+    const src = URL.createObjectURL(file);
+    setLocalVideoSrc(src);
+    setPlayerReady(true);
+    setStatusMessage(`Vídeo cargado: ${file.name}`);
+    saveFileToIDB(file);
   };
 
   const handleLoadVideo = () => {
@@ -270,6 +349,12 @@ function CortadorDeVideo() {
   };
 
   const handlePlayCut = (cut: Cut) => {
+    if (videoMode === 'file' && localVideoRef.current) {
+      localVideoRef.current.currentTime = cut.start;
+      localVideoRef.current.play();
+      setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
+      return;
+    }
     if (!ytPlayerRef.current || !playerReady) { setStatusMessage('Carga primero un vídeo para reproducir el corte.'); return; }
     ytPlayerRef.current.seekTo(cut.start, true);
     ytPlayerRef.current.playVideo();
@@ -296,25 +381,54 @@ function CortadorDeVideo() {
         <div className="card cortador-card">
         <div className="section-header">
           <div>
-            <small>URL de YouTube</small>
+            <small>Vídeo propio</small>
             <h2>Inserta el vídeo que quieras cortar</h2>
           </div>
         </div>
         <div className="video-form">
-          <input type="text" value={videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => setVideoUrl(e.target.value)} />
-          <div className="video-form-actions">
-            <button className="primary-button" type="button" onClick={handleLoadVideo}>Cargar vídeo</button>
-            <button className="secondary-button" type="button" onClick={handleLoadExampleVideo}>Cargar vídeo de prueba</button>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+            <button type="button" className={videoMode === 'url' ? 'primary-button' : 'secondary-button'} onClick={() => { setVideoMode('url'); setLocalVideoSrc(null); }}>URL de YouTube</button>
+            <button type="button" className={videoMode === 'file' ? 'primary-button' : 'secondary-button'} onClick={() => { setVideoMode('file'); setVideoId(null); ytPlayerRef.current?.destroy?.(); }}>Archivo local</button>
           </div>
+          {videoMode === 'url' ? (
+            <>
+              <input type="text" value={videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => setVideoUrl(e.target.value)} />
+              <div className="video-form-actions">
+                <button className="primary-button" type="button" onClick={handleLoadVideo}>Cargar vídeo</button>
+                <button className="secondary-button" type="button" onClick={handleLoadExampleVideo}>Cargar vídeo de prueba</button>
+              </div>
+            </>
+          ) : (
+            <input type="file" accept="video/*" onChange={handleFileChange} style={{ color: '#f4f7ff' }} />
+          )}
         </div>
-        <div className="video-wrapper">
-          {!videoId && <div className="video-placeholder"><p>Introduce una URL de YouTube y pulsa «Cargar vídeo».</p></div>}
-          {videoId && !playerError && <div ref={playerRef} className="video-embed" />}
-          {videoId && playerError && (
+        <div className="video-wrapper" ref={videoContainerRef}>
+          {videoMode === 'url' && !videoId && <div className="video-placeholder"><p>Introduce una URL de YouTube y pulsa «Cargar vídeo».</p></div>}
+          {videoMode === 'url' && videoId && !playerError && <div ref={playerRef} className="video-embed" />}
+          {videoMode === 'url' && videoId && playerError && (
             <div className="video-error-fallback">
               <p>{playerError}</p>
               <p>El vídeo puede estar bloqueado para reproducirse en sitios externos.</p>
               <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">Ver vídeo en YouTube</a>
+            </div>
+          )}
+          {videoMode === 'file' && !localVideoSrc && <div className="video-placeholder"><p>Selecciona un archivo de vídeo para cargarlo.</p></div>}
+          {videoMode === 'file' && localVideoSrc && (
+            <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%', display: 'block' }} />
+          )}
+          {(videoId || localVideoSrc) && (
+            <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
+              {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}
+            </button>
+          )}
+          {isFullscreen && (
+            <div className="fullscreen-overlay">
+              {categories.map((cat) => (
+                <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)}>
+                  <span className="fsc-label">{cat.label}</span>
+                  {cat.shortcut && <span className="fsc-shortcut">{cat.shortcut}</span>}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -418,15 +532,6 @@ function CortadorDeVideo() {
         </div>
       </div>
 
-      {isFullscreen && (
-        <div className="fullscreen-overlay">
-          {categories.map((cat) => (
-            <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)}>
-              {cat.label.split(' ').slice(0, 2).join(' ')}
-            </button>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
