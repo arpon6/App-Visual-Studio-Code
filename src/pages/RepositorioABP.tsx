@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Player } from '../components/TacticalBoard';
 import { AbpSection } from '../components/AbpBoard';
+import { useAuth } from '../lib/AuthContext';
 
 function RepositorioABP() {
+  const { appUser } = useAuth();
+  const isReadOnly = appUser?.role === 'jugador';
   const [players, setPlayers] = useState<Player[]>([]);
 
   useEffect(() => {
@@ -34,6 +37,7 @@ function RepositorioABP() {
         storageKey="abp_repo_ofensivo"
         supabaseTitle="abp_repo_ofensivo"
         players={players}
+        readOnly={isReadOnly}
       />
       <AbpSection
         title="Jugadas defensivas"
@@ -41,6 +45,7 @@ function RepositorioABP() {
         storageKey="abp_repo_defensivo"
         supabaseTitle="abp_repo_defensivo"
         players={players}
+        readOnly={isReadOnly}
       />
     </section>
   );

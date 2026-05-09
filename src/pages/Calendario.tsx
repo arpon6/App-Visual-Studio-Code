@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthContext';
 import './Calendario.css';
 
 interface Event {
@@ -19,6 +20,8 @@ interface Event {
 }
 
 function Calendario() {
+  const { appUser } = useAuth();
+  const isReadOnly = appUser?.role === 'jugador';
   const [currentDate, setCurrentDate] = useState(new Date(2026, 4, 1));
   const [loaded, setLoaded] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
@@ -118,7 +121,7 @@ function Calendario() {
   };
 
   const handleDayClick = (day: number, e: React.MouseEvent) => {
-    // Solo abrir modal de nuevo evento si el clic fue directamente en el día, no en un evento
+    if (isReadOnly) return;
     if ((e.target as HTMLElement).closest('.event-label')) return;
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
     setSelectedDate(dateStr);
@@ -305,7 +308,7 @@ function Calendario() {
                             <span
                               key={evt.id}
                               className={`event-label type-${evt.type}`}
-                              onClick={(e) => { e.stopPropagation(); if (evt.type !== 'cumpleaños') handleEditEvent(evt); }}
+                              onClick={(e) => { e.stopPropagation(); if (!isReadOnly && evt.type !== 'cumpleaños') handleEditEvent(evt); }}
                               title={evt.type !== 'cumpleaños' ? 'Clic para editar' : evt.description}
                             >
                               <span className="event-label-type">{getEventTypeLabel(evt)}</span>
@@ -352,7 +355,7 @@ function Calendario() {
                         📄 {evt.pdfFile.name}
                       </button>
                     )}
-                    {evt.type !== 'cumpleaños' && (
+                    {!isReadOnly && evt.type !== 'cumpleaños' && (
                       <>
                         <button className="action-btn edit-btn" onClick={() => handleEditEvent(evt)}>✏️</button>
                         <button className="action-btn delete-btn" onClick={() => handleDeleteEvent(evt.id)}>🗑️</button>
@@ -367,7 +370,7 @@ function Calendario() {
       </div>
 
       {/* Modal para Crear/Editar Evento */}
-      {showModal && (
+      {showModal && !isReadOnly && (
         <div className="modal-overlay" onClick={resetModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h2>{editingEventId ? 'Editar evento' : 'Crear evento'}</h2>

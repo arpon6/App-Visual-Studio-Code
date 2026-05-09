@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthContext';
 
 const statsBase = [
   { dorsal: 1,  nombre: 'Adrián González',    posicion: 'Portero',        pj: 17, pt: 17, goles: 0, tarjetas: 0, minutos: 1530 },
@@ -97,6 +98,8 @@ function parsearTextoActa(texto: string, jugadores: ActaJugador[]): ActaJugador[
 }
 
 function Estadisticas() {
+  const { appUser } = useAuth();
+  const isReadOnly = appUser?.role === 'jugador';
   const [actas, setActas] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -227,13 +230,13 @@ function Estadisticas() {
         </div>
         <button
           onClick={() => setShowForm(v => !v)}
-          style={{ marginLeft: 'auto', padding: '10px 20px', borderRadius: '12px', background: '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+          style={{ marginLeft: 'auto', padding: '10px 20px', borderRadius: '12px', background: '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: 'pointer', display: isReadOnly ? 'none' : undefined }}
         >
           {showForm ? 'Cancelar' : '+ Cargar acta'}
         </button>
       </div>
 
-      {showForm && (
+      {showForm && !isReadOnly && (
         <div className="card" style={{ padding: '24px', display: 'grid', gap: '20px' }}>
           <h2 style={{ margin: 0 }}>Nueva acta de partido</h2>
 

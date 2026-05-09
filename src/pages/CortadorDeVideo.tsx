@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './CortadorDeVideo.css';
+import { usePlantilla } from '../lib/usePlantilla';
+import { useSharedState } from '../lib/useSharedState';
 
 declare global {
   interface Window {
@@ -9,7 +11,7 @@ declare global {
 }
 
 type Category = { id: string; label: string; shortcut: string };
-type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string };
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null };
 type SavedState = { videoUrl: string; videoMode: VideoMode; categories: Category[]; cuts: Cut[] };
 type VideoMode = 'url' | 'file';
 
@@ -102,18 +104,44 @@ function loadState(): SavedState {
 }
 
 function CortadorDeVideo() {
-  const saved = useMemo(loadState, []);
+  const jugadores = usePlantilla();
+  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('cortador_propio_videoUrl', '');
+  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('cortador_propio_cuts', []);
+  const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
+  const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
+  const saved = useMemo(loadState, []);
   const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
-  const [videoUrl, setVideoUrl] = useState<string>(saved.videoUrl || '');
-  const [videoId, setVideoId] = useState<string | null>(() => extractYouTubeVideoId(saved.videoUrl || ''));
+  const [videoUrl, setVideoUrlState] = useState<string>('');
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
-  const [categories, setCategories] = useState<Category[]>(() => {
-    const c = saved.categories;
-    if (!c?.length) return DEFAULT_CATEGORIES;
-    return c.map((cat: Category) => ({ ...cat, shortcut: cat.shortcut.includes('+') ? cat.shortcut : '' }));
-  });
-  const [cuts, setCuts] = useState<Cut[]>(saved.cuts || []);
+  const [categories, setCategoriesState] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [cuts, setCutsState] = useState<Cut[]>([]);
+
+  const sharedLoadedRef = useRef(false);
+  useEffect(() => {
+    if (sharedLoading || sharedLoadedRef.current) return;
+    sharedLoadedRef.current = true;
+    if (sharedVideoUrl) { setVideoUrlState(sharedVideoUrl); setVideoId(extractYouTubeVideoId(sharedVideoUrl)); }
+    if (sharedCuts.length) setCutsState(sharedCuts);
+    if (sharedCategories.length) setCategoriesState(sharedCategories);
+  }, [sharedLoading]);
+
+  const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
+  const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
+    setCutsState(prev => {
+      const next = typeof fn === 'function' ? fn(prev) : fn;
+      setSharedCuts(next);
+      return next;
+    });
+  };
+  const setCategories = (fn: Category[] | ((prev: Category[]) => Category[])) => {
+    setCategoriesState(prev => {
+      const next = typeof fn === 'function' ? fn(prev) : fn;
+      setSharedCategories(next);
+      return next;
+    });
+  };
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [playerReady, setPlayerReady] = useState(false);
@@ -143,10 +171,9 @@ function CortadorDeVideo() {
     [categories, cuts]
   );
 
-  // Persist to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, videoMode, categories, cuts }));
-  }, [videoUrl, videoMode, categories, cuts]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoMode }));
+  }, [videoMode]);
 
   // Load persisted local video from IndexedDB on mount
   useEffect(() => {
@@ -251,16 +278,9 @@ function CortadorDeVideo() {
         label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start, end,
         createdAt: new Date().toISOString(),
+        player_id: null,
       };
-      setCuts((prev) => {
-        const updated = [cut, ...prev];
-        try {
-          const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
-          stored[category.label] = [cut, ...(stored[category.label] || [])];
-          localStorage.setItem('analisis_cuts', JSON.stringify(stored));
-        } catch { /* ignore */ }
-        return updated;
-      });
+      setCuts((prev) => [cut, ...prev]);
       setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -284,17 +304,14 @@ function CortadorDeVideo() {
       label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       start, end,
       createdAt: new Date().toISOString(),
+      player_id: null,
     };
-    setCuts((prev) => {
-      const updated = [cut, ...prev];
-      try {
-        const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
-        stored[category.label] = [cut, ...(stored[category.label] || [])];
-        localStorage.setItem('analisis_cuts', JSON.stringify(stored));
-      } catch { /* ignore */ }
-      return updated;
-    });
+    setCuts((prev) => [cut, ...prev]);
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+  };
+
+  const handleAssignPlayer = (cutId: string, playerId: string | null) => {
+    setCuts(prev => prev.map(c => c.id === cutId ? { ...c, player_id: playerId } : c));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -337,15 +354,8 @@ function CortadorDeVideo() {
     setStatusMessage(value ? `Atajo «${value}» asignado.` : 'Atajo eliminado.');
   };
 
-  const handleDeleteCut = (cut: Cut, categoryLabel: string) => {
+  const handleDeleteCut = (cut: Cut, _categoryLabel: string) => {
     setCuts((prev) => prev.filter((c) => c.id !== cut.id));
-    try {
-      const stored = JSON.parse(localStorage.getItem('analisis_cuts') || '{}');
-      if (stored[categoryLabel]) {
-        stored[categoryLabel] = stored[categoryLabel].filter((c: Cut) => c.id !== cut.id);
-        localStorage.setItem('analisis_cuts', JSON.stringify(stored));
-      }
-    } catch { /* ignore */ }
   };
 
   const handlePlayCut = (cut: Cut) => {
@@ -520,6 +530,16 @@ function CortadorDeVideo() {
                         <p>{cut.start}s → {cut.end}s</p>
                       </div>
                       <div className="cut-item-actions">
+                        <select
+                          value={cut.player_id ?? ''}
+                          onChange={e => handleAssignPlayer(cut.id, e.target.value || null)}
+                          title="Asignar a jugador"
+                        >
+                          <option value="">Toda la plantilla</option>
+                          {jugadores.map(j => (
+                            <option key={j.id} value={j.id}>{j.nombre}</option>
+                          ))}
+                        </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>

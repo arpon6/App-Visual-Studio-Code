@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from './lib/AuthContext';
 import Sidebar from './components/Sidebar';
+import Login from './pages/Login';
 import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
 import Calendario from './pages/Calendario';
@@ -13,15 +15,22 @@ import ResultadosYClasif from './pages/ResultadosYClasif';
 import RepositorioABP from './pages/RepositorioABP';
 import OtrasInformaciones from './pages/OtrasInformaciones';
 import Configuracion from './pages/Configuracion';
+import GestionUsuarios from './pages/GestionUsuarios';
 import './App.css';
 
-const PAGE_KEYS = [
+const ALL_SECTIONS = [
   'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
   'Desarrollo Individual', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones', 'Configuración',
+  'Gestión de usuarios',
 ] as const;
 
-type PageKey = typeof PAGE_KEYS[number];
+type PageKey = typeof ALL_SECTIONS[number];
+
+// Secciones visibles para jugadores
+const PLAYER_SECTIONS: PageKey[] = [
+  'Inicio', 'Calendario', 'Desarrollo Individual', 'Resultados y Clasif.',
+];
 
 const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Inicio': <Inicio />,
@@ -37,9 +46,11 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Editor de vídeo rival': <CortadorDeVideoRival />,
   'Otras Informaciones': <OtrasInformaciones />,
   'Configuración': <Configuracion />,
+  'Gestión de usuarios': <GestionUsuarios />,
 };
 
-function App() {
+function AppShell() {
+  const { session, appUser, loading, signOut } = useAuth();
   const [activeSection, setActiveSection] = useState<PageKey>(
     () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
   );
@@ -51,6 +62,34 @@ function App() {
     return () => window.removeEventListener('cortador-focus-mode', handler);
   }, []);
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text, #f4f7ff)' }}>
+        Cargando...
+      </div>
+    );
+  }
+
+  if (!session) return <Login />;
+
+  // Si el usuario está autenticado pero no tiene registro en app_users (email no autorizado)
+  if (!appUser) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px', color: 'var(--text, #f4f7ff)' }}>
+        <p>Tu cuenta no está autorizada para acceder a esta aplicación.</p>
+        <button className="secondary-button" onClick={signOut}>Cerrar sesión</button>
+      </div>
+    );
+  }
+
+  const staffSections = [...ALL_SECTIONS] as string[];
+  const visibleSections = appUser.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
+
+  // Si la sección activa no está disponible para este rol, redirigir a Inicio
+  const currentSection = visibleSections.includes(activeSection as PageKey)
+    ? activeSection
+    : 'Inicio';
+
   const handleSelect = (section: string) => {
     localStorage.setItem('app_active_section', section);
     setActiveSection(section as PageKey);
@@ -58,15 +97,29 @@ function App() {
 
   return (
     <div className={`app-shell${focusMode ? ' sidebar-hidden' : ''}`}>
-      <Sidebar activeSection={activeSection} onSelect={handleSelect} />
+      <Sidebar
+        activeSection={currentSection}
+        onSelect={handleSelect}
+        sections={visibleSections as unknown as string[]}
+        userEmail={appUser.email}
+        onSignOut={signOut}
+      />
       <main className="app-main">
-        {PAGE_KEYS.map(key => (
-          <div key={key} style={{ display: activeSection === key ? 'contents' : 'none' }}>
+        {ALL_SECTIONS.map(key => (
+          <div key={key} style={{ display: currentSection === key ? 'contents' : 'none' }}>
             {PAGE_COMPONENTS[key]}
           </div>
         ))}
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 

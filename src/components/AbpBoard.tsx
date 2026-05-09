@@ -135,9 +135,10 @@ interface SingleBoardProps {
   board: AbpBoardState;
   allPlayers: Player[];
   onChange: (b: AbpBoardState) => void;
+  readOnly?: boolean;
 }
 
-function SingleAbpBoard({ board, allPlayers, onChange }: SingleBoardProps) {
+function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardProps) {
   const [tool, setTool] = useState<Tool>('move');
   const [editingBoardName, setEditingBoardName] = useState(false);
   const [selectingId, setSelectingId] = useState<string | null>(null);
@@ -160,6 +161,7 @@ function SingleAbpBoard({ board, allPlayers, onChange }: SingleBoardProps) {
   };
 
   const onFieldMouseDown = (e: React.MouseEvent) => {
+    if (readOnly) return;
     const target = e.target as HTMLElement;
     if (target !== fieldRef.current && target.closest('.abp-player, .abp-focus, .abp-block-handle')) return;
     if (tool === 'focus') {
@@ -279,7 +281,7 @@ function SingleAbpBoard({ board, allPlayers, onChange }: SingleBoardProps) {
     <div className="abp-board">
       {/* Nombre de la jugada */}
       <div className="abp-play-name">
-        {editingBoardName ? (
+        {!readOnly && editingBoardName ? (
           <input
             className="abp-play-name-input"
             autoFocus
@@ -289,31 +291,33 @@ function SingleAbpBoard({ board, allPlayers, onChange }: SingleBoardProps) {
             onKeyDown={e => e.key === 'Enter' && setEditingBoardName(false)}
           />
         ) : (
-          <span className="abp-play-name-text" onClick={() => setEditingBoardName(true)}>
+          <span className="abp-play-name-text" onClick={() => !readOnly && setEditingBoardName(true)}>
             {board.name || 'Sin nombre'}
-            <span className="abp-play-name-edit">✎</span>
+            {!readOnly && <span className="abp-play-name-edit">✎</span>}
           </span>
         )}
       </div>
 
-      <div className="abp-toolbar">
-        {tools.map(t => (
+      {!readOnly && (
+        <div className="abp-toolbar">
+          {tools.map(t => (
+            <button
+              key={t.key}
+              title={t.title}
+              className={`abp-tool-btn${tool === t.key ? ' active' : ''}`}
+              onClick={() => setTool(t.key)}
+            >
+              {t.label} <span className="abp-tool-label">{t.title}</span>
+            </button>
+          ))}
           <button
-            key={t.key}
-            title={t.title}
-            className={`abp-tool-btn${tool === t.key ? ' active' : ''}`}
-            onClick={() => setTool(t.key)}
+            className="abp-tool-btn abp-tool-clear"
+            onClick={() => onChange({ ...board, arrows: [], focuses: [], blocks: [] })}
           >
-            {t.label} <span className="abp-tool-label">{t.title}</span>
+            ✕ Limpiar
           </button>
-        ))}
-        <button
-          className="abp-tool-btn abp-tool-clear"
-          onClick={() => onChange({ ...board, arrows: [], focuses: [], blocks: [] })}
-        >
-          ✕ Limpiar
-        </button>
-      </div>
+        </div>
+      )}
 
       <div
         className="tb-field abp-field"
@@ -411,9 +415,11 @@ function SingleAbpBoard({ board, allPlayers, onChange }: SingleBoardProps) {
       <div className="abp-video-section">
         <div className="abp-video-header">
           <span className="abp-video-label">🎬 Animación / referencia en vídeo</span>
-          <button className="abp-tool-btn" onClick={() => { setVideoInput(board.videoUrl); setEditingVideo(v => !v); }}>
-            {editingVideo ? 'Cancelar' : (board.videoUrl ? '✎ Cambiar' : '+ Añadir vídeo')}
-          </button>
+          {!readOnly && (
+            <button className="abp-tool-btn" onClick={() => { setVideoInput(board.videoUrl); setEditingVideo(v => !v); }}>
+              {editingVideo ? 'Cancelar' : (board.videoUrl ? '✎ Cambiar' : '+ Añadir vídeo')}
+            </button>
+          )}
         </div>
         {editingVideo && (
           <div className="abp-video-input-row">
@@ -467,6 +473,7 @@ interface AbpSectionProps {
   storageKey: string;
   supabaseTitle: string;
   players: Player[];
+  readOnly?: boolean;
 }
 
 // ── Repository picker modal ───────────────────────────────────────────────────
@@ -507,7 +514,7 @@ function RepoPicker({ repoStorageKeys, onImport, onClose }: RepoPickerProps) {
   );
 }
 
-export function AbpSection({ title, badge, storageKey, supabaseTitle, players, repoStorageKeys }: AbpSectionProps & { repoStorageKeys?: string[] }) {
+export function AbpSection({ title, badge, storageKey, supabaseTitle, players, repoStorageKeys, readOnly }: AbpSectionProps & { repoStorageKeys?: string[]; readOnly?: boolean }) {
   const [boards, setBoards] = useState<AbpBoardState[]>(() => loadBoards(storageKey));
   const [activeIdx, setActiveIdx] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -618,10 +625,10 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {saving && <span className="tb-status tb-status--saving">Guardando…</span>}
           {saved && <span className="tb-status tb-status--saved">✓ Guardado</span>}
-          {repoStorageKeys && repoStorageKeys.length > 0 && (
+          {!readOnly && repoStorageKeys && repoStorageKeys.length > 0 && (
             <button className="btn" onClick={() => setShowRepoPicker(true)}>📂 Del repositorio</button>
           )}
-          {repoStorageKeys && repoStorageKeys.length > 0 && (
+          {!readOnly && repoStorageKeys && repoStorageKeys.length > 0 && (
             <div className="abp-repo-save-wrap">
               <button
                 className={`btn${savedToRepo ? ' abp-repo-saved' : ''}`}
@@ -637,14 +644,14 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
               )}
             </div>
           )}
-          <button className="btn" onClick={addBoard}>+ Nueva pizarra</button>
+          {!readOnly && <button className="btn" onClick={addBoard}>+ Nueva pizarra</button>}
         </div>
       </div>
 
       <div className="abp-tabs">
         {boards.map((b, i) => (
           <div key={i} className={`abp-tab${activeIdx === i ? ' active' : ''}`} onClick={() => setActiveIdx(i)}>
-            {editingName === i ? (
+            {!readOnly && editingName === i ? (
               <input
                 className="abp-tab-input" autoFocus value={b.name}
                 onChange={e => renameBoard(i, e.target.value)}
@@ -653,9 +660,9 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
                 onClick={e => e.stopPropagation()}
               />
             ) : (
-              <span onDoubleClick={e => { e.stopPropagation(); setEditingName(i); }}>{b.name}</span>
+              <span onDoubleClick={e => { if (readOnly) return; e.stopPropagation(); setEditingName(i); }}>{b.name}</span>
             )}
-            {boards.length > 1 && (
+            {!readOnly && boards.length > 1 && (
               <button className="abp-tab-remove" onClick={e => { e.stopPropagation(); removeBoard(i); }}>✕</button>
             )}
           </div>
@@ -666,6 +673,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
         board={boards[activeIdx]}
         allPlayers={players}
         onChange={b => updateBoard(activeIdx, b)}
+        readOnly={readOnly}
       />
 
       {showRepoPicker && repoStorageKeys && (

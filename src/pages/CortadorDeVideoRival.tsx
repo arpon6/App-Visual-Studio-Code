@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './CortadorDeVideo.css';
+import { usePlantilla } from '../lib/usePlantilla';
+import { useSharedState } from '../lib/useSharedState';
 
 declare global {
   interface Window {
@@ -9,7 +11,7 @@ declare global {
 }
 
 type Category = { id: string; label: string; shortcut: string };
-type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string };
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null };
 type SavedState = { videoUrl: string; videoMode: VideoMode; categories: Category[]; cuts: Cut[] };
 
 const STORAGE_KEY = 'mi_club_cortador_video_rival_v1';
@@ -104,27 +106,44 @@ function loadState(): SavedState {
 type VideoMode = 'url' | 'file';
 
 function CortadorDeVideoRival() {
-  const saved = useMemo(loadState, []);
+  const jugadores = usePlantilla();
+  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('cortador_rival_videoUrl', '');
+  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('cortador_rival_cuts', []);
+  const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_rival_categories', DEFAULT_CATEGORIES);
+  const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
+  const saved = useMemo(loadState, []);
   const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
-  const [videoUrl, setVideoUrl] = useState<string>(saved.videoUrl || '');
-  const [videoId, setVideoId] = useState<string | null>(() => extractYouTubeVideoId(saved.videoUrl || ''));
+  const [videoUrl, setVideoUrlState] = useState<string>('');
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
-  const [categories, setCategories] = useState<Category[]>(() => {
-    let propioShortcuts: Record<string, string> = {};
-    try {
-      const propioSaved = JSON.parse(localStorage.getItem(PROPIO_STORAGE_KEY) || '{}');
-      if (propioSaved.categories?.length) {
-        propioShortcuts = Object.fromEntries(propioSaved.categories.map((c: Category) => [c.id, c.shortcut]));
-      }
-    } catch { /* ignore */ }
-    const c = saved.categories;
-    const base = c?.length
-      ? c.map((cat: Category) => ({ ...cat, shortcut: cat.shortcut.includes('+') ? cat.shortcut : '' }))
-      : DEFAULT_CATEGORIES;
-    return base.map((cat) => ({ ...cat, shortcut: propioShortcuts[cat.id] ?? cat.shortcut }));
-  });
-  const [cuts, setCuts] = useState<Cut[]>(saved.cuts || []);
+  const [categories, setCategoriesState] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [cuts, setCutsState] = useState<Cut[]>([]);
+
+  const sharedLoadedRef = useRef(false);
+  useEffect(() => {
+    if (sharedLoading || sharedLoadedRef.current) return;
+    sharedLoadedRef.current = true;
+    if (sharedVideoUrl) { setVideoUrlState(sharedVideoUrl); setVideoId(extractYouTubeVideoId(sharedVideoUrl)); }
+    if (sharedCuts.length) setCutsState(sharedCuts);
+    if (sharedCategories.length) setCategoriesState(sharedCategories);
+  }, [sharedLoading]);
+
+  const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
+  const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
+    setCutsState(prev => {
+      const next = typeof fn === 'function' ? fn(prev) : fn;
+      setSharedCuts(next);
+      return next;
+    });
+  };
+  const setCategories = (fn: Category[] | ((prev: Category[]) => Category[])) => {
+    setCategoriesState(prev => {
+      const next = typeof fn === 'function' ? fn(prev) : fn;
+      setSharedCategories(next);
+      return next;
+    });
+  };
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [playerReady, setPlayerReady] = useState(false);
@@ -154,8 +173,8 @@ function CortadorDeVideoRival() {
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoUrl, videoMode, categories, cuts }));
-  }, [videoUrl, videoMode, categories, cuts]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoMode }));
+  }, [videoMode]);
 
   // Load persisted local video from IndexedDB on mount
   useEffect(() => {
@@ -257,6 +276,7 @@ function CortadorDeVideoRival() {
         label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start, end,
         createdAt: new Date().toISOString(),
+        player_id: null,
       };
       setCuts((prev) => [cut, ...prev]);
       setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
@@ -285,9 +305,14 @@ function CortadorDeVideoRival() {
       label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       start, end,
       createdAt: new Date().toISOString(),
+      player_id: null,
     };
     setCuts((prev) => [cut, ...prev]);
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+  };
+
+  const handleAssignPlayer = (cutId: string, playerId: string | null) => {
+    setCuts(prev => prev.map(c => c.id === cutId ? { ...c, player_id: playerId } : c));
   };
 
   const handleLoadVideo = () => {
@@ -522,6 +547,16 @@ function CortadorDeVideoRival() {
                         <p>{cut.start}s → {cut.end}s</p>
                       </div>
                       <div className="cut-item-actions">
+                        <select
+                          value={cut.player_id ?? ''}
+                          onChange={e => handleAssignPlayer(cut.id, e.target.value || null)}
+                          title="Asignar a jugador"
+                        >
+                          <option value="">Toda la plantilla</option>
+                          {jugadores.map(j => (
+                            <option key={j.id} value={j.id}>{j.nombre}</option>
+                          ))}
+                        </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut)}>Borrar</button>
                       </div>

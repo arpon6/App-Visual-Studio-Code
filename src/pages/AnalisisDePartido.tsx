@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../lib/AuthContext';
+import { useSharedState } from '../lib/useSharedState';
 
 type AnalysisCut = {
   id: string;
@@ -50,28 +52,18 @@ const previousMatches: PreviousMatch[] = [
 ];
 
 function AnalisisDePartido() {
+  const { appUser } = useAuth();
+  const isReadOnly = appUser?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
-  const [analysisCuts, setAnalysisCuts] = useState<AnalysisCutsMap>(() => {
-    try { return JSON.parse(localStorage.getItem('analisis_cuts') || '{}'); }
-    catch { return {}; }
-  });
-
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'analisis_cuts') {
-        try { setAnalysisCuts(JSON.parse(e.newValue || '{}')); } catch { /* ignore */ }
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  const [analysisCuts, setAnalysisCuts] = useSharedState<AnalysisCutsMap>('analisis_cuts', {});
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
-  const [matches, setMatches] = useState<PreviousMatch[]>(() => {
-    try { return JSON.parse(localStorage.getItem('analisis_matches') || 'null') ?? previousMatches; }
-    catch { return previousMatches; }
-  });
-  const [mainVideoUrl, setMainVideoUrl] = useState(() => localStorage.getItem('analisis_main_video') ?? '');
-  const [mainOpponent, setMainOpponent] = useState(() => localStorage.getItem('analisis_main_opponent') ?? '');
+  const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
+  const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
+  const [mainOpponent, setMainOpponentState] = useSharedState<string>('analisis_main_opponent', '');
+
+  const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
+  const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
+  const setMainOpponent = (val: string) => setMainOpponentState(val);
 
   const sendToArchive = () => {
     if (!mainVideoUrl || !mainOpponent) return;
@@ -83,13 +75,9 @@ function AnalisisDePartido() {
       score: '',
       videoUrl: toEmbedUrl(mainVideoUrl),
     };
-    const updated = [newMatch, ...matches];
-    setMatches(updated);
-    localStorage.setItem('analisis_matches', JSON.stringify(updated));
-    setMainVideoUrl('');
-    setMainOpponent('');
-    localStorage.removeItem('analisis_main_video');
-    localStorage.removeItem('analisis_main_opponent');
+    setMatchesState([newMatch, ...matches]);
+    setMainVideoUrlState('');
+    setMainOpponentState('');
   };
 
   const toEmbedUrl = (url: string) => {
@@ -115,20 +103,24 @@ function AnalisisDePartido() {
         <div className="section-header">
           <h2>Partido Completo</h2>
         </div>
-        <input
-          type="text"
-          placeholder="Rival (ej: VS UD LOGROÑÉS B)..."
-          value={mainOpponent}
-          onChange={e => { setMainOpponent(e.target.value); localStorage.setItem('analisis_main_opponent', e.target.value); }}
-          style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
-        />
-        <input
-          type="text"
-          placeholder="Pega aquí la URL de YouTube..."
-          value={mainVideoUrl}
-          onChange={e => { setMainVideoUrl(e.target.value); localStorage.setItem('analisis_main_video', e.target.value); }}
-          style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
-        />
+        {!isReadOnly && (
+          <>
+            <input
+              type="text"
+              placeholder="Rival (ej: VS UD LOGROÑÉS B)..."
+              value={mainOpponent}
+              onChange={e => setMainOpponent(e.target.value)}
+              style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
+            />
+            <input
+              type="text"
+              placeholder="Pega aquí la URL de YouTube..."
+              value={mainVideoUrl}
+              onChange={e => setMainVideoUrl(e.target.value)}
+              style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
+            />
+          </>
+        )}
         {mainVideoUrl && (
           <div className="video-wrapper">
             <iframe
@@ -139,14 +131,16 @@ function AnalisisDePartido() {
             />
           </div>
         )}
-        <button
-          type="button"
-          onClick={sendToArchive}
-          disabled={!mainVideoUrl || !mainOpponent}
-          style={{ marginTop: '0.75rem', padding: '0.5rem 1rem', background: mainVideoUrl && mainOpponent ? '#3b82f6' : '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: mainVideoUrl && mainOpponent ? 'pointer' : 'not-allowed', fontWeight: 600 }}
-        >
-          Enviar a partidos anteriores
-        </button>
+        {!isReadOnly && (
+          <button
+            type="button"
+            onClick={sendToArchive}
+            disabled={!mainVideoUrl || !mainOpponent}
+            style={{ marginTop: '0.75rem', padding: '0.5rem 1rem', background: mainVideoUrl && mainOpponent ? '#3b82f6' : '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: mainVideoUrl && mainOpponent ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+          >
+            Enviar a partidos anteriores
+          </button>
+        )}
       </div>
 
       <div className="card analysis-card">
@@ -212,30 +206,32 @@ function AnalisisDePartido() {
                   </div>
                   <div className="match-score">{match.score}</div>
                 </button>
-                <input
-                  type="text"
-                  placeholder="Nombre del rival..."
-                  value={match.opponent}
-                  onChange={e => {
-                    const updated = [...matches];
-                    updated[index] = { ...updated[index], opponent: e.target.value };
-                    setMatches(updated);
-                    localStorage.setItem('analisis_matches', JSON.stringify(updated));
-                  }}
-                  style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.25rem' }}
-                />
-                <input
-                  type="text"
-                  placeholder="URL YouTube del partido..."
-                  value={match.videoUrl.includes('embed/') ? '' : match.videoUrl}
-                  onChange={e => {
-                    const updated = [...matches];
-                    updated[index] = { ...updated[index], videoUrl: toEmbedUrl(e.target.value) };
-                    setMatches(updated);
-                    localStorage.setItem('analisis_matches', JSON.stringify(updated));
-                  }}
-                  style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.5rem' }}
-                />
+                {!isReadOnly && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Nombre del rival..."
+                      value={match.opponent}
+                      onChange={e => {
+                        const updated = [...matches];
+                        updated[index] = { ...updated[index], opponent: e.target.value };
+                        setMatches(updated);
+                      }}
+                      style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.25rem' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="URL YouTube del partido..."
+                      value={match.videoUrl.includes('embed/') ? '' : match.videoUrl}
+                      onChange={e => {
+                        const updated = [...matches];
+                        updated[index] = { ...updated[index], videoUrl: toEmbedUrl(e.target.value) };
+                        setMatches(updated);
+                      }}
+                      style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.5rem' }}
+                    />
+                  </>
+                )}
                 {match.videoUrl && (() => {
                   const id = getYouTubeId(match.videoUrl);
                   return id ? (

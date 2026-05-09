@@ -3,25 +3,12 @@ import './Sidebar.css';
 type SidebarProps = {
   activeSection: string;
   onSelect: (section: string) => void;
+  sections: string[];
+  userEmail?: string;
+  onSignOut?: () => void;
 };
 
-const sections = [
-  'Inicio',
-  'Plantilla',
-  'Calendario',
-  'Plan de Partido',
-  'Análisis de Partido',
-  'Desarrollo Individual',
-  'Estadísticas',
-  'Resultados y Clasif.',
-  'Repositorio ABP',
-  'Editor de vídeo propio',
-  'Editor de vídeo rival',
-  'Otras Informaciones',
-  'Configuración',
-];
-
-function Sidebar({ activeSection, onSelect }: SidebarProps) {
+function Sidebar({ activeSection, onSelect, sections, userEmail, onSignOut }: SidebarProps) {
   return (
     <aside className="sidebar-shell card">
       <div className="sidebar-brand">
@@ -44,6 +31,17 @@ function Sidebar({ activeSection, onSelect }: SidebarProps) {
           </button>
         ))}
       </nav>
+
+      {userEmail && (
+        <div className="sidebar-user">
+          <small title={userEmail}>{userEmail}</small>
+          {onSignOut && (
+            <button type="button" className="sidebar-signout" onClick={onSignOut}>
+              Cerrar sesión
+            </button>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
