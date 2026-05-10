@@ -39,22 +39,30 @@ function Calendario() {
   const [pdfUrl, setPdfUrl] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-  // Cargar eventos del localStorage
+  // Cargar eventos de Supabase
   useEffect(() => {
-    let saved: Event[] = [];
-    const raw = localStorage.getItem('calendarEvents');
-    if (raw) {
-      try {
-        saved = JSON.parse(raw);
-        setEvents(saved);
-      } catch (e) {
-        console.error('Error loading events:', e);
-      }
-    }
+    loadEvents();
+  }, []);
+
+  const loadEvents = async () => {
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .select('*');
+    if (error) { console.error('Error loading events:', error); setLoaded(true); return; }
+    const saved: Event[] = (data || []).map(r => ({
+      id: r.id,
+      date: r.date,
+      type: r.type,
+      customType: r.custom_type,
+      place: r.place,
+      time: r.time,
+      description: r.description,
+      pdfFile: r.pdf_url ? { name: r.pdf_name || 'documento.pdf', url: r.pdf_url } : undefined,
+    }));
     setSavedEvents(saved);
     loadBirthdayEvents(saved, currentDate.getFullYear());
     setLoaded(true);
-  }, []);
+  };
 
   const loadBirthdayEvents = async (baseEvents: Event[] = [], year: number = new Date().getFullYear()) => {
     try {
@@ -90,13 +98,7 @@ function Calendario() {
     }
   };
 
-  // Guardar eventos en localStorage (solo los que no son cumpleaños)
-  useEffect(() => {
-    if (!loaded) return;
-    const toSave = events.filter(e => e.type !== 'cumpleaños');
-    setSavedEvents(toSave);
-    localStorage.setItem('calendarEvents', JSON.stringify(toSave));
-  }, [events, loaded]);
+
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => {
@@ -162,28 +164,26 @@ function Calendario() {
       description: formData.description,
     };
 
-    const saveEvent = (evt: Event) => {
-      if (editingEventId) {
-        setEvents(events.map(e => e.id === editingEventId ? evt : e));
-      } else {
-        setEvents([...events, evt]);
-      }
-      resetModal();
+    const row = {
+      id: newEvent.id,
+      date: newEvent.date,
+      type: newEvent.type,
+      custom_type: newEvent.customType || null,
+      place: newEvent.place,
+      time: newEvent.time || null,
+      description: newEvent.description || null,
+      pdf_name: pdfUrl.trim() ? (pdfUrl.split('/').pop() || 'documento.pdf') : null,
+      pdf_url: pdfUrl.trim() || null,
+      created_by: appUser?.id,
     };
 
-    if (pdfUrl.trim()) {
-      newEvent.pdfFile = { name: pdfUrl.split('/').pop() || 'documento.pdf', url: pdfUrl.trim() };
-      saveEvent(newEvent);
-    } else if (selectedFile) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        newEvent.pdfFile = { name: selectedFile.name, data: e.target?.result as string };
-        saveEvent(newEvent);
-      };
-      reader.readAsDataURL(selectedFile);
+    if (editingEventId) {
+      await supabase.from('calendar_events').update(row).eq('id', editingEventId);
     } else {
-      saveEvent(newEvent);
+      await supabase.from('calendar_events').insert(row);
     }
+    await loadEvents();
+    resetModal();
   };
 
   const resetModal = () => {
@@ -195,9 +195,10 @@ function Calendario() {
     setEditingEventId(null);
   };
 
-  const handleDeleteEvent = (id: string) => {
+  const handleDeleteEvent = async (id: string) => {
     if (confirm('¿Deseas eliminar este evento?')) {
-      setEvents(events.filter(evt => evt.id !== id));
+      await supabase.from('calendar_events').delete().eq('id', id);
+      await loadEvents();
     }
   };
 
