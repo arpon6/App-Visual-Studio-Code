@@ -16,11 +16,12 @@ import RepositorioABP from './pages/RepositorioABP';
 import OtrasInformaciones from './pages/OtrasInformaciones';
 import Configuracion from './pages/Configuracion';
 import GestionUsuarios from './pages/GestionUsuarios';
+import Wellness from './pages/Wellness';
 import './App.css';
 
 const ALL_SECTIONS = [
   'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
-  'Desarrollo Individual', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
+  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones', 'Configuración',
   'Gestión de usuarios',
 ] as const;
@@ -29,7 +30,7 @@ type PageKey = typeof ALL_SECTIONS[number];
 
 // Secciones visibles para jugadores
 const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Desarrollo Individual', 'Resultados y Clasif.',
+  'Inicio', 'Calendario', 'Desarrollo Individual', 'Wellness', 'Resultados y Clasif.',
 ];
 
 const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
@@ -39,6 +40,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Plan de Partido': <PlanDePartido />,
   'Análisis de Partido': <AnalisisDePartido />,
   'Desarrollo Individual': <DesarrolloIndividual />,
+  'Wellness': <Wellness />,
   'Estadísticas': <Estadisticas />,
   'Resultados y Clasif.': <ResultadosYClasif />,
   'Repositorio ABP': <RepositorioABP />,

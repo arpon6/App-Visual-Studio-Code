@@ -43,15 +43,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function fetchAppUser(userId: string) {
-    console.log('fetchAppUser userId:', userId);
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('auth_id, email, role, playerId')
-      .eq('auth_id', userId)
+    const { data } = await supabase
+      .from('app_users')
+      .select('id, email, role, player_id')
+      .eq('id', userId)
       .single();
-    console.log('usuarios data:', data, 'error:', error);
     if (data) {
-      setAppUser({ id: data.auth_id, email: data.email, role: data.role, player_id: data.playerId ?? null });
+      setAppUser({ id: data.id, email: data.email, role: data.role, player_id: data.player_id ?? null });
     } else {
       setAppUser(null);
     }

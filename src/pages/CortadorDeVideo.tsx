@@ -122,10 +122,14 @@ function CortadorDeVideo() {
   useEffect(() => {
     if (sharedLoading || sharedLoadedRef.current) return;
     sharedLoadedRef.current = true;
-    if (sharedVideoUrl) { setVideoUrlState(sharedVideoUrl); setVideoId(extractYouTubeVideoId(sharedVideoUrl)); }
+    if (sharedVideoUrl) {
+      setVideoUrlState(sharedVideoUrl);
+      const id = extractYouTubeVideoId(sharedVideoUrl);
+      if (id) setVideoId(id);
+    }
     if (sharedCuts.length) setCutsState(sharedCuts);
     if (sharedCategories.length) setCategoriesState(sharedCategories);
-  }, [sharedLoading]);
+  }, [sharedLoading, sharedVideoUrl]);
 
   const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {

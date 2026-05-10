@@ -1,0 +1,507 @@
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthContext';
+import { usePlantilla } from '../lib/usePlantilla';
+import './Wellness.css';
+
+interface WellnessResponse {
+  id: number;
+  player_id: number;
+  event_date: string;
+  event_type: string;
+  rpe: number;
+  animo: number;
+  fisico: number;
+  molestias: string | null;
+}
+
+interface CalendarEvent {
+  id: string;
+  date: string; // DD/MM/YYYY
+  type: string;
+}
+
+function todayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isoToDisplay(iso: string) {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function displayToISO(display: string) {
+  const [d, m, y] = display.split('/');
+  return `${y}-${m}-${d}`;
+}
+
+function weekStart(iso: string) {
+  const d = new Date(iso);
+  const day = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  d.setDate(d.getDate() - day);
+  return d.toISOString().split('T')[0];
+}
+
+function monthStart(iso: string) {
+  return iso.slice(0, 7) + '-01';
+}
+
+function addDays(iso: string, n: number) {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+function addWeeks(iso: string, n: number) { return addDays(iso, n * 7); }
+function addMonths(iso: string, n: number) {
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().split('T')[0];
+}
+
+// ── Slider con color dinámico ──────────────────────────────────────────────
+function WellnessSlider({ value, onChange, min = 1, max = 10, colorClass, labelMin, labelMax }: {
+  value: number; onChange: (v: number) => void;
+  min?: number; max?: number; colorClass: string; labelMin: string; labelMax: string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <>
+      <input
+        type="range" min={min} max={max} value={value}
+        className={`wellness-slider ${colorClass}`}
+        style={{ '--pct': `${pct}%` } as React.CSSProperties}
+        onChange={e => onChange(Number(e.target.value))}
+      />
+      <div className="wellness-slider-range"><span>{labelMin} ({min})</span><span>MÁXIMO ({max})</span></div>
+    </>
+  );
+}
+
+// ── Gráfico de barras SVG ──────────────────────────────────────────────────
+function BarChart({ data }: { data: { label: string; rpe: number; animo: number; fisico: number }[] }) {
+  const W = 600; const H = 200; const PAD = { top: 20, bottom: 40, left: 30, right: 10 };
+  const barW = 14; const groupGap = 40;
+  const chartW = Math.max(W, data.length * (barW * 3 + groupGap + 10));
+  const maxVal = 10;
+  const yScale = (v: number) => PAD.top + (H - PAD.top - PAD.bottom) * (1 - v / maxVal);
+  const colors = ['#f5c518', '#00e676', '#4fc3f7'];
+
+  return (
+    <div className="wellness-chart-wrap">
+      <svg className="wellness-chart-svg" width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`}>
+        {[0, 2, 4, 6, 8, 10].map(v => (
+          <g key={v}>
+            <line x1={PAD.left} x2={chartW - PAD.right} y1={yScale(v)} y2={yScale(v)} stroke="#2a2d3e" strokeWidth={1} />
+            <text x={PAD.left - 4} y={yScale(v) + 4} textAnchor="end" fontSize={9} fill="#8b8fa8">{v}</text>
+          </g>
+        ))}
+        {data.map((d, i) => {
+          const x0 = PAD.left + i * (barW * 3 + groupGap);
+          return (
+            <g key={i}>
+              {[d.rpe, d.fisico, d.animo].map((v, j) => (
+                <rect key={j} x={x0 + j * (barW + 2)} y={yScale(v)} width={barW}
+                  height={H - PAD.bottom - yScale(v)} fill={colors[j]} rx={3} opacity={.85} />
+              ))}
+              <text x={x0 + barW * 1.5} y={H - PAD.bottom + 14} textAnchor="middle" fontSize={10} fill="#8b8fa8">{d.label}</text>
+            </g>
+          );
+        })}
+        {/* Leyenda */}
+        {['ESFUERZO', 'FÍSICO', 'ÁNIMO'].map((l, i) => (
+          <g key={l} transform={`translate(${PAD.left + i * 90}, ${H - 8})`}>
+            <rect width={10} height={10} fill={colors[i]} rx={2} />
+            <text x={14} y={9} fontSize={9} fill="#8b8fa8">{l}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VISTA JUGADOR
+// ══════════════════════════════════════════════════════════════════════════
+function WellnessJugador({ playerId }: { playerId: string }) {
+  const today = todayISO();
+  const [calEvents, setCalEvents] = useState<CalendarEvent[]>([]);
+  const [rpe, setRpe] = useState(5);
+  const [animo, setAnimo] = useState(5);
+  const [fisico, setFisico] = useState(5);
+  const [molestias, setMolestias] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [alreadySent, setAlreadySent] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+
+  // Cargar eventos del calendario desde localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('calendarEvents');
+      if (raw) setCalEvents(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Evento de hoy (entrenamiento o partido)
+  const todayEvent = useMemo(() => {
+    const display = isoToDisplay(today);
+    return calEvents.find(e => e.date === display && (e.type === 'entrenamiento' || e.type === 'partido'));
+  }, [calEvents, today]);
+
+  // Comprobar si ya respondió hoy
+  useEffect(() => {
+    if (!todayEvent) return;
+    supabase.from('wellness_responses')
+      .select('id').eq('player_id', playerId).eq('event_date', today).maybeSingle()
+      .then(({ data }) => { if (data) setAlreadySent(true); });
+  }, [playerId, today, todayEvent]);
+
+  const handleSubmit = async () => {
+    if (!todayEvent) return;
+    setSaving(true);
+    const { error } = await supabase.from('wellness_responses').upsert({
+      player_id: playerId,
+      event_date: today,
+      event_type: todayEvent.type,
+      rpe, animo, fisico,
+      molestias: molestias.trim() || null,
+    }, { onConflict: 'player_id,event_date' });
+    setSaving(false);
+    if (error) { setStatusMsg('Error al guardar. Inténtalo de nuevo.'); return; }
+    setAlreadySent(true);
+    setStatusMsg('');
+  };
+
+  const dayName = new Date(today + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (!todayEvent) {
+    return (
+      <div className="wellness-no-event card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <p>No hay entrenamiento ni partido programado para hoy.</p>
+        <small>El cuestionario estará disponible los días con evento en el calendario.</small>
+      </div>
+    );
+  }
+
+  if (alreadySent) {
+    return (
+      <div className="wellness-already card">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" /><polyline points="9 12 11 14 15 10" />
+        </svg>
+        <strong>¡Cuestionario enviado!</strong>
+        <p>Ya has completado el wellness de hoy. Gracias.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wellness-two-col">
+      <div className="card wellness-form-card">
+        <div className="wellness-form-title">
+          <div>
+            <h2>CUESTIONARIO {todayEvent.type.toUpperCase()}</h2>
+          </div>
+          <div className="wellness-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+          </div>
+        </div>
+        <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+
+        {/* RPE */}
+        <div className="wellness-slider-group">
+          <div className="wellness-slider-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+            ESFUERZO PERCIBIDO (RPE)
+            <span className={`wellness-slider-value val-rpe`}>{rpe}</span>
+          </div>
+          <WellnessSlider value={rpe} onChange={setRpe} colorClass="rpe" labelMin="MUY SUAVE" labelMax="MÁXIMO" />
+        </div>
+
+        {/* Ánimo */}
+        <div className="wellness-slider-group">
+          <div className="wellness-slider-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+            ESTADO ANÍMICO TRAS {todayEvent.type.toUpperCase()}
+            <span className="wellness-slider-value val-animo">{animo}</span>
+          </div>
+          <WellnessSlider value={animo} onChange={setAnimo} colorClass="animo" labelMin="MUY MAL" labelMax="EXCELENTE" />
+        </div>
+
+        {/* Físico */}
+        <div className="wellness-slider-group">
+          <div className="wellness-slider-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+            ESTADO FÍSICO
+            <span className="wellness-slider-value val-fisico">{fisico}</span>
+          </div>
+          <WellnessSlider value={fisico} onChange={setFisico} colorClass="fisico" labelMin="MUY FATIGADO" labelMax="PLENA FORMA" />
+        </div>
+
+        {/* Molestias */}
+        <div className="wellness-slider-group">
+          <div className="wellness-slider-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
+            MOLESTIAS O COMENTARIOS
+          </div>
+          <textarea
+            className="wellness-textarea"
+            placeholder="Escribe aquí si tienes alguna molestia física..."
+            value={molestias}
+            onChange={e => setMolestias(e.target.value)}
+          />
+        </div>
+
+        {statusMsg && <p style={{ color: '#ff5252', fontSize: 13, marginBottom: 8 }}>{statusMsg}</p>}
+
+        <button className="wellness-submit" onClick={handleSubmit} disabled={saving}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+          {saving ? 'ENVIANDO...' : 'ENVIAR CUESTIONARIO'}
+        </button>
+      </div>
+
+      <div className="wellness-info-card">
+        <div className="wellness-info-section">
+          <h4>IMPORTANCIA DEL WELLNESS</h4>
+          <ul>
+            <li>Ajustar la carga individual de entrenamiento.</li>
+            <li>Prevenir lesiones por sobreentrenamiento.</li>
+            <li>Monitorizar el estado anímico del grupo.</li>
+            <li>Comunicar molestias de forma rápida.</li>
+          </ul>
+        </div>
+        <div className="wellness-info-section wellness-aviso">
+          <h4>⚠ AVISO DIRECTO</h4>
+          <p>Si tienes una molestia aguda o dolor que te pueda impedir entrenar en condiciones óptimas, además de rellenar este formulario, avisa directamente al fisioterapeuta o preparador físico lo antes posible para facilitar la planificación del entrenamiento. Gracias.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VISTA CUERPO TÉCNICO
+// ══════════════════════════════════════════════════════════════════════════
+function WellnessDashboard() {
+  const jugadores = usePlantilla();
+  type Period = 'dia' | 'semana' | 'mes';
+  const [period, setPeriod] = useState<Period>('dia');
+  const [refDate, setRefDate] = useState(todayISO());
+  const [responses, setResponses] = useState<WellnessResponse[]>([]);
+
+  // Rango de fechas según período
+  const { dateFrom, dateTo, label } = useMemo(() => {
+    if (period === 'dia') return { dateFrom: refDate, dateTo: refDate, label: isoToDisplay(refDate) };
+    if (period === 'semana') {
+      const from = weekStart(refDate);
+      const to = addDays(from, 6);
+      return { dateFrom: from, dateTo: to, label: `${isoToDisplay(from)} – ${isoToDisplay(to)}` };
+    }
+    const from = monthStart(refDate);
+    const to = addDays(addMonths(from, 1), -1);
+    return { dateFrom: from, dateTo: to, label: new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) };
+  }, [period, refDate]);
+
+  useEffect(() => {
+    supabase.from('wellness_responses')
+      .select('*')
+      .gte('event_date', dateFrom)
+      .lte('event_date', dateTo)
+      .then(({ data }) => { if (data) setResponses(data as WellnessResponse[]); });
+  }, [dateFrom, dateTo]);
+
+  const navigate = (dir: 1 | -1) => {
+    if (period === 'dia') setRefDate(d => addDays(d, dir));
+    else if (period === 'semana') setRefDate(d => addWeeks(d, dir));
+    else setRefDate(d => addMonths(d, dir));
+  };
+
+  const avg = (arr: number[]) => arr.length ? +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
+
+  const avgRpe = avg(responses.map(r => r.rpe));
+  const avgAnimo = avg(responses.map(r => r.animo));
+  const avgFisico = avg(responses.map(r => r.fisico));
+
+  // Datos para gráfico agrupados por jugador
+  const chartData = useMemo(() => {
+    return jugadores
+      .map(j => {
+        const rs = responses.filter(r => r.player_id === j.id);
+        if (!rs.length) return null;
+        return {
+          label: j.nombre.split(' ')[0],
+          rpe: avg(rs.map(r => r.rpe)),
+          animo: avg(rs.map(r => r.animo)),
+          fisico: avg(rs.map(r => r.fisico)),
+        };
+      })
+      .filter(Boolean) as { label: string; rpe: number; animo: number; fisico: number }[];
+  }, [jugadores, responses]);
+
+  // Tabla detalle: última respuesta por jugador en el rango
+  const tableRows = useMemo(() => {
+    return jugadores.map(j => {
+      const rs = responses.filter(r => r.player_id === j.id).sort((a, b) => b.event_date.localeCompare(a.event_date));
+      return rs.length ? { jugador: j, r: rs[0] } : null;
+    }).filter(Boolean) as { jugador: { id: string; nombre: string }; r: WellnessResponse }[];
+  }, [jugadores, responses]);
+
+  return (
+    <div className="wellness-page">
+      {/* Controles */}
+      <div className="wellness-header">
+        <div>
+          <div className="badge">WELLNESS</div>
+          <h1>Cuestionario Wellness</h1>
+          <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="wellness-period-tabs">
+            {(['dia', 'semana', 'mes'] as Period[]).map(p => (
+              <button key={p} className={period === p ? 'active' : ''} onClick={() => { setPeriod(p); setRefDate(todayISO()); }}>
+                {p === 'dia' ? 'DÍA' : p === 'semana' ? 'SEMANA' : 'MES'}
+              </button>
+            ))}
+          </div>
+          <div className="wellness-date-nav">
+            <button onClick={() => navigate(-1)}>‹</button>
+            <span>{label}</span>
+            <button onClick={() => navigate(1)}>›</button>
+          </div>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="wellness-kpi-row">
+        <div className="wellness-kpi">
+          <div className="wellness-kpi-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+            ESFUERZO MEDIO
+          </div>
+          <div className="wellness-kpi-value" style={{ color: '#f5c518' }}>{avgRpe || '—'}</div>
+        </div>
+        <div className="wellness-kpi">
+          <div className="wellness-kpi-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg>
+            ÁNIMO MEDIO
+          </div>
+          <div className="wellness-kpi-value" style={{ color: '#4fc3f7' }}>{avgAnimo || '—'}</div>
+        </div>
+        <div className="wellness-kpi">
+          <div className="wellness-kpi-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+            FÍSICO MEDIO
+          </div>
+          <div className="wellness-kpi-value" style={{ color: '#00e676' }}>{avgFisico || '—'}</div>
+        </div>
+        <div className="wellness-kpi">
+          <div className="wellness-kpi-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b8fa8" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
+            RESPUESTAS
+          </div>
+          <div className="wellness-kpi-value">{responses.length}</div>
+        </div>
+      </div>
+
+      {/* Gráfico */}
+      {chartData.length > 0 && (
+        <div className="card">
+          <div className="section-header">
+            <div>
+              <small>Visualización comparativa</small>
+              <h2>Resultados por jugador</h2>
+            </div>
+          </div>
+          <BarChart data={chartData} />
+        </div>
+      )}
+
+      {/* Tabla detalle */}
+      <div className="card">
+        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <small>Detalle de respuestas</small>
+            <h2>Por jugador</h2>
+          </div>
+          <span className="wellness-responses-count">{tableRows.length} de {jugadores.length} jugadores</span>
+        </div>
+        {tableRows.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay respuestas en este período.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="wellness-table">
+              <thead>
+                <tr>
+                  <th>JUGADOR</th>
+                  <th>ESFUERZO</th>
+                  <th>ÁNIMO</th>
+                  <th>FÍSICO</th>
+                  <th>MOLESTIAS / COMENTARIOS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map(({ jugador, r }) => (
+                  <tr key={jugador.id}>
+                    <td>
+                      <div className="player-cell">
+                        <div className="wellness-avatar">{jugador.nombre.charAt(0)}</div>
+                        {jugador.nombre}
+                      </div>
+                    </td>
+                    <td><span className="wellness-dot dot-rpe">{r.rpe}</span></td>
+                    <td><span className="wellness-dot dot-animo">{r.animo}</span></td>
+                    <td><span className="wellness-dot dot-fisico">{r.fisico}</span></td>
+                    <td><span className="wellness-molestia">{r.molestias || '—'}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMPONENTE RAÍZ
+// ══════════════════════════════════════════════════════════════════════════
+function Wellness() {
+  const { appUser } = useAuth();
+  const isJugador = appUser?.role === 'jugador';
+
+  if (isJugador) {
+    if (!appUser.player_id) {
+      return (
+        <section className="page-section">
+          <p style={{ color: 'var(--text-muted)' }}>Tu cuenta de jugador no está vinculada a ningún jugador de la plantilla. Contacta con el administrador.</p>
+        </section>
+      );
+    }
+    return (
+      <section className="page-section">
+        <div className="page-title">
+          <div>
+            <div className="badge">WELLNESS</div>
+            <h1>Cuestionario Wellness</h1>
+            <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
+          </div>
+        </div>
+        <WellnessJugador playerId={appUser.player_id} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="page-section">
+      <WellnessDashboard />
+    </section>
+  );
+}
+
+export default Wellness;
