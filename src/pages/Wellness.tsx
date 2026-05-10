@@ -6,7 +6,7 @@ import './Wellness.css';
 
 interface WellnessResponse {
   id: number;
-  player_id: number;
+  player_id: string;
   event_date: string;
   event_type: string;
   rpe: number;
@@ -28,11 +28,6 @@ function todayISO() {
 function isoToDisplay(iso: string) {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
-}
-
-function displayToISO(display: string) {
-  const [d, m, y] = display.split('/');
-  return `${y}-${m}-${d}`;
 }
 
 function weekStart(iso: string) {
