@@ -43,14 +43,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function fetchAppUser(userId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('app_users')
       .select('id, email, role, player_id')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
     if (data) {
       setAppUser({ id: data.id, email: data.email, role: data.role, player_id: data.player_id ?? null });
     } else {
+      if (error) console.error("Error al buscar usuario:", error);
       setAppUser(null);
     }
     setLoading(false);

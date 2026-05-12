@@ -200,7 +200,7 @@ function Estadisticas() {
     const { data: acta, error } = await supabase
       .from('actas_partidos')
       .insert({ fecha: form.fecha, rival: form.rival, resultado: form.resultado, competicion: form.competicion })
-      .select().single();
+      .select().maybeSingle();
 
     if (!error && acta) {
       const lineas = form.jugadores

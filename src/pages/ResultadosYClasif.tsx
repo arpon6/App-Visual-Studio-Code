@@ -219,7 +219,7 @@ function ResultadosYClasif() {
       if (detalle.id.startsWith('base-')) {
         const { data: nuevo } = await supabase.from('resultados_partidos')
           .insert({ ...detalle, id: undefined, acta_url: pub.publicUrl })
-          .select().single();
+          .select().maybeSingle();
         if (nuevo) setDetalle({ ...detalle, id: nuevo.id, acta_url: pub.publicUrl });
       } else {
         await supabase.from('resultados_partidos').update({ acta_url: pub.publicUrl }).eq('id', detalle.id);

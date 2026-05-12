@@ -52,7 +52,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
 };
 
 function AppShell() {
-  const { session, appUser, loading, signOut } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const [activeSection, setActiveSection] = useState<PageKey>(
     () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
   );
@@ -72,20 +72,10 @@ function AppShell() {
     );
   }
 
-  if (!session) return <Login />;
-
-  // Si el usuario está autenticado pero no tiene registro en app_users (email no autorizado)
-  if (!appUser) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px', color: 'var(--text, #f4f7ff)' }}>
-        <p>Tu cuenta no está autorizada para acceder a esta aplicación.</p>
-        <button className="secondary-button" onClick={signOut}>Cerrar sesión</button>
-      </div>
-    );
-  }
+  if (!user) return <Login />;
 
   const staffSections = [...ALL_SECTIONS] as string[];
-  const visibleSections = appUser.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
+  const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
 
   // Si la sección activa no está disponible para este rol, redirigir a Inicio
   const currentSection = visibleSections.includes(activeSection as PageKey)
@@ -103,7 +93,7 @@ function AppShell() {
         activeSection={currentSection}
         onSelect={handleSelect}
         sections={visibleSections as unknown as string[]}
-        userEmail={appUser.email}
+        userEmail={user.username}
         onSignOut={signOut}
       />
       <main className="app-main">
