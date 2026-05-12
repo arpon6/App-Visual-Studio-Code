@@ -1,75 +1,77 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
+// Definición única de UserRole
 export type UserRole = 'jugador' | 'cuerpo_tecnico' | 'SUPER_ADMIN';
 
 interface AppUser {
   id: string;
-  email: string;
+  username: string; // Ahora usamos username para el login
   role: UserRole;
-  player_id: string | null;
+  player_id?: string | null;
 }
 
 interface AuthContextValue {
-  session: Session | null;
-  appUser: AppUser | null;
+  user: AppUser | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
+  signIn: (username: string, password: string) => Promise<boolean>;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session) fetchAppUser(data.session.user.id);
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchAppUser(session.user.id);
-      else { setAppUser(null); setLoading(false); }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function fetchAppUser(userId: string) {
-    const { data, error } = await supabase
-      .from('app_users')
-      .select('id, email, role, player_id')
-      .eq('id', userId)
-      .maybeSingle();
-    if (data) {
-      setAppUser({ id: data.id, email: data.email, role: data.role, player_id: data.player_id ?? null });
-    } else {
-      if (error) console.error("Error al buscar usuario:", error);
-      setAppUser(null);
+    // Intenta cargar el usuario desde localStorage al iniciar la app
+    const savedUser = localStorage.getItem('app_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Error parsing user from localStorage:", e);
+        localStorage.removeItem('app_user'); // Limpia si los datos están corruptos
+      }
     }
     setLoading(false);
+  }, []);
+
+  async function signIn(username: string, password: string): Promise<boolean> {
+    // Realiza la consulta a tu tabla 'app_users'
+    const { data, error } = await supabase
+      .from('app_users')
+      .select('id, username, role, player_id') // Asegúrate que estas columnas existan en tu tabla app_users
+      .eq('username', username)
+      .eq('password', password)
+      .maybeSingle(); // Usa maybeSingle por si el usuario no existe
+
+    if (error) {
+      console.error("Error en la consulta de login:", error);
+      return false;
+    }
+
+    if (!data) {
+      // Si no se encontró el usuario con esas credenciales
+      return false;
+    }
+
+    // Usuario encontrado, guarda la información y actualiza el estado
+    setUser(data);
+    localStorage.setItem('app_user', JSON.stringify(data));
+    return true;
   }
 
-  const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut = () => {
+    setUser(null);
+    localStorage.removeItem('app_user');
+    // Recargar la página asegura que todos los componentes se reinicien con el estado de logout
+    window.location.reload();
   };
 
   return (
-    <AuthContext.Provider value={{ session, appUser, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

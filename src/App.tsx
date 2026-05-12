@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
-import Sidebar from './components/Sidebar';
+import Sidebar from './components/Sidebar'; // Esta es la única importación de Sidebar que debe quedar
 import Login from './pages/Login';
 import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
@@ -28,7 +28,6 @@ const ALL_SECTIONS = [
 
 type PageKey = typeof ALL_SECTIONS[number];
 
-// Secciones visibles para jugadores
 const PLAYER_SECTIONS: PageKey[] = [
   'Inicio', 'Calendario', 'Desarrollo Individual', 'Wellness', 'Resultados y Clasif.',
 ];
@@ -77,7 +76,6 @@ function AppShell() {
   const staffSections = [...ALL_SECTIONS] as string[];
   const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
 
-  // Si la sección activa no está disponible para este rol, redirigir a Inicio
   const currentSection = visibleSections.includes(activeSection as PageKey)
     ? activeSection
     : 'Inicio';
