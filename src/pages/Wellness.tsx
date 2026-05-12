@@ -467,10 +467,13 @@ function WellnessDashboard() {
 // COMPONENTE RAÍZ
 // ══════════════════════════════════════════════════════════════════════════
 function Wellness() {
+  const { user } = useAuth();
+  const isJugador = user?.role === 'jugador';
 
   if (isJugador) {
-    if (!appUser.player_id) {
+    if (!user.player_id) {
       return (
+        <section className="page-section">
           <p style={{ color: 'var(--text-muted)' }}>Tu cuenta de jugador no está vinculada a ningún jugador de la plantilla. Contacta con el administrador.</p>
         </section>
       );
@@ -484,9 +487,10 @@ function Wellness() {
             <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
           </div>
         </div>
-        <WellnessJugador playerId={appUser.player_id} />
+        <WellnessJugador playerId={user.player_id} />
       </section>
     );
+  }
 
   return (
     <section className="page-section">
