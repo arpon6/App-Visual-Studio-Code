@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(username: string, password: string): Promise<boolean> {
     const { data, error } = await supabase
       .from('app_users')
-      .select('id, username, role')
+      .select('id, username, role, password') // Añadido 'password' aquí
       .eq('username', username)
       .eq('password', password)
       .maybeSingle();
@@ -54,8 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
-    setUser(data);
-    localStorage.setItem('app_user', JSON.stringify(data));
+    // Separamos el password para no guardarlo en el estado ni localStorage
+    const { password: _, ...userWithoutPassword } = data;
+    
+    setUser(userWithoutPassword);
+    localStorage.setItem('app_user', JSON.stringify(userWithoutPassword));
     return true;
   }
 
