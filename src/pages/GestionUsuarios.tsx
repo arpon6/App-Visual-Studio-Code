@@ -21,7 +21,7 @@ interface PlantillaPlayer {
 }
 
 function GestionUsuarios() {
-  const { appUser } = useAuth();
+  const { user } = useAuth(); // Usamos 'user' en lugar de 'appUser'
   const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
   const [players, setPlayers] = useState<PlantillaPlayer[]>([]);
@@ -29,9 +29,10 @@ function GestionUsuarios() {
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    if (appUser?.role !== 'cuerpo_tecnico') return;
+    // Comprobamos 'user?.role' en lugar de 'appUser?.role'
+    if (user?.role !== 'cuerpo_tecnico') return;
     fetchData();
-  }, [appUser]);
+  }, [user]); // Dependencia en 'user'
 
   async function fetchData() {
     const [{ data: emails }, { data: users }, { data: plantilla }] = await Promise.all([
@@ -65,7 +66,8 @@ function GestionUsuarios() {
     setAppUsers(prev => prev.map(u => u.id === userId ? { ...u, [field]: value } : u));
   }
 
-  if (appUser?.role !== 'cuerpo_tecnico') return null;
+  // Comprobamos 'user?.role' en lugar de 'appUser?.role'
+  if (user?.role !== 'cuerpo_tecnico') return null;
 
   return (
     <section className="page-section">
