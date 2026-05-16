@@ -9,11 +9,11 @@ interface AllowedEmail {
 
 interface AppUserRow {
   id: string;
-  email: string; // Mantengo email por si acaso, aunque el login usa username
-  username: string; // Añadimos username
-  role: 'jugador' | 'cuerpo_tecnico';
+  email: string;
+  username: string;
+  role: 'jugador' | 'cuerpo_tecnico' | 'SUPER_ADMIN';
   player_id: string | null;
-  password?: string | null; // Añadimos la columna password
+  password?: string | null;
 }
 
 interface PlantillaPlayer {
@@ -33,16 +33,25 @@ function GestionUsuarios() {
   const [passwordInput, setPasswordInput] = useState('');
 
   useEffect(() => {
-    if (user?.role !== 'cuerpo_tecnico') return;
+    console.log("Usuario actual:", user);
+    if (user?.role !== 'cuerpo_tecnico' && user?.role !== 'SUPER_ADMIN') {
+      console.log("Acceso denegado: El rol no es cuerpo_tecnico ni SUPER_ADMIN");
+      return;
+    }
     fetchData();
   }, [user]);
 
   async function fetchData() {
-    const [{ data: emails }, { data: users }, { data: plantilla }] = await Promise.all([
+    console.log("Iniciando fetchData...");
+    const [{ data: emails, error: e1 }, { data: users, error: e2 }, { data: plantilla, error: e3 }] = await Promise.all([
       supabase.from('allowed_emails').select('email, created_at').order('created_at'),
-      supabase.from('app_users').select('id, email, username, role, player_id, password'), // Asegúrate de pedir 'username' y 'password'
+      supabase.from('app_users').select('id, email, username, role, player_id, password'),
       supabase.from('plantilla').select('id, first_name, last_name1'),
     ]);
+    
+    if (e1 || e2 || e3) console.error("Errores en fetchData:", { e1, e2, e3 });
+    
+    console.log("Usuarios cargados:", users);
     if (emails) setAllowedEmails(emails);
     if (users) setAppUsers(users);
     if (plantilla) setPlayers(plantilla);
@@ -65,125 +74,53 @@ function GestionUsuarios() {
   }
 
   async function updateUser(userId: string, field: 'role' | 'player_id' | 'password' | 'username', value: string | null) {
-    // Si es password, hay que hashearla (idealmente) o guardarla en texto plano si el login lo espera así
-    const updateData: any = { [field]: value };
-    // if (field === 'password' && value) { /* Aquí iría el hasheo de contraseña */ }
-
-    await supabase.from('app_users').update(updateData).eq('id', userId);
+    const { error } = await supabase.from('app_users').update({ [field]: value }).eq('id', userId);
+    if (error) console.error("Error actualizando usuario:", error);
     setAppUsers(prev => prev.map(u => u.id === userId ? { ...u, [field]: value } : u));
     if (field === 'password') {
-      setEditingPasswordForUserId(null); // Cerrar la edición de contraseña
+      setEditingPasswordForUserId(null);
       setPasswordInput('');
     }
   }
 
-  // Comprobamos 'user?.role' en lugar de 'appUser?.role'
-  if (user?.role !== 'cuerpo_tecnico') return null;
+  // Permitimos cuerpo_tecnico O SUPER_ADMIN
+  if (user?.role !== 'cuerpo_tecnico' && user?.role !== 'SUPER_ADMIN') {
+    return <div style={{ padding: '20px' }}>No tienes permisos para ver esta sección. Tu rol es: {user?.role}</div>;
+  }
 
   return (
     <section className="page-section">
       <div className="page-title">
-        <div>
-          <small>Administración</small>
-          <h1>Gestión de usuarios</h1>
-        </div>
+        <h1>Gestión de usuarios</h1>
       </div>
 
-      {/* Lista blanca de correos */}
       <div className="card">
-        <div className="section-header">
-          <h2>Correos autorizados</h2>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          <input
-            type="email"
-            placeholder="correo@ejemplo.com"
-            value={newEmail}
-            onChange={e => setNewEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addEmail()}
-          />
-          <button className="primary-button" onClick={addEmail}>Añadir</button>
-        </div>
-        {msg && <p style={{ color: '#09e67f', marginBottom: '12px' }}>{msg}</p>}
+        <h2>Usuarios registrados</h2>
         <table className="list-table">
           <thead>
-            <tr><th>Correo</th><th>Añadido</th><th></th></tr>
-          </thead>
-          <tbody>
-            {allowedEmails.map(e => (
-              <tr key={e.email}>
-                <td>{e.email}</td>
-                <td>{new Date(e.created_at).toLocaleDateString('es-ES')}</td>
-                <td>
-                  <button className="delete-button" onClick={() => removeEmail(e.email)}>Eliminar</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Usuarios registrados */}
-      <div className="card">
-        <div className="section-header">
-          <h2>Usuarios registrados</h2>
-        </div>
-        <table className="list-table">
-          <thead>
-            <tr><th>Username</th><th>Correo</th><th>Rol</th><th>Jugador vinculado</th><th>Contraseña</th><th></th></tr>
+            <tr><th>Username</th><th>Rol</th><th>Contraseña</th><th></th></tr>
           </thead>
           <tbody>
             {appUsers.map(u => (
               <tr key={u.id}>
-                {/* Campo Username */}
+                <td>{u.username}</td>
                 <td>
-                  {editingPasswordForUserId === u.id ? (
-                    <input type="text" value={u.username || ''} onChange={e => updateUser(u.id, 'username', e.target.value)} />
-                  ) : (
-                    u.username
-                  )}
-                </td>
-                <td>{u.email}</td>
-                <td>
-                  <select
-                    value={u.role}
-                    onChange={e => updateUser(u.id, 'role', e.target.value)}
-                  >
+                  <select value={u.role} onChange={e => updateUser(u.id, 'role', e.target.value as any)}>
                     <option value="jugador">Jugador</option>
                     <option value="cuerpo_tecnico">Cuerpo técnico</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                   </select>
                 </td>
                 <td>
-                  <select
-                    value={u.player_id ?? ''}
-                    onChange={e => updateUser(u.id, 'player_id', e.target.value || null)}
-                  >
-                    <option value="">— Sin vincular —</option>
-                    {players.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.first_name} {p.last_name1}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                {/* Campo Contraseña */}
-                <td>
                   {editingPasswordForUserId === u.id ? (
-                    <input
-                      type="password"
-                      value={passwordInput}
-                      onChange={e => setPasswordInput(e.target.value)}
-                      placeholder="Nueva contraseña"
-                    />
-                  ) : (
-                    <span>********</span>
-                  )}
+                    <input type="text" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} />
+                  ) : '********'}
                 </td>
                 <td>
                   {editingPasswordForUserId === u.id ? (
-                    <button onClick={() => updateUser(u.id, 'password', passwordInput || null)}>Guardar</button>
+                    <button onClick={() => updateUser(u.id, 'password', passwordInput)}>Guardar</button>
                   ) : (
-                    <button onClick={() => { setEditingPasswordForUserId(u.id); setPasswordInput(u.password || ''); }}>Cambiar</button>
+                    <button onClick={() => { setEditingPasswordForUserId(u.id); setPasswordInput(''); }}>Cambiar</button>
                   )}
                 </td>
               </tr>
