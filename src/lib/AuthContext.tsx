@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(username: string, password: string): Promise<boolean> {
     const { data, error } = await supabase
       .from('app_users')
-      .select('id, username, role, player_id')
+      .select('id, username, role')
       .eq('username', username)
       .eq('password', password)
       .maybeSingle();
