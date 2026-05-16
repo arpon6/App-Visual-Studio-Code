@@ -11,8 +11,8 @@ interface Documento {
 }
 
 function OtrasInformaciones() {
-  const { appUser } = useAuth();
-  const isReadOnly = appUser?.role === 'jugador';
+  const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [titulo, setTitulo] = useState('');
   const [uploading, setUploading] = useState(false);

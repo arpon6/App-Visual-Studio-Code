@@ -20,8 +20,10 @@ interface Event {
 }
 
 function Calendario() {
-  const { appUser } = useAuth();
-  const isReadOnly = appUser?.role === 'jugador';
+
+
+    const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [currentDate, setCurrentDate] = useState(new Date(2026, 4, 1));
   const [loaded, setLoaded] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
@@ -174,7 +176,7 @@ function Calendario() {
       description: newEvent.description || null,
       pdf_name: pdfUrl.trim() ? (pdfUrl.split('/').pop() || 'documento.pdf') : null,
       pdf_url: pdfUrl.trim() || null,
-      created_by: appUser?.id,
+            created_by: user?.id,
     };
 
     if (editingEventId) {

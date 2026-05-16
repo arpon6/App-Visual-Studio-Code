@@ -5,8 +5,8 @@ import { AbpSection } from '../components/AbpBoard';
 import { useAuth } from '../lib/AuthContext';
 
 function RepositorioABP() {
-  const { appUser } = useAuth();
-  const isReadOnly = appUser?.role === 'jugador';
+  const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [players, setPlayers] = useState<Player[]>([]);
 
   useEffect(() => {

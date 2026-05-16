@@ -98,8 +98,8 @@ function parsearTextoActa(texto: string, jugadores: ActaJugador[]): ActaJugador[
 }
 
 function Estadisticas() {
-  const { appUser } = useAuth();
-  const isReadOnly = appUser?.role === 'jugador';
+  const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [actas, setActas] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);

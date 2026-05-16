@@ -52,8 +52,8 @@ const previousMatches: PreviousMatch[] = [
 ];
 
 function AnalisisDePartido() {
-  const { appUser } = useAuth();
-  const isReadOnly = appUser?.role === 'jugador';
+    const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
   const [analysisCuts, setAnalysisCuts] = useSharedState<AnalysisCutsMap>('analisis_cuts', {});
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
