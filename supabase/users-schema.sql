@@ -13,9 +13,11 @@ create table if not exists allowed_emails (
 create table if not exists app_users (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
-  role text not null check (role in ('jugador', 'cuerpo_tecnico')),
+  username text,
+  password text,
+  role text not null check (role in ('jugador', 'cuerpo_tecnico', 'SUPER_ADMIN')),
   -- Si role = 'jugador', se vincula a un registro de la tabla plantilla
-  player_id uuid references plantilla(id) on delete set null,
+  player_id bigint references plantilla(id) on delete set null,
   created_at timestamptz default now()
 );
 
@@ -36,8 +38,21 @@ create policy "allowed_emails_read" on allowed_emails
   for select using (auth.role() = 'authenticated');
 
 -- Cada usuario solo puede leer su propio registro en app_users
+drop policy if exists "app_users_read_own" on app_users;
 create policy "app_users_read_own" on app_users
   for select using (auth.uid() = id);
+
+-- Política para permitir que cualquiera pueda hacer SELECT (necesaria para el login manual)
+drop policy if exists "allow_select_for_everyone" on app_users;
+create policy "allow_select_for_everyone" on app_users
+  for select using (true);
+
+-- Política para que solo administradores puedan actualizar
+drop policy if exists "allow_update_for_admin" on app_users;
+create policy "allow_update_for_admin" on app_users
+  for update using (
+    (select role from app_users where id = auth.uid()) in ('cuerpo_tecnico', 'SUPER_ADMIN')
+  );
 
 -- Solo service_role puede insertar/actualizar app_users (el admin lo hace desde el dashboard)
 -- Para permitir que el trigger lo inserte automáticamente, usamos una función con security definer
