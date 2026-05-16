@@ -9,9 +9,11 @@ interface AllowedEmail {
 
 interface AppUserRow {
   id: string;
-  email: string;
+  email: string; // Mantengo email por si acaso, aunque el login usa username
+  username: string; // Añadimos username
   role: 'jugador' | 'cuerpo_tecnico';
   player_id: string | null;
+  password?: string | null; // Añadimos la columna password
 }
 
 interface PlantillaPlayer {
@@ -21,23 +23,24 @@ interface PlantillaPlayer {
 }
 
 function GestionUsuarios() {
-  const { user } = useAuth(); // Usamos 'user' en lugar de 'appUser'
+  const { user } = useAuth();
   const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
   const [players, setPlayers] = useState<PlantillaPlayer[]>([]);
   const [newEmail, setNewEmail] = useState('');
   const [msg, setMsg] = useState('');
+  const [editingPasswordForUserId, setEditingPasswordForUserId] = useState<string | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
 
   useEffect(() => {
-    // Comprobamos 'user?.role' en lugar de 'appUser?.role'
     if (user?.role !== 'cuerpo_tecnico') return;
     fetchData();
-  }, [user]); // Dependencia en 'user'
+  }, [user]);
 
   async function fetchData() {
     const [{ data: emails }, { data: users }, { data: plantilla }] = await Promise.all([
       supabase.from('allowed_emails').select('email, created_at').order('created_at'),
-      supabase.from('app_users').select('id, email, role, player_id'),
+      supabase.from('app_users').select('id, email, username, role, player_id, password'), // Asegúrate de pedir 'username' y 'password'
       supabase.from('plantilla').select('id, first_name, last_name1'),
     ]);
     if (emails) setAllowedEmails(emails);
@@ -61,9 +64,17 @@ function GestionUsuarios() {
     fetchData();
   }
 
-  async function updateUser(userId: string, field: 'role' | 'player_id', value: string | null) {
-    await supabase.from('app_users').update({ [field]: value }).eq('id', userId);
+  async function updateUser(userId: string, field: 'role' | 'player_id' | 'password' | 'username', value: string | null) {
+    // Si es password, hay que hashearla (idealmente) o guardarla en texto plano si el login lo espera así
+    const updateData: any = { [field]: value };
+    // if (field === 'password' && value) { /* Aquí iría el hasheo de contraseña */ }
+
+    await supabase.from('app_users').update(updateData).eq('id', userId);
     setAppUsers(prev => prev.map(u => u.id === userId ? { ...u, [field]: value } : u));
+    if (field === 'password') {
+      setEditingPasswordForUserId(null); // Cerrar la edición de contraseña
+      setPasswordInput('');
+    }
   }
 
   // Comprobamos 'user?.role' en lugar de 'appUser?.role'
@@ -119,11 +130,19 @@ function GestionUsuarios() {
         </div>
         <table className="list-table">
           <thead>
-            <tr><th>Correo</th><th>Rol</th><th>Jugador vinculado</th></tr>
+            <tr><th>Username</th><th>Correo</th><th>Rol</th><th>Jugador vinculado</th><th>Contraseña</th><th></th></tr>
           </thead>
           <tbody>
             {appUsers.map(u => (
               <tr key={u.id}>
+                {/* Campo Username */}
+                <td>
+                  {editingPasswordForUserId === u.id ? (
+                    <input type="text" value={u.username || ''} onChange={e => updateUser(u.id, 'username', e.target.value)} />
+                  ) : (
+                    u.username
+                  )}
+                </td>
                 <td>{u.email}</td>
                 <td>
                   <select
@@ -146,6 +165,26 @@ function GestionUsuarios() {
                       </option>
                     ))}
                   </select>
+                </td>
+                {/* Campo Contraseña */}
+                <td>
+                  {editingPasswordForUserId === u.id ? (
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={e => setPasswordInput(e.target.value)}
+                      placeholder="Nueva contraseña"
+                    />
+                  ) : (
+                    <span>********</span>
+                  )}
+                </td>
+                <td>
+                  {editingPasswordForUserId === u.id ? (
+                    <button onClick={() => updateUser(u.id, 'password', passwordInput || null)}>Guardar</button>
+                  ) : (
+                    <button onClick={() => { setEditingPasswordForUserId(u.id); setPasswordInput(u.password || ''); }}>Cambiar</button>
+                  )}
                 </td>
               </tr>
             ))}
