@@ -1,12 +1,11 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 
-// Definición única de UserRole
 export type UserRole = 'jugador' | 'cuerpo_tecnico' | 'SUPER_ADMIN';
 
 interface AppUser {
   id: string;
-  username: string; // Ahora usamos username para el login
+  username: string;
   role: UserRole;
   player_id?: string | null;
 }
@@ -25,27 +24,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Intenta cargar el usuario desde localStorage al iniciar la app
     const savedUser = localStorage.getItem('app_user');
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
       } catch (e) {
         console.error("Error parsing user from localStorage:", e);
-        localStorage.removeItem('app_user'); // Limpia si los datos están corruptos
+        localStorage.removeItem('app_user');
       }
     }
     setLoading(false);
   }, []);
 
   async function signIn(username: string, password: string): Promise<boolean> {
-    // Realiza la consulta a tu tabla 'app_users'
     const { data, error } = await supabase
       .from('app_users')
-      .select('id, username, role, player_id') // Asegúrate que estas columnas existan en tu tabla app_users
+      .select('id, username, role, player_id')
       .eq('username', username)
       .eq('password', password)
-      .maybeSingle(); // Usa maybeSingle por si el usuario no existe
+      .maybeSingle();
 
     if (error) {
       console.error("Error en la consulta de login:", error);
@@ -53,11 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!data) {
-      // Si no se encontró el usuario con esas credenciales
+      console.warn("No se encontró usuario con esas credenciales");
       return false;
     }
 
-    // Usuario encontrado, guarda la información y actualiza el estado
     setUser(data);
     localStorage.setItem('app_user', JSON.stringify(data));
     return true;
@@ -66,7 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = () => {
     setUser(null);
     localStorage.removeItem('app_user');
-    // Recargar la página asegura que todos los componentes se reinicien con el estado de logout
     window.location.reload();
   };
 
