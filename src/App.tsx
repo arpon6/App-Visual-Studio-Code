@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
-import Sidebar from './components/Sidebar'; // Esta es la única importación de Sidebar que debe quedar
+import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
@@ -52,6 +52,12 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
+  
+  // LOG DE DEPURACIÓN
+  useEffect(() => {
+    console.log("Usuario actual en AppShell:", user);
+  }, [user]);
+
   const [activeSection, setActiveSection] = useState<PageKey>(
     () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
   );
@@ -73,6 +79,7 @@ function AppShell() {
 
   if (!user) return <Login />;
 
+  // staffSections incluye a cuerpo_tecnico y SUPER_ADMIN
   const staffSections = [...ALL_SECTIONS] as string[];
   const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
 
