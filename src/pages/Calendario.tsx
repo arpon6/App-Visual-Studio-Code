@@ -179,10 +179,14 @@ function Calendario() {
             created_by: user?.id,
     };
 
-    if (editingEventId) {
-      await supabase.from('calendar_events').update(row).eq('id', editingEventId);
-    } else {
-      await supabase.from('calendar_events').insert(row);
+        const { data, error } = editingEventId 
+      ? await supabase.from('calendar_events').update(row).eq('id', editingEventId)
+      : await supabase.from('calendar_events').insert(row);
+
+    if (error) {
+      console.error('Error saving event:', error);
+      alert('Error al guardar el evento: ' + error.message);
+      return;
     }
     await loadEvents();
     resetModal();
