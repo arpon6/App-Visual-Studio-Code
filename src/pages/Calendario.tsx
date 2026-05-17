@@ -145,52 +145,92 @@ function Calendario() {
     }
   };
 
-  const handleAddEvent = async () => {
-    if (!selectedDate || !formData.place) {
-      alert('Por favor, completa fecha y lugar');
-      return;
-    }
+    const handleAddEvent = async () => {
+      console.log("Iniciando guardado de evento...");
+    
+      if (!selectedDate || !formData.place) {
+        alert('Por favor, completa fecha y lugar');
+        return;
+      }
 
-    if (formData.type === 'otro' && !formData.customType) {
-      alert('Por favor, especifica el tipo de evento personalizado');
-      return;
-    }
+      if (formData.type === 'otro' && !formData.customType) {
+        alert('Por favor, especifica el tipo de evento personalizado');
+        return;
+      }
 
-    const newEvent: Event = {
-      id: editingEventId || Date.now().toString(),
-      date: selectedDate,
-      type: formData.type,
-      customType: formData.customType,
-      place: formData.place,
-      time: formData.time,
-      description: formData.description,
+      // 1. Lógica para subir archivo
+      let finalPdfUrl = pdfUrl;
+      let finalPdfName = selectedFile ? selectedFile.name : (pdfUrl ? pdfUrl.split('/').pop() || 'documento.pdf' : null);
+
+      if (selectedFile) {
+        console.log("Subiendo archivo al bucket...", selectedFile.name);
+        const fileExt = selectedFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
+        const filePath = `eventos/${fileName}`;
+
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from('documentos')
+          .upload(filePath, selectedFile);
+
+        if (uploadError) {
+          console.error("Error al subir archivo a Storage:", uploadError);
+          alert('Error al subir el archivo: ' + uploadError.message);
+          return;
+        }
+      
+        console.log("Archivo subido con éxito:", uploadData);
+
+        const { data: urlData } = supabase.storage
+          .from('documentos')
+          .getPublicUrl(filePath);
+        
+        finalPdfUrl = urlData.publicUrl;
+        console.log("URL pública obtenida:", finalPdfUrl);
+      }
+
+      // 2. Preparar el objeto para la base de datos
+      // Eliminamos el 'id' por completo de aquí
+      const row = {
+        date: selectedDate,
+        type: formData.type,
+        custom_type: formData.customType || null,
+        place: formData.place,
+        time: formData.time || null,
+        description: formData.description || null,
+        pdf_name: finalPdfName,
+        pdf_url: finalPdfUrl,
+        created_by: user?.id || null,
+      };
+
+      console.log("Guardando evento en base de datos:", row);
+
+      // 3. Guardar en la tabla sin incluir el ID generado manualmente
+      let error;
+      if (editingEventId) {
+        // Si editamos, usamos el ID que ya tiene
+        const { error: updateError } = await supabase
+          .from('calendar_events')
+          .update(row)
+          .eq('id', editingEventId);
+        error = updateError;
+      } else {
+        // Si insertamos, dejamos que Supabase ponga el UUID por defecto
+        const { error: insertError } = await supabase
+          .from('calendar_events')
+          .insert([row]); // Se pasa como array
+        error = insertError;
+      }
+
+      if (error) {
+        console.error('Error final al guardar en tabla calendar_events:', error);
+        alert('Error al guardar el evento: ' + error.message);
+        return;
+      }
+    
+      console.log("Guardado completado exitosamente");
+      await loadEvents();
+      resetModal();
     };
-
-    const row = {
-      id: newEvent.id,
-      date: newEvent.date,
-      type: newEvent.type,
-      custom_type: newEvent.customType || null,
-      place: newEvent.place,
-      time: newEvent.time || null,
-      description: newEvent.description || null,
-      pdf_name: pdfUrl.trim() ? (pdfUrl.split('/').pop() || 'documento.pdf') : null,
-      pdf_url: pdfUrl.trim() || null,
-            created_by: user?.id,
-    };
-
-        const { data, error } = editingEventId 
-      ? await supabase.from('calendar_events').update(row).eq('id', editingEventId)
-      : await supabase.from('calendar_events').insert(row);
-
-    if (error) {
-      console.error('Error saving event:', error);
-      alert('Error al guardar el evento: ' + error.message);
-      return;
-    }
-    await loadEvents();
-    resetModal();
-  };
 
   const resetModal = () => {
     setShowModal(false);
@@ -380,7 +420,7 @@ function Calendario() {
       {showModal && !isReadOnly && (
         <div className="modal-overlay" onClick={resetModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2>{editingEventId ? 'Editar evento' : 'Crear evento'}</h2>
+            <h2>{editingEventId ? 'Editar evento' : 'Crear evento 123'}</h2>
             
             <div className="form-group">
               <label>Fecha: <strong>{selectedDate}</strong></label>
@@ -486,7 +526,7 @@ function Calendario() {
 
             <div className="modal-buttons">
               <button className="btn-cancel" onClick={resetModal}>Cancelar</button>
-              <button className="btn-save" onClick={handleAddEvent}>
+                            <button className="btn-save" onClick={() => { console.log("Botón clicado"); handleAddEvent(); }}>
                 {editingEventId ? 'Actualizar' : 'Crear'} Evento
               </button>
             </div>
