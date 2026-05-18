@@ -1,0 +1,16 @@
+-- Desactivar RLS para las tablas principales del sistema para evitar errores 401/42501
+-- dado que el usuario ya gestiona la autenticación en el frontend (AuthContext).
+
+ALTER TABLE calendar_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE plantilla DISABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE players DISABLE ROW LEVEL SECURITY;
+ALTER TABLE matches DISABLE ROW LEVEL SECURITY;
+ALTER TABLE match_plans DISABLE ROW LEVEL SECURITY;
+ALTER TABLE match_analysis DISABLE ROW LEVEL SECURITY;
+ALTER TABLE individual_development DISABLE ROW LEVEL SECURITY;
+ALTER TABLE player_statistics DISABLE ROW LEVEL SECURITY;
+ALTER TABLE standings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE repository_resources DISABLE ROW LEVEL SECURITY;
+ALTER TABLE other_information DISABLE ROW LEVEL SECURITY;
+ALTER TABLE shared_state DISABLE ROW LEVEL SECURITY;

@@ -148,6 +148,13 @@ function Calendario() {
     const handleAddEvent = async () => {
       console.log("Iniciando guardado de evento...");
     
+      // Obtener la sesión manualmente para verificar autenticación
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert("Error: No tienes una sesión activa. Por favor, inicia sesión de nuevo.");
+        return;
+      }
+
       if (!selectedDate || !formData.place) {
         alert('Por favor, completa fecha y lugar');
         return;
@@ -189,7 +196,6 @@ function Calendario() {
       }
 
       // 2. Preparar el objeto para la base de datos
-      // Eliminamos el 'id' por completo de aquí
       const row = {
         date: selectedDate,
         type: formData.type,
@@ -199,25 +205,23 @@ function Calendario() {
         description: formData.description || null,
         pdf_name: finalPdfName,
         pdf_url: finalPdfUrl,
-        created_by: user?.id || null,
+        created_by: session.user.id,
       };
 
       console.log("Guardando evento en base de datos:", row);
 
-      // 3. Guardar en la tabla sin incluir el ID generado manualmente
+      // 3. Guardar en la tabla
       let error;
       if (editingEventId) {
-        // Si editamos, usamos el ID que ya tiene
         const { error: updateError } = await supabase
           .from('calendar_events')
-          .update(row)
+          .update({ ...row, id: editingEventId })
           .eq('id', editingEventId);
         error = updateError;
       } else {
-        // Si insertamos, dejamos que Supabase ponga el UUID por defecto
         const { error: insertError } = await supabase
           .from('calendar_events')
-          .insert([row]); // Se pasa como array
+          .insert([row]);
         error = insertError;
       }
 
