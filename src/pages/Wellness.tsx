@@ -472,7 +472,7 @@ function Wellness() {
 
   if (isJugador) {
     // VERIFICA SI HAY player_id EN EL USUARIO
-    if (!user.player_id) {
+    if (!user || !user.player_id) {
       return (
         <section className="page-section">
           <p style={{ color: 'var(--text-muted)' }}>Tu cuenta de jugador no está vinculada a ningún jugador de la plantilla. Contacta con el administrador.</p>
@@ -489,7 +489,7 @@ function Wellness() {
           </div>
         </div>
         {/* PASA EL player_id DEL USUARIO AL COMPONENTE */}
-        <WellnessJugador playerId={user.player_id} /> 
+        <WellnessJugador playerId={String(user.player_id)} /> 
       </section>
     );
   }

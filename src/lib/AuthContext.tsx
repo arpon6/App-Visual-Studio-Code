@@ -7,7 +7,7 @@ interface AppUser {
   id: string;
   username: string;
   role: UserRole;
-  player_id?: string | number | null;
+  player_id?: string | null;
 }
 
 interface AuthContextValue {
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: data.id,
       username: data.username,
       role: data.role,
-      player_id: data.player_id,
+      player_id: data.player_id != null ? String(data.player_id) : null,
     };
 
     setUser(userDataToSave);
