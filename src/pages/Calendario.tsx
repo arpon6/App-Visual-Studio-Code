@@ -62,6 +62,10 @@ function Calendario() {
       pdfFile: r.pdf_url ? { name: r.pdf_name || 'documento.pdf', url: r.pdf_url } : undefined,
     }));
     setSavedEvents(saved);
+
+    // Guardar los eventos en localStorage para que otras páginas los lean
+    localStorage.setItem('calendarEvents', JSON.stringify(saved));
+
     loadBirthdayEvents(saved, currentDate.getFullYear());
     setLoaded(true);
   };

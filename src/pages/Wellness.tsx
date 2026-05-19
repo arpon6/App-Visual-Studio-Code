@@ -471,6 +471,7 @@ function Wellness() {
   const isJugador = user?.role === 'jugador';
 
   if (isJugador) {
+    // VERIFICA SI HAY player_id EN EL USUARIO
     if (!user.player_id) {
       return (
         <section className="page-section">
@@ -487,10 +488,12 @@ function Wellness() {
             <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
           </div>
         </div>
-        <WellnessJugador playerId={user.player_id} />
+        {/* PASA EL player_id DEL USUARIO AL COMPONENTE */}
+        <WellnessJugador playerId={user.player_id} /> 
       </section>
     );
   }
+
 
   return (
     <section className="page-section">

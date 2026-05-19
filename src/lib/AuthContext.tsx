@@ -7,7 +7,7 @@ interface AppUser {
   id: string;
   username: string;
   role: UserRole;
-  player_id?: string | null;
+  player_id?: string | number | null;
 }
 
 interface AuthContextValue {
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(username: string, password: string): Promise<boolean> {
     const { data, error } = await supabase
       .from('app_users')
-      .select('id, username, role, password') // Añadido 'password' aquí
+      .select('id, username, role, password, player_id')
       .eq('username', username)
       .eq('password', password)
       .maybeSingle();
@@ -54,11 +54,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
-    // Separamos el password para no guardarlo en el estado ni localStorage
-    const { password: _, ...userWithoutPassword } = data;
-    
-    setUser(userWithoutPassword);
-    localStorage.setItem('app_user', JSON.stringify(userWithoutPassword));
+    // Validar vinculación si es jugador
+    if (data.role === 'jugador' && !data.player_id) {
+      alert('Tu cuenta de jugador no está vinculada a ningún jugador de la plantilla. Contacta con el administrador.');
+      return false;
+    }
+
+
+    // Asegurarse de que player_id se incluya en el estado 'user'
+    const userDataToSave = {
+      id: data.id,
+      username: data.username,
+      role: data.role,
+      player_id: data.player_id,
+    };
+
+    setUser(userDataToSave);
+    console.log("Usuario guardado en AuthContext:", userDataToSave);
+    localStorage.setItem('app_user', JSON.stringify(userDataToSave));
     return true;
   }
 
