@@ -361,10 +361,17 @@ function Calendario() {
                         <div className="day-events-indicator">
                           {dayEvents.slice(0, 3).map(evt => (
                             <span
-                              key={evt.id}
+                                                            key={evt.id}
                               className={`event-label type-${evt.type}`}
-                              onClick={(e) => { e.stopPropagation(); if (!isReadOnly && evt.type !== 'cumpleaños') handleEditEvent(evt); }}
-                              title={evt.type !== 'cumpleaños' ? 'Clic para editar' : evt.description}
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (evt.pdfFile) {
+                                  openPDF(evt);
+                                } else if (!isReadOnly && evt.type !== 'cumpleaños') {
+                                  handleEditEvent(evt); 
+                                }
+                              }}
+                              title={evt.type !== 'cumpleaños' ? (evt.pdfFile ? 'Clic para abrir documento' : 'Clic para editar') : evt.description}
                             >
                               <span className="event-label-type">{getEventTypeLabel(evt)}</span>
                               {evt.type === 'cumpleaños' && evt.playerName && <span className="event-label-place">{evt.playerName}</span>}
