@@ -122,6 +122,8 @@ const inputStyle: React.CSSProperties = {
 };
 
 function ResultadosYClasif() {
+  const { user } = useAuth();
+  const isReadOnly = user?.role === 'jugador';
   const [tab, setTab] = useState<'resultados' | 'clasificacion'>('resultados');
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [clasif, setClasif] = useState<ClasifRow[]>([]);
@@ -464,7 +466,9 @@ function ResultadosYClasif() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => handleEliminarClasif(row.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '0.9rem' }} title="Eliminar">✕</button>
+                    { !isReadOnly && (
+                      <button onClick={() => handleEliminarClasif(row.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '0.9rem' }} title="Eliminar">✕</button>
+                    )}
                   </td>
                 </tr>
               ))}
