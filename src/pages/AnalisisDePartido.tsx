@@ -32,6 +32,11 @@ const TACTICAL_TITLES = [
   'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1',
 ];
 
+// Creamos un mapa para normalizar: la clave en sharedState será el nombre en mayúsculas
+function getCategoryKey(title: string) {
+  return title.toUpperCase().replace(/\s+/g, '-');
+}
+
 const previousMatches: PreviousMatch[] = [
   {
     opponent: 'VS UD LOGROÑÉS B',
@@ -55,7 +60,7 @@ function AnalisisDePartido() {
     const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
-  const [analysisCuts, setAnalysisCuts] = useSharedState<AnalysisCutsMap>('analisis_cuts', {});
+  const [analysisCuts, setAnalysisCuts] = useSharedState<Record<string, AnalysisCut[]>>('analisis_cuts', {});
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
   const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
@@ -154,30 +159,31 @@ function AnalisisDePartido() {
 
         <div className="accordion-list">
           {TACTICAL_TITLES.map((title, index) => {
-            const cuts = analysisCuts[title] ?? [];
+            const catKey = getCategoryKey(title);
+            const cuts = analysisCuts[catKey] ?? [];
             return (
-            <div className={`accordion-item ${activeCutIndex === index ? 'open' : ''}`} key={title}>
-              <button type="button" className="accordion-button" onClick={() => setActiveCutIndex(activeCutIndex === index ? null : index)}>
-                <div>
-                  <strong>{title}</strong>
-                  <small>{cuts.length} cortes guardados</small>
-                </div>
-                <span>{activeCutIndex === index ? '−' : '+'}</span>
-              </button>
-              {activeCutIndex === index && cuts.length > 0 && (
-                <div style={{ padding: '0.75rem 1rem', display: 'grid', gap: '0.5rem' }}>
-                  {cuts.map((cut) => (
-                    <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                      <span>{cut.label}</span>
-                      <span style={{ color: '#7f96bc' }}>{cut.start}s → {cut.end}s</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeCutIndex === index && cuts.length === 0 && (
-                <p style={{ padding: '0.5rem 1rem', color: '#7f96bc', fontSize: '0.85rem' }}>Sin cortes guardados.</p>
-              )}
-            </div>
+              <div className={`accordion-item ${activeCutIndex === index ? 'open' : ''}`} key={title}>
+                <button type="button" className="accordion-button" onClick={() => setActiveCutIndex(activeCutIndex === index ? null : index)}>
+                  <div>
+                    <strong>{title}</strong>
+                    <small>{cuts.length} cortes guardados</small>
+                  </div>
+                  <span>{activeCutIndex === index ? '−' : '+'}</span>
+                </button>
+                {activeCutIndex === index && cuts.length > 0 && (
+                  <div style={{ padding: '0.75rem 1rem', display: 'grid', gap: '0.5rem' }}>
+                    {cuts.map((cut) => (
+                      <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                        <span>{cut.label}</span>
+                        <span style={{ color: '#7f96bc' }}>{cut.start}s → {cut.end}s</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activeCutIndex === index && cuts.length === 0 && (
+                  <p style={{ padding: '0.5rem 1rem', color: '#7f96bc', fontSize: '0.85rem' }}>Sin cortes guardados.</p>
+                )}
+              </div>
             );
           })}
         </div>
