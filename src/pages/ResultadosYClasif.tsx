@@ -269,16 +269,18 @@ function ResultadosYClasif() {
             {t === 'resultados' ? 'Resultados' : 'Clasificación'}
           </button>
         ))}
-        <button
-          onClick={() => tab === 'resultados' ? setShowAddPartido(v => !v) : setShowAddClasif(v => !v)}
-          style={{ marginLeft: 'auto', padding: '8px 18px', borderRadius: '10px', background: '#2d68ff', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
-        >
-          + Añadir
-        </button>
+        { !isReadOnly && (
+          <button
+            onClick={() => tab === 'resultados' ? setShowAddPartido(v => !v) : setShowAddClasif(v => !v)}
+            style={{ marginLeft: 'auto', padding: '8px 18px', borderRadius: '10px', background: '#2d68ff', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
+          >
+            + Añadir
+          </button>
+        )}
       </div>
 
       {/* Formulario añadir partido */}
-      {tab === 'resultados' && showAddPartido && (
+      { !isReadOnly && tab === 'resultados' && showAddPartido && (
         <div className="card" style={{ padding: '22px', display: 'grid', gap: '16px' }}>
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Nuevo partido</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
@@ -326,7 +328,7 @@ function ResultadosYClasif() {
       )}
 
       {/* Formulario añadir clasificación */}
-      {tab === 'clasificacion' && showAddClasif && (
+      { !isReadOnly && tab === 'clasificacion' && showAddClasif && (
         <div className="card" style={{ padding: '22px', display: 'grid', gap: '16px' }}>
           <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Añadir equipo a clasificación</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px' }}>
