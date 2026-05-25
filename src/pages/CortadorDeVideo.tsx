@@ -105,8 +105,8 @@ function loadState(): SavedState {
 
 function CortadorDeVideo() {
   const jugadores = usePlantilla();
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('analisis_main_video', '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Record<string, Cut[]>>('analisis_cuts', {});
+    const [sharedVideoUrl, setSharedVideoUrl] = useSharedState<string>('analisis_main_video', '');
+  const [sharedCuts, setSharedCuts] = useSharedState<Record<string, Cut[]>>('analisis_cuts', {});
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
   const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
