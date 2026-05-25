@@ -105,9 +105,9 @@ function loadState(): SavedState {
 
 function CortadorDeVideo() {
   const jugadores = usePlantilla();
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('cortador_propio_videoUrl', '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('cortador_propio_cuts', []);
-  const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
+  const [sharedVideoUrl, setSharedVideoUrl] = useSharedState<string>('analisis_main_video', '');
+  const [sharedCuts, setSharedCuts] = useSharedState<Record<string, any[]>>('analisis_cuts', {});
+  const [sharedCategories, setSharedCategories] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
   const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
   const saved = useMemo(loadState, []);
@@ -135,7 +135,24 @@ function CortadorDeVideo() {
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
     setCutsState(prev => {
       const next = typeof fn === 'function' ? fn(prev) : fn;
-      setSharedCuts(next);
+      // Guardamos en el estado compartido con la clave correcta para Análisis
+      setSharedCuts((prevShared) => {
+        const categoryId = categoriesRef.current.find(c => c.id === (Array.isArray(fn) ? fn[0]?.categoryId : Object.values(prev).find(arr => arr.some(item => item.id === ''))?.categoryId)) ?? DEFAULT_CATEGORIES[0].id;
+        const cutsToAdd = Array.isArray(fn) ? fn : [];
+        const currentCutsForCategory = prevShared[categoryId] || [];
+        return {
+          ...prevShared,
+          [categoryId]: [...currentCutsForCategory, ...cutsToAdd.map(cut => ({
+              id: cut.id,
+              categoryId: cut.categoryId,
+              label: cut.label,
+              start: cut.start,
+              end: cut.end,
+              createdAt: cut.createdAt,
+              player_id: cut.player_id,
+          }))]
+        };
+      });
       return next;
     });
   };
@@ -315,7 +332,43 @@ function CortadorDeVideo() {
   };
 
   const handleAssignPlayer = (cutId: string, playerId: string | null) => {
-    setCuts(prev => prev.map(c => c.id === cutId ? { ...c, player_id: playerId } : c));
+    setCutsState(prev => {
+      const next = prev.map(c => c.id === cutId ? { ...c, player_id: playerId } : c);
+      // Actualizar también el estado compartido
+      setSharedCuts(prevShared => {
+        // Encontrar la categoría a la que pertenece el corte
+        const cutCategory = categoriesRef.current.find(cat => prev.some(c => c.id === cutId && c.categoryId === cat.id));
+        if (!cutCategory) return prevShared; // Si no se encuentra la categoría, no hacer nada
+      
+        const currentCutsForCategory = prevShared[cutCategory.id] || [];
+        const updatedCut = next.find(c => c.id === cutId);
+
+        if (!updatedCut) return prevShared; // Si el corte no está en next (imposible aquí, pero por seguridad)
+
+        const index = currentCutsForCategory.findIndex(c => c.id === cutId);
+        const newCutsForCategory = [...currentCutsForCategory];
+      
+        if (index !== -1) {
+          newCutsForCategory[index] = {
+            ...updatedCut,
+            // Asegurarse de que player_id sea string o null
+            player_id: updatedCut.player_id ? String(updatedCut.player_id) : null
+          };
+        } else {
+          // Si el corte no existía antes en shared, añadirlo (esto no debería pasar si todo está sincronizado)
+          newCutsForCategory.push({
+            ...updatedCut,
+            player_id: updatedCut.player_id ? String(updatedCut.player_id) : null
+          });
+        }
+
+        return {
+          ...prevShared,
+          [cutCategory.id]: newCutsForCategory
+        };
+      });
+      return next;
+    });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
