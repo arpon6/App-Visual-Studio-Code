@@ -29,7 +29,9 @@ const ALL_SECTIONS = [
 type PageKey = typeof ALL_SECTIONS[number];
 
 const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Desarrollo Individual', 'Wellness', 'Resultados y Clasif.',
+  'Inicio', 'Calendario', 'Análisis de Partido',
+  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
+ 'Otras Informaciones',
 ];
 
 const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
