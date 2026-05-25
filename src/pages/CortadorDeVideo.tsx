@@ -12,7 +12,7 @@ declare global {
 
 type Category = { id: string; label: string; shortcut: string };
 type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null };
-type SavedState = { videoUrl: string; videoMode: VideoMode; categories: Category[]; cuts: Cut[] };
+type SavedState = { videoMode: VideoMode };
 type VideoMode = 'url' | 'file';
 
 const STORAGE_KEY = 'mi_club_cortador_video_v1';
@@ -20,6 +20,28 @@ const IDB_NAME = 'mi_club_video_propio';
 const IDB_STORE = 'files';
 const IDB_KEY = 'local_video';
 const EXAMPLE_VIDEO_ID = 'M7lc1UVf-VE';
+
+const DEFAULT_CATEGORIES: Category[] = [
+  { id: 'abp-ofensivo', label: 'ABP OFENSIVO', shortcut: 'Ctrl+Alt+1' },
+  { id: 'abp-defensivo', label: 'ABP DEFENSIVO', shortcut: 'Ctrl+Alt+2' },
+  { id: 'presion-alta', label: 'PRESIÓN ALTA', shortcut: 'Ctrl+Alt+3' },
+  { id: 'repliegue-total', label: 'REPLIEGUE TOTAL', shortcut: 'Ctrl+Alt+4' },
+  { id: 'repliegue-intermedio', label: 'REPLIEGUE INTERMEDIO', shortcut: 'Ctrl+Alt+5' },
+  { id: 'conquista-espalda-z3', label: 'CONQUISTA ESPALDA Z 3', shortcut: 'Ctrl+Alt+6' },
+  { id: 'ataque-area-estando', label: 'ATAQUE DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+7' },
+  { id: 'ataque-area-llegando', label: 'ATAQUE DE ÁREA LLEGANDO', shortcut: 'Ctrl+Alt+8' },
+  { id: 'defensa-area-estando', label: 'DEFENSA DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+9' },
+  { id: 'defensa-area-llegando', label: 'DEFENSA DE ÁREA LLEGANDO', shortcut: '' },
+  { id: 'reinicio-construccion-z12', label: 'REINICIO Y CONSTRUCCIÓN Z 1-2', shortcut: '' },
+  { id: 'progresion-exterior-z23', label: 'PROGRESIÓN JUEGO EXTERIOR Z 2-3', shortcut: '' },
+  { id: 'progresion-interior-z23', label: 'PROGRESIÓN JUEGO INTERIOR Z 2-3', shortcut: '' },
+  { id: 'conservar-tras-robo-z1', label: 'PRIORIZAR CONSERVAR TRAS ROBO Z 1', shortcut: '' },
+  { id: 'finalizar-tras-robo-z4', label: 'PRIORIZAR FINALIZAR TRAS ROBO Z 4', shortcut: '' },
+  { id: 'progresar-tras-robo-z23', label: 'PRIORIZAR PROGRESAR TRAS ROBO Z 2-3', shortcut: '' },
+  { id: 'recuperar-tras-perdida-z34', label: 'PRIORIZAR RECUPERAR TRAS PÉRDIDA Z 3-4', shortcut: '' },
+  { id: 'defender-espacio-z2', label: 'PRIORIZAR DEFENDER ESPACIO TRAS PÉRDIDA Z 2', shortcut: '' },
+  { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1', shortcut: '' },
+];
 
 function openIDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -48,28 +70,6 @@ async function loadFileFromIDB(): Promise<File | null> {
     req.onerror = () => resolve(null);
   });
 }
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'abp-ofensivo', label: 'ABP OFENSIVO', shortcut: 'Ctrl+Alt+1' },
-  { id: 'abp-defensivo', label: 'ABP DEFENSIVO', shortcut: 'Ctrl+Alt+2' },
-  { id: 'presion-alta', label: 'PRESIÓN ALTA', shortcut: 'Ctrl+Alt+3' },
-  { id: 'repliegue-total', label: 'REPLIEGUE TOTAL', shortcut: 'Ctrl+Alt+4' },
-  { id: 'repliegue-intermedio', label: 'REPLIEGUE INTERMEDIO', shortcut: 'Ctrl+Alt+5' },
-  { id: 'conquista-espalda-z3', label: 'CONQUISTA ESPALDA Z 3', shortcut: 'Ctrl+Alt+6' },
-  { id: 'ataque-area-estando', label: 'ATAQUE DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+7' },
-  { id: 'ataque-area-llegando', label: 'ATAQUE DE ÁREA LLEGANDO', shortcut: 'Ctrl+Alt+8' },
-  { id: 'defensa-area-estando', label: 'DEFENSA DE ÁREA ESTANDO', shortcut: 'Ctrl+Alt+9' },
-  { id: 'defensa-area-llegando', label: 'DEFENSA DE ÁREA LLEGANDO', shortcut: '' },
-  { id: 'reinicio-construccion-z12', label: 'REINICIO Y CONSTRUCCIÓN Z 1-2', shortcut: '' },
-  { id: 'progresion-exterior-z23', label: 'PROGRESIÓN JUEGO EXTERIOR Z 2-3', shortcut: '' },
-  { id: 'progresion-interior-z23', label: 'PROGRESIÓN JUEGO INTERIOR Z 2-3', shortcut: '' },
-  { id: 'conservar-tras-robo-z1', label: 'PRIORIZAR CONSERVAR TRAS ROBO Z 1', shortcut: '' },
-  { id: 'finalizar-tras-robo-z4', label: 'PRIORIZAR FINALIZAR TRAS ROBO Z 4', shortcut: '' },
-  { id: 'progresar-tras-robo-z23', label: 'PRIORIZAR PROGRESAR TRAS ROBO Z 2-3', shortcut: '' },
-  { id: 'recuperar-tras-perdida-z34', label: 'PRIORIZAR RECUPERAR TRAS PÉRDIDA Z 3-4', shortcut: '' },
-  { id: 'defender-espacio-z2', label: 'PRIORIZAR DEFENDER ESPACIO TRAS PÉRDIDA Z 2', shortcut: '' },
-  { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1', shortcut: '' },
-];
 
 function normalizeKey(e: KeyboardEvent): string {
   if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return '';
@@ -105,8 +105,8 @@ function loadState(): SavedState {
 
 function CortadorDeVideo() {
   const jugadores = usePlantilla();
-    const [sharedVideoUrl, setSharedVideoUrl] = useSharedState<string>('analisis_main_video', '');
-  const [sharedCuts, setSharedCuts] = useSharedState<Record<string, Cut[]>>('analisis_cuts', {});
+  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('analisis_main_video', '');
+  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('analisis_cuts', []);
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
   const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
@@ -129,12 +129,12 @@ function CortadorDeVideo() {
     }
     if (sharedCuts.length) setCutsState(sharedCuts);
     if (sharedCategories.length) setCategoriesState(sharedCategories);
-  }, [sharedLoading, sharedVideoUrl]);
+  }, [sharedLoading, sharedVideoUrl, sharedCuts, sharedCategories]);
 
   const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
     setCutsState(prev => {
-      const next = typeof fn === 'function' ? fn(prev) : fn;
+      const next = typeof fn === 'function' ? (fn as (prev: Cut[]) => Cut[])(prev) : fn;
       setSharedCuts(next);
       return next;
     });
@@ -146,6 +146,7 @@ function CortadorDeVideo() {
       return next;
     });
   };
+
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [playerReady, setPlayerReady] = useState(false);
@@ -162,12 +163,9 @@ function CortadorDeVideo() {
   const lastKnownTimeRef = useRef<number>(0);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep refs always up to date so event listeners never have stale closures
   const categoriesRef = useRef(categories);
-  const cutsRef = useRef(cuts);
   const playerReadyRef = useRef(playerReady);
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
-  useEffect(() => { cutsRef.current = cuts; }, [cuts]);
   useEffect(() => { playerReadyRef.current = playerReady; }, [playerReady]);
 
   const groupedCuts = useMemo(() =>
@@ -179,7 +177,6 @@ function CortadorDeVideo() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoMode }));
   }, [videoMode]);
 
-  // Load persisted local video from IndexedDB on mount
   useEffect(() => {
     if (saved.videoMode !== 'file') return;
     loadFileFromIDB().then((file) => {
@@ -191,7 +188,6 @@ function CortadorDeVideo() {
     });
   }, []);
 
-  // Create YouTube player
   useEffect(() => {
     if (!videoId || !playerRef.current || videoMode !== 'url') return;
     let mounted = true;
@@ -226,9 +222,8 @@ function CortadorDeVideo() {
       setPlayerError('No se pudo cargar el reproductor de YouTube.');
     });
     return () => { mounted = false; };
-  }, [videoId]);
+  }, [videoId, videoMode]);
 
-  // Poll current time every 500ms
   useEffect(() => {
     const interval = setInterval(() => {
       if (videoMode === 'file' && localVideoRef.current) {
@@ -241,7 +236,6 @@ function CortadorDeVideo() {
     return () => clearInterval(interval);
   }, [videoMode]);
 
-  // Fullscreen detection
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
@@ -262,7 +256,6 @@ function CortadorDeVideo() {
     }
   };
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.altKey) return;
@@ -291,7 +284,6 @@ function CortadorDeVideo() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [videoMode]);
 
-  // Cleanup player on unmount
   useEffect(() => () => { ytPlayerRef.current?.destroy?.(); }, []);
 
   const createCutForCategory = (categoryId: string) => {
@@ -315,18 +307,7 @@ function CortadorDeVideo() {
       player_id: null,
     };
 
-    // Añadir el nuevo corte al estado compartido de cortes
-    setSharedCuts(prevSharedCuts => {
-      const currentCutsForCategory = prevSharedCuts[categoryId] || [];
-      return {
-        ...prevSharedCuts,
-        [categoryId]: [...currentCutsForCategory, cut]
-      };
-    });
-
-    // También actualizar el estado local para la UI del cortador si lo necesitas
-    setCutsState(prevLocalCuts => [...prevLocalCuts, cut]);
-
+    setCuts([...cuts, cut]);
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
   };
 
@@ -556,7 +537,7 @@ function CortadorDeVideo() {
                           title="Asignar a jugador"
                         >
                           <option value="">Toda la plantilla</option>
-                          {jugadores.map(j => (
+                          {jugadores.map((j: any) => (
                             <option key={j.id} value={j.id}>{j.nombre}</option>
                           ))}
                         </select>
