@@ -105,8 +105,8 @@ function loadState(): SavedState {
 
 function CortadorDeVideo() {
   const jugadores = usePlantilla();
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('cortador_propio_videoUrl', '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('cortador_propio_cuts', []);
+  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('analisis_main_video', '');
+  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Record<string, Cut[]>>('analisis_cuts', {});
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
   const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
@@ -297,20 +297,36 @@ function CortadorDeVideo() {
   const createCutForCategory = (categoryId: string) => {
     const category = categoriesRef.current.find((c) => c.id === categoryId);
     if (!category) return;
+
     const time = videoMode === 'file' && localVideoRef.current
       ? localVideoRef.current.currentTime
       : (() => { const t = ytPlayerRef.current?.getCurrentTime?.(); return (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current; })();
+
     const end = Math.floor(time);
     const start = Math.max(0, end - 20);
+
     const cut: Cut = {
       id: `${categoryId}-${Date.now()}`,
-      categoryId,
+      categoryId: categoryId,
       label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      start, end,
+      start,
+      end,
       createdAt: new Date().toISOString(),
       player_id: null,
     };
-    setCuts((prev) => [cut, ...prev]);
+
+    // Añadir el nuevo corte al estado compartido de cortes
+    setSharedCuts(prevSharedCuts => {
+      const currentCutsForCategory = prevSharedCuts[categoryId] || [];
+      return {
+        ...prevSharedCuts,
+        [categoryId]: [...currentCutsForCategory, cut]
+      };
+    });
+
+    // También actualizar el estado local para la UI del cortador si lo necesitas
+    setCutsState(prevLocalCuts => [...prevLocalCuts, cut]);
+
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
   };
 
