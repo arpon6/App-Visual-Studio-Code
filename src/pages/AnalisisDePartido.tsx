@@ -104,6 +104,8 @@ function AnalisisDePartido() {
   const [sendingBrevo, setSendingBrevo] = useState(false);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   const [cutMessageText, setCutMessageText] = useState('');
+  const [playingCut, setPlayingCut] = useState<AnalysisCut | null>(null);
+  const [playingEmbedUrl, setPlayingEmbedUrl] = useState<string | null>(null);
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
@@ -455,9 +457,19 @@ function AnalisisDePartido() {
                               <div style={{ color: '#7f96bc', fontSize: '0.9rem' }}>{cut.start}s → {cut.end}s</div>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                              <button type="button" className="secondary-button" onClick={() => setOpenConversationId(isConvOpen ? null : cut.id)}>
-                                {isConvOpen ? 'Cerrar conversación' : 'Abrir conversación'}
-                              </button>
+                                        <button type="button" className="secondary-button" onClick={() => setOpenConversationId(isConvOpen ? null : cut.id)}>
+                                          {isConvOpen ? 'Cerrar conversación' : 'Abrir conversación'}
+                                        </button>
+                                        <button type="button" className="secondary-button" onClick={() => {
+                                          const source = mainVideoUrl || (matches[selectedMatchIndex] && matches[selectedMatchIndex].videoUrl) || '';
+                                          const embed = toEmbedUrl(source);
+                                          if (!embed) { alert('No hay vídeo asociado a este análisis.'); return; }
+                                          const src = `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`;
+                                          setPlayingEmbedUrl(src);
+                                          setPlayingCut(cut);
+                                        }}>
+                                          Ver corte
+                                        </button>
                             </div>
                           </div>
 
@@ -669,6 +681,21 @@ function AnalisisDePartido() {
             ))}
           </div>
       </div>
+      {playingCut && playingEmbedUrl && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
+          <div style={{ width: '92%', maxWidth: 980, background: '#000', padding: 12, borderRadius: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <strong style={{ color: '#fff' }}>{playingCut.label}</strong>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button type="button" className="secondary-button" onClick={() => { setPlayingCut(null); setPlayingEmbedUrl(null); }}>Cerrar</button>
+              </div>
+            </div>
+            <div style={{ position: 'relative', paddingTop: '56.25%' }}>
+              <iframe title={`Corte ${playingCut.id}`} src={playingEmbedUrl} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }} />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

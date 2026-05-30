@@ -362,6 +362,12 @@ function CortadorDeVideo() {
     setCuts((prev) => prev.filter((c) => c.id !== cut.id));
   };
 
+  const getVideoDuration = () => {
+    if (videoMode === 'file' && localVideoRef.current) return localVideoRef.current.duration || 0;
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.getDuration === 'function') return ytPlayerRef.current.getDuration() || 0;
+    return 0;
+  };
+
   const handlePlayCut = (cut: Cut) => {
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
@@ -557,19 +563,62 @@ function CortadorDeVideo() {
                 (() => {
                   const c = cuts.find((x) => x.id === editingCutId);
                   if (!c) return null;
+                  const duration = getVideoDuration() || Math.max(c.end + 5, 60);
+                  const min = 0;
+                  const max = Math.ceil(duration);
+                  const start = editStartValue ?? c.start;
+                  const end = editEndValue ?? c.end;
                   return (
                     <div style={{ marginTop: 8, padding: '0.5rem', background: '#0f172a', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <label style={{ color: '#fff' }}>Inicio (s)</label>
-                        <input type="number" value={editStartValue ?? 0} onChange={(e) => setEditStartValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
-                        <label style={{ color: '#fff' }}>Fin (s)</label>
-                        <input type="number" value={editEndValue ?? 0} onChange={(e) => setEditEndValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
-                        <button type="button" className="primary-button" onClick={() => {
-                          if (editStartValue == null || editEndValue == null) return;
-                          setCuts(prev => prev.map(x => x.id === editingCutId ? { ...x, start: editStartValue, end: editEndValue } : x));
-                          setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
-                        }}>Guardar</button>
-                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
+                      <div style={{ display: 'grid', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <label style={{ color: '#fff', minWidth: 70 }}>Inicio (s)</label>
+                          <input type="number" value={start} onChange={(e) => setEditStartValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
+                          <label style={{ color: '#fff', minWidth: 50 }}>Fin (s)</label>
+                          <input type="number" value={end} onChange={(e) => setEditEndValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
+                        </div>
+
+                        <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Arrastra las barras para ajustar Inico/Fin (doble control).</div>
+
+                        <div style={{ display: 'grid', gap: '0.35rem' }}>
+                          <input type="range" min={min} max={max} step={0.1} value={start} onChange={(e) => {
+                            const v = Number(e.target.value);
+                            const newStart = Math.min(v, (editEndValue ?? end) - 0.5);
+                            setEditStartValue(Number(newStart.toFixed(2)));
+                          }} />
+                          <input type="range" min={min} max={max} step={0.1} value={end} onChange={(e) => {
+                            const v = Number(e.target.value);
+                            const newEnd = Math.max(v, (editStartValue ?? start) + 0.5);
+                            setEditEndValue(Number(newEnd.toFixed(2)));
+                          }} />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button type="button" className="primary-button" onClick={() => {
+                            if (editStartValue == null || editEndValue == null) return;
+                            const s = Math.max(0, Math.min(editStartValue, editEndValue - 0.1));
+                            const e = Math.max(s + 0.1, editEndValue);
+                            setCuts(prev => prev.map(x => x.id === editingCutId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)) } : x));
+                            setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
+                          }}>Guardar</button>
+                          <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
+                          <button type="button" className="secondary-button" onClick={() => {
+                            // Play preview between start and end
+                            if (videoMode === 'file' && localVideoRef.current) {
+                              localVideoRef.current.currentTime = start;
+                              localVideoRef.current.play();
+                              setStatusMessage(`Vista previa: ${start}s → ${end}s`);
+                              const t = setTimeout(() => { localVideoRef.current?.pause(); clearTimeout(t); }, Math.max(1000, (end - start) * 1000));
+                              return;
+                            }
+                            if (ytPlayerRef.current && playerReady) {
+                              ytPlayerRef.current.seekTo(start, true);
+                              ytPlayerRef.current.playVideo();
+                              setStatusMessage(`Vista previa: ${start}s → ${end}s`);
+                              const t2 = setTimeout(() => { ytPlayerRef.current.pauseVideo?.(); clearTimeout(t2); }, Math.max(1000, (end - start) * 1000));
+                            }
+                          }}>Vista previa</button>
+                        </div>
                       </div>
                     </div>
                   );
