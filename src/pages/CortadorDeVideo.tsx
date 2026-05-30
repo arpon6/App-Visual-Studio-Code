@@ -99,6 +99,16 @@ function loadYouTubeApi(): Promise<void> {
   });
 }
 
+function formatDuration(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return [hrs, mins, secs]
+    .map((value, index) => index === 0 ? String(value).padStart(2, '0') : String(value).padStart(2, '0'))
+    .join(':');
+}
+
 function loadState(): SavedState {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {} as SavedState; }
 }
@@ -284,7 +294,7 @@ function CortadorDeVideo() {
         player_id: null,
       };
       setCuts((prev) => [cut, ...prev]);
-      setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+      setStatusMessage(`Corte guardado en ${category.label}: ${formatDuration(start)} → ${formatDuration(end)}`);
       setCutName('');
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -315,7 +325,7 @@ function CortadorDeVideo() {
     };
 
     setCuts([...cuts, cut]);
-    setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+    setStatusMessage(`Corte guardado en ${category.label}: ${formatDuration(start)} → ${formatDuration(end)}`);
     setCutName('');
   };
 
@@ -377,13 +387,13 @@ function CortadorDeVideo() {
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
       localVideoRef.current.play();
-      setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
+      setStatusMessage(`Reproduciendo corte: ${formatDuration(cut.start)} → ${formatDuration(cut.end)}`);
       return;
     }
     if (!ytPlayerRef.current || !playerReady) { setStatusMessage('Carga primero un vídeo para reproducir el corte.'); return; }
     ytPlayerRef.current.seekTo(cut.start, true);
     ytPlayerRef.current.playVideo();
-    setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
+    setStatusMessage(`Reproduciendo corte: ${formatDuration(cut.start)} → ${formatDuration(cut.end)}`);
   };
 
   return (
@@ -582,7 +592,7 @@ function CortadorDeVideo() {
                               onChange={(e) => setCuts((prev) => prev.map((c) => c.id === cut.id ? { ...c, label: e.target.value } : c))}
                               style={{ width: '100%', background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: '0.45rem', color: '#fff' }}
                             />
-                            <p style={{ margin: 0 }}>{cut.start}s → {cut.end}s</p>
+                            <p style={{ margin: 0 }}>{formatDuration(cut.start)} → {formatDuration(cut.end)}</p>
                           </div>
                         </div>
                       </div>
@@ -653,7 +663,11 @@ function CortadorDeVideo() {
 
                         <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Arrastra las barras para ajustar Inico/Fin (doble control).</div>
 
-                        <div style={{ display: 'grid', gap: '0.35rem' }}>
+                        <div className="timeline-editor" style={{ display: 'grid', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: '#d1d5db', fontSize: '0.95rem' }}>
+                            <span>Inicio: {formatDuration(start)}</span>
+                            <span>Fin: {formatDuration(end)}</span>
+                          </div>
                           <input type="range" min={min} max={max} step={0.1} value={start} onChange={(e) => {
                             const v = Number(e.target.value);
                             const newStart = Math.min(v, (editEndValue ?? end) - 0.5);
@@ -680,14 +694,14 @@ function CortadorDeVideo() {
                             if (videoMode === 'file' && localVideoRef.current) {
                               localVideoRef.current.currentTime = start;
                               localVideoRef.current.play();
-                              setStatusMessage(`Vista previa: ${start}s → ${end}s`);
+                              setStatusMessage(`Vista previa: ${formatDuration(start)} → ${formatDuration(end)}`);
                               const t = setTimeout(() => { localVideoRef.current?.pause(); clearTimeout(t); }, Math.max(1000, (end - start) * 1000));
                               return;
                             }
                             if (ytPlayerRef.current && playerReady) {
                               ytPlayerRef.current.seekTo(start, true);
                               ytPlayerRef.current.playVideo();
-                              setStatusMessage(`Vista previa: ${start}s → ${end}s`);
+                              setStatusMessage(`Vista previa: ${formatDuration(start)} → ${formatDuration(end)}`);
                               const t2 = setTimeout(() => { ytPlayerRef.current.pauseVideo?.(); clearTimeout(t2); }, Math.max(1000, (end - start) * 1000));
                             }
                           }}>Vista previa</button>

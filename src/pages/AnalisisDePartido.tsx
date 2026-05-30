@@ -362,6 +362,16 @@ function AnalisisDePartido() {
     return match ? match[1] : null;
   };
 
+  const formatDuration = (seconds: number) => {
+    const total = Math.max(0, Math.floor(seconds));
+    const hrs = Math.floor(total / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    return [hrs, mins, secs]
+      .map((value, index) => index === 0 ? String(value).padStart(2, '0') : String(value).padStart(2, '0'))
+      .join(':');
+  };
+
   const getCutEmbedUrl = (cut: AnalysisCut) => {
     const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
     const embed = toEmbedUrl(source);
@@ -472,7 +482,7 @@ function AnalisisDePartido() {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                             <div>
                               <strong>{cut.label}</strong>
-                              <div style={{ color: '#7f96bc', fontSize: '0.9rem' }}>{cut.start}s → {cut.end}s</div>
+                              <div style={{ color: '#7f96bc', fontSize: '0.9rem' }}>{formatDuration(cut.start)} → {formatDuration(cut.end)}</div>
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                               <button type="button" className="secondary-button" onClick={() => {
@@ -543,103 +553,6 @@ function AnalisisDePartido() {
               </div>
             );
           })}
-        </div>
-      </div>
-
-      <div className="card chat-card">
-        <div className="section-header">
-          <div>
-            <h2>Chat de análisis</h2>
-            <small>Comunicación interna entre cuerpo técnico, administrador y jugadores implicados</small>
-          </div>
-          <span className="badge">{visibleChatMessages.length} mensajes</span>
-        </div>
-
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          <div style={{ display: 'grid', gap: '0.75rem', padding: '0.75rem', background: '#111327', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 240 }}>
-                <strong>Jugadores implicados</strong>
-                <p style={{ margin: '0.25rem 0 0', color: '#9ca3af', fontSize: '0.9rem' }}>
-                  Sólo los jugadores asignados a los cortes pueden ver los mensajes.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button type="button" className="secondary-button" onClick={sendBrevoNotification} disabled={sendingBrevo || !(import.meta.env as any).VITE_BREVO_API_KEY}>
-                  {sendingBrevo ? 'Enviando Brevo...' : 'Enviar por Brevo'}
-                </button>
-                <span style={{ alignSelf: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>{brevoStatus}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gap: '0.5rem' }}>
-              <label style={{ color: '#d1d5db', fontSize: '0.95rem' }}>Selecciona jugadores destinatarios</label>
-              <div style={{ display: 'grid', gap: '0.35rem' }}>
-                {involvedPlayers.length === 0 ? (
-                  <small style={{ color: '#9ca3af' }}>No hay jugadores asignados todavía.</small>
-                ) : (
-                  involvedPlayers.map((player) => (
-                    <label key={player.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e5e7eb' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedPlayerRecipients.includes(player.id)}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...selectedPlayerRecipients, player.id]
-                            : selectedPlayerRecipients.filter((id) => id !== player.id);
-                          setSelectedPlayerRecipients(next);
-                        }}
-                      />
-                      {player.name}
-                    </label>
-                  ))
-                )}
-              </div>
-              <small style={{ color: '#9ca3af' }}>
-                Si no seleccionas ningún jugador, el mensaje se envía a todos los jugadores implicados actualmente.
-              </small>
-            </div>
-
-            <div>
-              <textarea
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Escribe un mensaje para el chat interno..."
-                rows={4}
-                style={{ width: '100%', borderRadius: '10px', padding: '0.85rem', border: '1px solid #2d3748', background: '#0f172a', color: '#f8fafc' }}
-              />
-              <button type="button" className="primary-button" onClick={() => sendChatMessage()} style={{ marginTop: '0.75rem' }}>
-                Enviar mensaje
-              </button>
-            </div>
-          </div>
-
-          <div style={{ background: '#0f172a', borderRadius: '12px', padding: '0.75rem', minHeight: '220px', maxHeight: '360px', overflowY: 'auto' }}>
-            {visibleChatMessages.length === 0 ? (
-              <p style={{ color: '#9ca3af', margin: 0 }}>No hay mensajes aún. Envía el primero.</p>
-            ) : (
-              visibleChatMessages.map((message) => (
-                <div key={message.id} style={{ marginBottom: '0.85rem', padding: '0.75rem', borderRadius: '10px', background: '#111827' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                    <strong style={{ color: '#f8fafc' }}>{message.senderName}</strong>
-                    <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{new Date(message.createdAt).toLocaleString()}</span>
-                  </div>
-                  <div style={{ color: '#d1d5db', margin: '0.5rem 0' }}>{message.text}</div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#7c3aed', fontSize: '0.82rem' }}>{message.senderRole}</span>
-                    {message.recipients.includes('staff_admin') && (
-                      <span style={{ color: '#38bdf8', fontSize: '0.82rem' }}>Cuerpo técnico / admin</span>
-                    )}
-                    {message.recipients.filter((recipient) => recipient.startsWith('player:')).map((recipient) => (
-                      <span key={recipient} style={{ color: '#34d399', fontSize: '0.82rem' }}>
-                        {getPlayerName(recipient.replace('player:', ''))}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
         </div>
       </div>
 
