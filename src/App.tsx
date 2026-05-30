@@ -71,6 +71,19 @@ function AppShell() {
     return () => window.removeEventListener('cortador-focus-mode', handler);
   }, []);
 
+  // Listen to app-wide navigation events (from infographic in Inicio)
+  useEffect(() => {
+    const nav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as string | undefined;
+      if (detail) {
+        localStorage.setItem('app_active_section', detail);
+        setActiveSection(detail as PageKey);
+      }
+    };
+    window.addEventListener('app-navigate', nav as EventListener);
+    return () => window.removeEventListener('app-navigate', nav as EventListener);
+  }, []);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text, #f4f7ff)' }}>

@@ -11,7 +11,8 @@ declare global {
 }
 
 type Category = { id: string; label: string; shortcut: string };
-type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null };
+type Annotation = any;
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null; annotations?: Annotation[] };
 type SavedState = { videoMode: VideoMode };
 type VideoMode = 'url' | 'file';
 
@@ -104,9 +105,8 @@ function formatDuration(seconds: number) {
   const hrs = Math.floor(total / 3600);
   const mins = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-  return [hrs, mins, secs]
-    .map((value, index) => index === 0 ? String(value).padStart(2, '0') : String(value).padStart(2, '0'))
-    .join(':');
+  if (hrs > 0) return `${String(hrs)}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 function loadState(): SavedState {
@@ -166,6 +166,14 @@ function CortadorDeVideo() {
   const [editingShortcutValue, setEditingShortcutValue] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [fullscreenTime, setFullscreenTime] = useState(0);
+  const [fullscreenDuration, setFullscreenDuration] = useState(0);
+
+  // Annotations while editing
+  const [editingAnnotations, setEditingAnnotations] = useState<Annotation[]>([]);
+  const [annotationMode, setAnnotationMode] = useState<'none'|'spot'|'arrow'|'arrow-dashed'|'text'>('none');
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const annotationTempRef = useRef<any>(null);
   const [editingCutId, setEditingCutId] = useState<string | null>(null);
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
@@ -252,6 +260,60 @@ function CortadorDeVideo() {
     return () => clearInterval(interval);
   }, [videoMode]);
 
+  // Update fullscreen time/duration when entering fullscreen
+  useEffect(() => {
+    let mounted = true;
+    if (!isFullscreen) return;
+    const update = () => {
+      if (!mounted) return;
+      const dur = getVideoDuration();
+      const cur = videoMode === 'file' && localVideoRef.current ? localVideoRef.current.currentTime : (ytPlayerRef.current?.getCurrentTime?.() ?? lastKnownTimeRef.current);
+      setFullscreenDuration(dur);
+      setFullscreenTime(cur || 0);
+    };
+    update();
+    const iv = setInterval(update, 300);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [isFullscreen, videoMode]);
+
+  const seekToTime = (t: number) => {
+    if (videoMode === 'file' && localVideoRef.current) {
+      localVideoRef.current.currentTime = t;
+      return;
+    }
+    if (ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(t, true);
+    }
+  };
+
+  // Canvas drawing for annotations (simple implementation)
+  useEffect(() => {
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    cvs.width = cvs.clientWidth * dpr;
+    cvs.height = cvs.clientHeight * dpr;
+    ctx.scale(dpr, dpr);
+    // clear
+    ctx.clearRect(0, 0, cvs.clientWidth, cvs.clientHeight);
+    // draw annotations
+    editingAnnotations.forEach((a) => {
+      if (a.type === 'spot') {
+        ctx.beginPath(); ctx.strokeStyle = '#00ff8d'; ctx.lineWidth = 2; ctx.arc(a.x, a.y, 24, 0, Math.PI * 2); ctx.stroke();
+      } else if (a.type === 'arrow' || a.type === 'arrow-dashed') {
+        ctx.beginPath(); ctx.strokeStyle = '#00ff8d'; ctx.lineWidth = 3; if (a.type === 'arrow-dashed') ctx.setLineDash([8,6]);
+        ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke(); ctx.setLineDash([]);
+        // arrow head
+        const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+        ctx.beginPath(); ctx.fillStyle = '#00ff8d'; ctx.moveTo(a.x2, a.y2); ctx.lineTo(a.x2 - 12*Math.cos(ang - 0.3), a.y2 - 12*Math.sin(ang - 0.3)); ctx.lineTo(a.x2 - 12*Math.cos(ang + 0.3), a.y2 - 12*Math.sin(ang + 0.3)); ctx.fill();
+      } else if (a.type === 'text') {
+        ctx.fillStyle = '#00ff8d'; ctx.font = '14px sans-serif'; ctx.fillText(a.text || '', a.x, a.y);
+      }
+    });
+  }, [editingAnnotations]);
+
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
@@ -324,7 +386,7 @@ function CortadorDeVideo() {
       player_id: null,
     };
 
-    setCuts([...cuts, cut]);
+    setCuts(prev => [cut, ...prev]);
     setStatusMessage(`Corte guardado en ${category.label}: ${formatDuration(start)} → ${formatDuration(end)}`);
     setCutName('');
   };
@@ -458,6 +520,19 @@ function CortadorDeVideo() {
           )}
           {isFullscreen && (
             <div className="fullscreen-overlay">
+              <div className="fullscreen-timeline" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenTime)}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(1, fullscreenDuration)}
+                  step={0.1}
+                  value={Math.max(0, Math.min(fullscreenTime, fullscreenDuration || 0))}
+                  onChange={(e) => seekToTime(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenDuration)}</span>
+              </div>
               {categories.map((cat) => (
                 <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)} style={{ padding: '6px 8px', fontSize: '12px', minWidth: 100 }}>
                   <span className="fsc-label">{cat.label}</span>
@@ -595,6 +670,39 @@ function CortadorDeVideo() {
                             <p style={{ margin: 0 }}>{formatDuration(cut.start)} → {formatDuration(cut.end)}</p>
                           </div>
                         </div>
+
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <strong style={{ color: '#fff' }}>Anotar:</strong>
+                            <button type="button" className={annotationMode === 'spot' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'spot' ? 'none' : 'spot')}>Foco</button>
+                            <button type="button" className={annotationMode === 'arrow' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow' ? 'none' : 'arrow')}>Flecha</button>
+                            <button type="button" className={annotationMode === 'arrow-dashed' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow-dashed' ? 'none' : 'arrow-dashed')}>Flecha discont.</button>
+                            <button type="button" className={annotationMode === 'text' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'text' ? 'none' : 'text')}>Texto</button>
+                            <button type="button" className="secondary-button" onClick={() => setEditingAnnotations([])}>Borrar anotaciones</button>
+                          </div>
+                          <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#071025' }}>
+                            <canvas ref={canvasRef} style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair' }} onClick={(e) => {
+                              if (annotationMode === 'none') return;
+                              const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+                              const x = e.clientX - rect.left;
+                              const y = e.clientY - rect.top;
+                              if (annotationMode === 'spot') {
+                                setEditingAnnotations(a => [...a, { type: 'spot', x, y }]);
+                              } else if (annotationMode === 'text') {
+                                const txt = prompt('Texto de anotación (breve):');
+                                if (txt) setEditingAnnotations(a => [...a, { type: 'text', x, y, text: txt }]);
+                              } else if (annotationMode === 'arrow' || annotationMode === 'arrow-dashed') {
+                                if (!annotationTempRef.current) {
+                                  annotationTempRef.current = { x1: x, y1: y };
+                                } else {
+                                  const start = annotationTempRef.current;
+                                  setEditingAnnotations(a => [...a, { type: annotationMode, x1: start.x1, y1: start.y1, x2: x, y2: y }]);
+                                  annotationTempRef.current = null;
+                                }
+                              }
+                            }} />
+                          </div>
+                        </div>
                       </div>
                       <div className="cut-item-actions">
                         <button type="button" className="secondary-button" onClick={() => setPreviewCutId(previewCutId === cut.id ? null : cut.id)}>
@@ -611,7 +719,7 @@ function CortadorDeVideo() {
                           ))}
                         </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
-                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
+                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>                      {previewCutId === cut.id && (
                         <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', background: '#0b1220', padding: 10 }}>
@@ -680,13 +788,19 @@ function CortadorDeVideo() {
                           }} />
                         </div>
 
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button type="button" className="primary-button" onClick={() => {
                             if (editStartValue == null || editEndValue == null) return;
                             const s = Math.max(0, Math.min(editStartValue, editEndValue - 0.1));
                             const e = Math.max(s + 0.1, editEndValue);
-                            setCuts(prev => prev.map(x => x.id === editingCutId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)) } : x));
+                            const editedId = editingCutId;
+                            setCuts(prev => prev.map(x => x.id === editedId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)), annotations: editingAnnotations } : x));
                             setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
+                            // refresh preview immediately
+                            if (editedId) {
+                              setPreviewCutId(null);
+                              setTimeout(() => setPreviewCutId(editedId), 50);
+                            }
                           }}>Guardar</button>
                           <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
                           <button type="button" className="secondary-button" onClick={() => {
