@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
 
 type AnalysisCut = {
   id: string;
+  categoryId: string;
   label: string;
   start: number;
   end: number;
   createdAt: string;
+  player_id?: string | null;
 };
 
 type AnalysisCutsMap = Record<string, AnalysisCut[]>;
@@ -21,21 +23,27 @@ type PreviousMatch = {
   videoUrl: string;
 };
 
-const TACTICAL_TITLES = [
-  'ABP OFENSIVO', 'ABP DEFENSIVO', 'PRESIÓN ALTA', 'REPLIEGUE TOTAL',
-  'REPLIEGUE INTERMEDIO', 'CONQUISTA ESPALDA Z 3', 'ATAQUE DE ÁREA ESTANDO',
-  'ATAQUE DE ÁREA LLEGANDO', 'DEFENSA DE ÁREA ESTANDO', 'DEFENSA DE ÁREA LLEGANDO',
-  'REINICIO Y CONSTRUCCIÓN Z 1-2', 'PROGRESIÓN JUEGO EXTERIOR Z 2-3',
-  'PROGRESIÓN JUEGO INTERIOR Z 2-3', 'PRIORIZAR CONSERVAR TRAS ROBO Z 1',
-  'PRIORIZAR FINALIZAR TRAS ROBO Z 4', 'PRIORIZAR PROGRESAR TRAS ROBO Z 2-3',
-  'PRIORIZAR RECUPERAR TRAS PÉRDIDA Z 3-4', 'PRIORIZAR DEFENDER ESPACIO TRAS PÉRDIDA Z 2',
-  'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1',
+const TACTICAL_CATEGORIES: { id: string; label: string }[] = [
+  { id: 'abp-ofensivo', label: 'ABP OFENSIVO' },
+  { id: 'abp-defensivo', label: 'ABP DEFENSIVO' },
+  { id: 'presion-alta', label: 'PRESIÓN ALTA' },
+  { id: 'repliegue-total', label: 'REPLIEGUE TOTAL' },
+  { id: 'repliegue-intermedio', label: 'REPLIEGUE INTERMEDIO' },
+  { id: 'conquista-espalda-z3', label: 'CONQUISTA ESPALDA Z 3' },
+  { id: 'ataque-area-estando', label: 'ATAQUE DE ÁREA ESTANDO' },
+  { id: 'ataque-area-llegando', label: 'ATAQUE DE ÁREA LLEGANDO' },
+  { id: 'defensa-area-estando', label: 'DEFENSA DE ÁREA ESTANDO' },
+  { id: 'defensa-area-llegando', label: 'DEFENSA DE ÁREA LLEGANDO' },
+  { id: 'reinicio-construccion-z12', label: 'REINICIO Y CONSTRUCCIÓN Z 1-2' },
+  { id: 'progresion-exterior-z23', label: 'PROGRESIÓN JUEGO EXTERIOR Z 2-3' },
+  { id: 'progresion-interior-z23', label: 'PROGRESIÓN JUEGO INTERIOR Z 2-3' },
+  { id: 'conservar-tras-robo-z1', label: 'PRIORIZAR CONSERVAR TRAS ROBO Z 1' },
+  { id: 'finalizar-tras-robo-z4', label: 'PRIORIZAR FINALIZAR TRAS ROBO Z 4' },
+  { id: 'progresar-tras-robo-z23', label: 'PRIORIZAR PROGRESAR TRAS ROBO Z 2-3' },
+  { id: 'recuperar-tras-perdida-z34', label: 'PRIORIZAR RECUPERAR TRAS PÉRDIDA Z 3-4' },
+  { id: 'defender-espacio-z2', label: 'PRIORIZAR DEFENDER ESPACIO TRAS PÉRDIDA Z 2' },
+  { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1' },
 ];
-
-// Creamos un mapa para normalizar: la clave en sharedState será el nombre en mayúsculas
-function getCategoryKey(title: string) {
-  return title.toUpperCase().replace(/\s+/g, '-');
-}
 
 const previousMatches: PreviousMatch[] = [
   {
@@ -60,7 +68,7 @@ function AnalisisDePartido() {
     const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
-  const [analysisCuts, setAnalysisCuts] = useSharedState<Record<string, AnalysisCut[]>>('analisis_cuts', {});
+  const [analysisCutsRaw] = useSharedState<AnalysisCut[] | Record<string, AnalysisCut[]>>('analisis_cuts', []);
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
   const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
@@ -69,6 +77,20 @@ function AnalisisDePartido() {
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
   const setMainOpponent = (val: string) => setMainOpponentState(val);
+
+  const analysisCuts = useMemo(() => {
+    const cutsArray: AnalysisCut[] = Array.isArray(analysisCutsRaw)
+      ? analysisCutsRaw
+      : Object.values(analysisCutsRaw).flat();
+
+    return cutsArray.reduce<AnalysisCutsMap>((map, cut) => {
+      const key = TACTICAL_CATEGORIES.some((cat) => cat.id === cut.categoryId)
+        ? cut.categoryId
+        : 'otros';
+      map[key] = [...(map[key] || []), cut];
+      return map;
+    }, {});
+  }, [analysisCutsRaw]);
 
   const sendToArchive = () => {
     if (!mainVideoUrl || !mainOpponent) return;
@@ -154,18 +176,17 @@ function AnalisisDePartido() {
             <h2>Cortes</h2>
             <small>Revisa los registros tácticos guardados en el último encuentro</small>
           </div>
-          <span className="badge">{TACTICAL_TITLES.reduce((acc, t) => acc + (analysisCuts[t]?.length ?? 0), 0)} cortes</span>
+          <span className="badge">{TACTICAL_CATEGORIES.reduce((acc, cat) => acc + (analysisCuts[cat.id]?.length ?? 0), 0)} cortes</span>
         </div>
 
         <div className="accordion-list">
-          {TACTICAL_TITLES.map((title, index) => {
-            const catKey = getCategoryKey(title);
-            const cuts = analysisCuts[catKey] ?? [];
+          {TACTICAL_CATEGORIES.map((category, index) => {
+            const cuts = analysisCuts[category.id] ?? [];
             return (
-              <div className={`accordion-item ${activeCutIndex === index ? 'open' : ''}`} key={title}>
+              <div className={`accordion-item ${activeCutIndex === index ? 'open' : ''}`} key={category.id}>
                 <button type="button" className="accordion-button" onClick={() => setActiveCutIndex(activeCutIndex === index ? null : index)}>
                   <div>
-                    <strong>{title}</strong>
+                    <strong>{category.label}</strong>
                     <small>{cuts.length} cortes guardados</small>
                   </div>
                   <span>{activeCutIndex === index ? '−' : '+'}</span>
