@@ -190,7 +190,7 @@ function AnalisisDePartido() {
       createdAt: new Date().toISOString(),
     };
 
-    setChatMessages((prev) => [message, ...prev]);
+    setChatMessages([message, ...chatMessages]);
     setMessageText('');
     setSelectedPlayerRecipients([]);
   };
