@@ -159,6 +159,9 @@ function CortadorDeVideo() {
   const [editingCutId, setEditingCutId] = useState<string | null>(null);
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
+  const [cutName, setCutName] = useState('');
+  const [previewCutId, setPreviewCutId] = useState<string | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -275,13 +278,14 @@ function CortadorDeVideo() {
       const cut: Cut = {
         id: `${category.id}-${Date.now()}`,
         categoryId: category.id,
-        label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        label: cutName.trim() || `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start, end,
         createdAt: new Date().toISOString(),
         player_id: null,
       };
       setCuts((prev) => [cut, ...prev]);
       setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+      setCutName('');
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -303,7 +307,7 @@ function CortadorDeVideo() {
     const cut: Cut = {
       id: `${categoryId}-${Date.now()}`,
       categoryId: categoryId,
-      label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      label: cutName.trim() || `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       start,
       end,
       createdAt: new Date().toISOString(),
@@ -312,6 +316,7 @@ function CortadorDeVideo() {
 
     setCuts([...cuts, cut]);
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
+    setCutName('');
   };
 
   const handleAssignPlayer = (cutId: string, playerId: string | null) => {
@@ -452,8 +457,18 @@ function CortadorDeVideo() {
             </div>
           )}
         </div>
+        <div className="video-form" style={{ marginTop: 12 }}>
+          <label style={{ color: '#d1d5db', marginBottom: 6 }}>Nombre del corte</label>
+          <input
+            type="text"
+            value={cutName}
+            placeholder="Pon un nombre descriptivo al corte..."
+            onChange={(e) => setCutName(e.target.value)}
+            style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
+          />
+        </div>
         <div className="video-helpers">
-          <p>Pulsa cualquier categoría de la botonera para guardar un corte de los últimos 20 segundos, o usa los atajos de teclado asignados.</p>
+          <p>Pulsa cualquier categoría de la botonera para guardar un corte. El nombre se conservará y aparecerá como miniatura.</p>
           {statusMessage && <p className="status-text">{statusMessage}</p>}
         </div>
       </div>
@@ -535,11 +550,46 @@ function CortadorDeVideo() {
                 <div className="cut-items">
                   {categoryCuts.map((cut) => (
                     <div key={cut.id} className="cut-item">
-                      <div>
-                        <strong>{cut.label}</strong>
-                        <p>{cut.start}s → {cut.end}s</p>
+                      <div style={{ display: 'grid', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setPreviewCutId(previewCutId === cut.id ? null : cut.id)}
+                            style={{ padding: 0, minWidth: 180, minHeight: 100, borderRadius: 12, overflow: 'hidden', position: 'relative', textAlign: 'left' }}
+                          >
+                            {videoMode === 'url' && videoId ? (
+                              <img
+                                src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                                alt="Miniatura del corte"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111827', color: '#9ca3af' }}>
+                                <span>Vídeo local</span>
+                              </div>
+                            )}
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 42, height: 42, background: 'rgba(0,0,0,0.6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ color: '#fff', fontSize: 18, marginLeft: 3 }}>▶</span>
+                              </div>
+                            </div>
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: '0.35rem' }}>
+                            <input
+                              type="text"
+                              value={cut.label}
+                              onChange={(e) => setCuts((prev) => prev.map((c) => c.id === cut.id ? { ...c, label: e.target.value } : c))}
+                              style={{ width: '100%', background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: '0.45rem', color: '#fff' }}
+                            />
+                            <p style={{ margin: 0 }}>{cut.start}s → {cut.end}s</p>
+                          </div>
+                        </div>
                       </div>
                       <div className="cut-item-actions">
+                        <button type="button" className="secondary-button" onClick={() => setPreviewCutId(previewCutId === cut.id ? null : cut.id)}>
+                          {previewCutId === cut.id ? 'Ocultar vista previa' : 'Ver corte'}
+                        </button>
                         <select
                           value={cut.player_id ?? ''}
                           onChange={e => handleAssignPlayer(cut.id, e.target.value || null)}
@@ -553,8 +603,31 @@ function CortadorDeVideo() {
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
-                      </div>
-                    </div>
+                      </div>                      {previewCutId === cut.id && (
+                        <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', background: '#0b1220', padding: 10 }}>
+                          {videoMode === 'url' && videoId && (
+                            <iframe
+                              title={`Preview ${cut.id}`}
+                              src={`${extractYouTubeVideoId(videoUrl) ? `https://www.youtube.com/embed/${extractYouTubeVideoId(videoUrl)}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0` : ''}`}
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              style={{ width: '100%', height: 200, borderRadius: 8 }}
+                            />
+                          )}
+                          {videoMode === 'file' && localVideoSrc && (
+                            <video
+                              ref={previewVideoRef}
+                              src={localVideoSrc}
+                              controls
+                              onLoadedMetadata={() => {
+                                if (previewVideoRef.current) previewVideoRef.current.currentTime = cut.start;
+                              }}
+                              style={{ width: '100%', display: 'block', borderRadius: 8 }}
+                            />
+                          )}
+                        </div>
+                      )}                    </div>
                   ))}
                 </div>
               )}

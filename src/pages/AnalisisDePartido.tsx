@@ -182,7 +182,9 @@ function AnalisisDePartido() {
 
     const recipientIds = selectedPlayerRecipients.length > 0
       ? selectedPlayerRecipients
-      : involvedPlayerIds;
+      : involvedPlayerIds.length > 0
+        ? involvedPlayerIds
+        : users.filter((u) => u.role === 'jugador' && u.player_id).map((u) => String(u.player_id));
 
     const recipients = ['staff_admin', ...recipientIds.map((id) => `player:${id}`)];
 
@@ -242,17 +244,7 @@ function AnalisisDePartido() {
         return;
       }
 
-      const recipients = new Set<string>();
-      if (m.recipients.includes('staff_admin')) {
-        staffAdmins.forEach((u) => { if (u.email) recipients.add(u.email); });
-      }
-      m.recipients.filter(r => r.startsWith('player:')).forEach((r) => {
-        const pid = r.replace('player:', '');
-        const u = users.find((x) => String(x.player_id) === String(pid));
-        if (u?.email) recipients.add(u.email);
-      });
-
-      const recs = Array.from(recipients).filter(Boolean) as string[];
+      const recs = getMessageRecipientsEmails(m);
       if (recs.length === 0) {
         const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
         setChatMessages(next);
@@ -370,6 +362,33 @@ function AnalisisDePartido() {
     return match ? match[1] : null;
   };
 
+  const getCutEmbedUrl = (cut: AnalysisCut) => {
+    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
+    const embed = toEmbedUrl(source);
+    if (!embed) return undefined;
+    return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
+  };
+
+  const getMessageRecipientsEmails = (message: ChatMessage) => {
+    const recipients = new Set<string>();
+
+    if (message.recipients.includes('staff_admin')) {
+      staffAdmins.forEach((u) => { if (u.email) recipients.add(u.email); });
+    }
+
+    if (message.recipients.includes('all_players')) {
+      users.filter((u) => u.role === 'jugador' && u.email).forEach((u) => recipients.add(u.email));
+    }
+
+    message.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
+      const pid = r.replace('player:', '');
+      const u = users.find((x) => String(x.player_id) === String(pid));
+      if (u?.email) recipients.add(u.email);
+    });
+
+    return Array.from(recipients);
+  };
+
   return (
     <section className="page-section">
       <div className="page-title">
@@ -448,62 +467,71 @@ function AnalisisDePartido() {
                   <div style={{ padding: '0.75rem 1rem', display: 'grid', gap: '0.5rem' }}>
                     {cuts.map((cut) => {
                       const cutMessages = visibleChatMessages.filter((m) => m.relatedCutId === cut.id);
-                      const isConvOpen = openConversationId === cut.id;
                       return (
-                        <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'grid', gap: '0.5rem', fontSize: '0.85rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'grid', gap: '0.75rem', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                             <div>
                               <strong>{cut.label}</strong>
                               <div style={{ color: '#7f96bc', fontSize: '0.9rem' }}>{cut.start}s → {cut.end}s</div>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <button type="button" className="secondary-button" onClick={() => setOpenConversationId(isConvOpen ? null : cut.id)}>
-                                          {isConvOpen ? 'Cerrar conversación' : 'Abrir conversación'}
-                                        </button>
-                                        <button type="button" className="secondary-button" onClick={() => {
-                                          const source = mainVideoUrl || (matches[selectedMatchIndex] && matches[selectedMatchIndex].videoUrl) || '';
-                                          const embed = toEmbedUrl(source);
-                                          if (!embed) { alert('No hay vídeo asociado a este análisis.'); return; }
-                                          const src = `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`;
-                                          setPlayingEmbedUrl(src);
-                                          setPlayingCut(cut);
-                                        }}>
-                                          Ver corte
-                                        </button>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <button type="button" className="secondary-button" onClick={() => {
+                                const source = mainVideoUrl || (matches[selectedMatchIndex] && matches[selectedMatchIndex].videoUrl) || '';
+                                const embed = toEmbedUrl(source);
+                                if (!embed) { alert('No hay vídeo asociado a este análisis.'); return; }
+                                const src = `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`;
+                                setPlayingEmbedUrl(src);
+                                setPlayingCut(cut);
+                              }}>
+                                Reproducir corte
+                              </button>
                             </div>
                           </div>
 
-                          {isConvOpen && (
-                            <div style={{ background: '#0b1220', padding: '0.6rem', borderRadius: '8px' }}>
-                              <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
-                                {cutMessages.length === 0 ? (
-                                  <small style={{ color: '#9ca3af' }}>No hay mensajes para este corte.</small>
-                                ) : (
-                                  cutMessages.map((m) => (
-                                    <div key={m.id} style={{ padding: '0.4rem', borderRadius: '6px', background: '#071025' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <strong style={{ color: '#f8fafc' }}>{m.senderName}</strong>
-                                        <small style={{ color: '#9ca3af' }}>{new Date(m.createdAt).toLocaleString()}</small>
-                                      </div>
-                                      <div style={{ color: '#d1d5db', marginTop: 6 }}>{m.text}</div>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
+                          {getCutEmbedUrl(cut) ? (
+                            <div style={{ borderRadius: 10, overflow: 'hidden', background: '#0b1220' }}>
+                              <iframe
+                                title={`Corte directo ${cut.id}`}
+                                src={getCutEmbedUrl(cut)}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                style={{ width: '100%', height: 260, border: 'none' }}
+                              />
+                            </div>
+                          ) : (
+                            <div style={{ color: '#9ca3af' }}>No hay vídeo completo asociado para reproducir este corte.</div>
+                          )}
 
-                              <div style={{ marginTop: '0.5rem' }}>
-                                <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
-                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                  <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, cut.player_id)}>
-                                    Enviar a destinatarios
-                                  </button>
-                                  <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); setOpenConversationId(null); }}>
-                                    Cancelar
-                                  </button>
-                                </div>
+                          <div style={{ background: '#0b1220', padding: '0.75rem', borderRadius: '8px' }}>
+                            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
+                              {cutMessages.length === 0 ? (
+                                <small style={{ color: '#9ca3af' }}>No hay mensajes para este corte.</small>
+                              ) : (
+                                cutMessages.map((m) => (
+                                  <div key={m.id} style={{ padding: '0.4rem', borderRadius: '6px', background: '#071025' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <strong style={{ color: '#f8fafc' }}>{m.senderName}</strong>
+                                      <small style={{ color: '#9ca3af' }}>{new Date(m.createdAt).toLocaleString()}</small>
+                                    </div>
+                                    <div style={{ color: '#d1d5db', marginTop: 6 }}>{m.text}</div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div style={{ marginTop: '0.75rem' }}>
+                              <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
+                              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, cut.player_id)}>
+                                  Enviar a destinatarios
+                                </button>
+                                <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); }}>
+                                  Limpiar
+                                </button>
                               </div>
                             </div>
-                          )}
+                          </div>
                         </div>
                       );
                     })}
