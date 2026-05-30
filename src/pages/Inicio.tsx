@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthContext';
 
 function Inicio() {
+  const { user } = useAuth();
   const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -20,19 +22,36 @@ function Inicio() {
 
   const handleFile = async (f: File | null) => {
     if (!f) return;
+    // only allow non-jugador roles to upload
+    if (user?.role === 'jugador') {
+      alert('No tienes permiso para cambiar el escudo.');
+      return;
+    }
     setUploading(true);
     try {
       // upload to 'fotos/team_badge.png' (overwrite)
       const path = 'team_badge.png';
-      await supabase.storage.from('fotos').remove([path]);
+      // try to upload (use upsert=true). Avoid removing first to not trigger RLS for some roles.
       const { error: uploadError } = await supabase.storage.from('fotos').upload(path, f, { cacheControl: '3600', upsert: true });
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('fotos').getPublicUrl(path);
       if (data && data.publicUrl) setBadgeUrl(data.publicUrl);
     } catch (err) {
       console.error('Error subiendo escudo', err);
-      alert('Error subiendo escudo: ' + String(err));
+      const msg = (err as any)?.message || String(err);
+      if (msg.includes('row-level') || msg.includes('RLS') || msg.includes('policy')) {
+        alert('Error subiendo escudo: no tienes permisos para modificar el bucket. Puedes indicar directamente la URL pública del escudo.');
+      } else {
+        alert('Error subiendo escudo: ' + msg);
+      }
     } finally { setUploading(false); }
+  };
+
+  const [badgeUrlInput, setBadgeUrlInput] = useState('');
+  const handleUseUrl = () => {
+    if (!badgeUrlInput) return;
+    // allow any URL to be used as preview. Do not attempt to upload.
+    setBadgeUrl(badgeUrlInput);
   };
 
   return (
@@ -72,8 +91,18 @@ function Inicio() {
                   {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ color: '#7f96bc' }}>Escudo</div>}
                 </div>
                 <div style={{ marginTop: 8 }}>
-                  <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0] || null)} />
-                  {uploading && <div style={{ color: '#7f96bc' }}>Subiendo...</div>}
+                  {user?.role === 'jugador' ? (
+                    <div style={{ color: '#7f96bc' }}>No tienes permiso para cambiar el escudo.</div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0] || null)} />
+                      {uploading && <div style={{ color: '#7f96bc' }}>Subiendo...</div>}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input placeholder="Pegar URL pública del escudo" style={{ width: 260 }} value={badgeUrlInput} onChange={(e) => setBadgeUrlInput(e.target.value)} />
+                    <button type="button" className="secondary-button" onClick={handleUseUrl}>Usar URL</button>
+                  </div>
                 </div>
               </div>
             </div>

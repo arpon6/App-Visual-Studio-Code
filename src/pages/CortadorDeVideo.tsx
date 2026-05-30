@@ -187,6 +187,7 @@ function CortadorDeVideo() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const annotationTempRef = useRef<any>(null);
   const [tempAnnotation, setTempAnnotation] = useState<any>(null);
+  const [selectedAnnotationIndex, setSelectedAnnotationIndex] = useState<number | null>(null);
   const [editingCutId, setEditingCutId] = useState<string | null>(null);
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
@@ -300,6 +301,35 @@ function CortadorDeVideo() {
   };
 
   // Canvas drawing for annotations (simple implementation)
+  // helper: hit-test annotations (returns index or -1)
+  const hitTest = (x: number, y: number) => {
+    for (let i = editingAnnotations.length - 1; i >= 0; i--) {
+      const a = editingAnnotations[i];
+      if (a.type === 'spot') {
+        const dx = x - a.x; const dy = y - a.y;
+        if (Math.sqrt(dx*dx + dy*dy) <= 24) return i;
+      } else if (a.type === 'arrow' || a.type === 'arrow-dashed') {
+        // distance to segment
+        const x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2;
+        const A = x - x1, B = y - y1, C = x2 - x1, D = y2 - y1;
+        const dot = A * C + B * D;
+        const len_sq = C * C + D * D;
+        let param = -1;
+        if (len_sq !== 0) param = dot / len_sq;
+        let xx, yy;
+        if (param < 0) { xx = x1; yy = y1; }
+        else if (param > 1) { xx = x2; yy = y2; }
+        else { xx = x1 + param * C; yy = y1 + param * D; }
+        const dx = x - xx; const dy = y - yy;
+        if (Math.sqrt(dx*dx + dy*dy) <= 8) return i;
+      } else if (a.type === 'text') {
+        const dx = x - a.x; const dy = y - a.y;
+        if (Math.sqrt(dx*dx + dy*dy) <= 16) return i;
+      }
+    }
+    return -1;
+  };
+
   useEffect(() => {
     const cvs = canvasRef.current;
     if (!cvs) return;
@@ -335,7 +365,62 @@ function CortadorDeVideo() {
         ctx.beginPath(); ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2; ctx.arc(a.x, a.y, 20, 0, Math.PI*2); ctx.stroke();
       }
     }
-  }, [editingAnnotations]);
+    // highlight selection
+    if (selectedAnnotationIndex != null) {
+      const s = editingAnnotations[selectedAnnotationIndex];
+      if (s) {
+        ctx.beginPath(); ctx.strokeStyle = '#ff66aa'; ctx.lineWidth = 2;
+        if (s.type === 'spot') ctx.arc(s.x, s.y, 28, 0, Math.PI*2);
+        else if (s.type === 'text') ctx.rect(s.x - 6, s.y - 16, 120, 22);
+        else if (s.type === 'arrow' || s.type === 'arrow-dashed') ctx.rect(Math.min(s.x1, s.x2)-6, Math.min(s.y1, s.y2)-6, Math.abs(s.x2-s.x1)+12, Math.abs(s.y2-s.y1)+12);
+        ctx.stroke();
+      }
+    }
+  }, [editingAnnotations, tempAnnotation, selectedAnnotationIndex]);
+
+  // pointer event handlers for canvas to allow dragging arrows
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+    if (annotationMode === 'none') {
+      const idx = hitTest(x, y);
+      setSelectedAnnotationIndex(idx >= 0 ? idx : null);
+      return;
+    }
+    if (annotationMode === 'spot') {
+      setEditingAnnotations(a => [...a, { type: 'spot', x, y }]);
+      return;
+    }
+    if (annotationMode === 'text') {
+      const txt = prompt('Texto de anotación (breve):');
+      if (txt) setEditingAnnotations(a => [...a, { type: 'text', x, y, text: txt }]);
+      return;
+    }
+    if (annotationMode === 'arrow' || annotationMode === 'arrow-dashed') {
+      annotationTempRef.current = { type: annotationMode, x1: x, y1: y, x2: x, y2: y };
+      setTempAnnotation({ ...annotationTempRef.current });
+      try { (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId); } catch {}
+    }
+  };
+
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!annotationTempRef.current || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    annotationTempRef.current.x2 = e.clientX - rect.left;
+    annotationTempRef.current.y2 = e.clientY - rect.top;
+    setTempAnnotation({ ...annotationTempRef.current });
+  };
+
+  const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!annotationTempRef.current || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+    setEditingAnnotations(a => [...a, { type: annotationTempRef.current.type, x1: annotationTempRef.current.x1, y1: annotationTempRef.current.y1, x2: x, y2: y }]);
+    annotationTempRef.current = null;
+    setTempAnnotation(null);
+    try { (e.target as HTMLCanvasElement).releasePointerCapture(e.pointerId); } catch {}
+  };
 
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
@@ -710,29 +795,22 @@ function CortadorDeVideo() {
                             <button type="button" className={annotationMode === 'arrow' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow' ? 'none' : 'arrow')}>Flecha</button>
                             <button type="button" className={annotationMode === 'arrow-dashed' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow-dashed' ? 'none' : 'arrow-dashed')}>Flecha discont.</button>
                             <button type="button" className={annotationMode === 'text' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'text' ? 'none' : 'text')}>Texto</button>
-                            <button type="button" className="secondary-button" onClick={() => setEditingAnnotations([])}>Borrar anotaciones</button>
+                            <button type="button" className="secondary-button" onClick={() => { setEditingAnnotations([]); setSelectedAnnotationIndex(null); }}>Borrar anotaciones</button>
+                            {selectedAnnotationIndex != null && (
+                              <button type="button" className="secondary-button" onClick={() => {
+                                setEditingAnnotations(prev => prev.filter((_, i) => i !== selectedAnnotationIndex));
+                                setSelectedAnnotationIndex(null);
+                              }}>Eliminar selección</button>
+                            )}
                           </div>
                           <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#071025' }}>
-                            <canvas ref={canvasRef} style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair', pointerEvents: 'auto' }} onClick={(e) => {
-                              if (annotationMode === 'none') return;
-                              const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-                              const x = e.clientX - rect.left;
-                              const y = e.clientY - rect.top;
-                              if (annotationMode === 'spot') {
-                                setEditingAnnotations(a => [...a, { type: 'spot', x, y }]);
-                              } else if (annotationMode === 'text') {
-                                const txt = prompt('Texto de anotación (breve):');
-                                if (txt) setEditingAnnotations(a => [...a, { type: 'text', x, y, text: txt }]);
-                              } else if (annotationMode === 'arrow' || annotationMode === 'arrow-dashed') {
-                                if (!tempAnnotation) {
-                                  setTempAnnotation({ type: annotationMode, x1: x, y1: y, x2: x, y2: y });
-                                } else {
-                                  // finalize arrow
-                                  setEditingAnnotations(a => [...a, { type: tempAnnotation.type, x1: tempAnnotation.x1, y1: tempAnnotation.y1, x2: x, y2: y }]);
-                                  setTempAnnotation(null);
-                                }
-                              }
-                            }} />
+                            <canvas
+                              ref={canvasRef}
+                              style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair', pointerEvents: 'auto' }}
+                              onPointerDown={handleCanvasPointerDown}
+                              onPointerMove={handleCanvasPointerMove}
+                              onPointerUp={handleCanvasPointerUp}
+                            />
                           </div>
                         </div>
                       </div>
