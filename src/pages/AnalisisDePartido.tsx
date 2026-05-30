@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
-import { useAuth } from '../lib/AuthContext';
+import { useEffect, useMemo, useState } from 'react';
+import { useAuth, UserRole } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
+import { supabase } from '../lib/supabaseClient';
+import { usePlantilla } from '../lib/usePlantilla';
 
 type AnalysisCut = {
   id: string;
@@ -13,6 +15,24 @@ type AnalysisCut = {
 };
 
 type AnalysisCutsMap = Record<string, AnalysisCut[]>;
+
+type ChatMessage = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: UserRole;
+  text: string;
+  recipients: string[];
+  createdAt: string;
+};
+
+type AppUserInfo = {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  player_id: string | null;
+};
 
 type PreviousMatch = {
   opponent: string;
@@ -65,32 +85,179 @@ const previousMatches: PreviousMatch[] = [
 ];
 
 function AnalisisDePartido() {
-    const { user } = useAuth();
+  const { user } = useAuth();
+  const jugadores = usePlantilla();
+  const [users, setUsers] = useState<AppUserInfo[]>([]);
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
   const [analysisCutsRaw] = useSharedState<AnalysisCut[] | Record<string, AnalysisCut[]>>('analisis_cuts', []);
+  const [chatMessages, setChatMessages] = useSharedState<ChatMessage[]>('analisis_chat', []);
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
   const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
   const [mainOpponent, setMainOpponentState] = useSharedState<string>('analisis_main_opponent', '');
+  const [messageText, setMessageText] = useState('');
+  const [selectedPlayerRecipients, setSelectedPlayerRecipients] = useState<string[]>([]);
+  const [brevoStatus, setBrevoStatus] = useState('');
+  const [sendingBrevo, setSendingBrevo] = useState(false);
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
   const setMainOpponent = (val: string) => setMainOpponentState(val);
 
-  const analysisCuts = useMemo(() => {
-    const cutsArray: AnalysisCut[] = Array.isArray(analysisCutsRaw)
+  useEffect(() => {
+    supabase
+      .from('app_users')
+      .select('id, email, username, role, player_id')
+      .then(({ data }) => {
+        if (data) setUsers(data as AppUserInfo[]);
+      });
+  }, []);
+
+  const allCuts = useMemo<AnalysisCut[]>(() => {
+    return Array.isArray(analysisCutsRaw)
       ? analysisCutsRaw
       : Object.values(analysisCutsRaw).flat();
+  }, [analysisCutsRaw]);
 
-    return cutsArray.reduce<AnalysisCutsMap>((map, cut) => {
+  const visibleCuts = useMemo<AnalysisCut[]>(() => {
+    if (user?.role === 'cuerpo_tecnico' || user?.role === 'SUPER_ADMIN') {
+      return allCuts;
+    }
+    if (user?.role === 'jugador' && user.player_id) {
+      return allCuts.filter((cut) => !cut.player_id || cut.player_id === user.player_id);
+    }
+    return [];
+  }, [allCuts, user]);
+
+  const analysisCuts = useMemo<AnalysisCutsMap>(() => {
+    return visibleCuts.reduce<AnalysisCutsMap>((map, cut) => {
       const key = TACTICAL_CATEGORIES.some((cat) => cat.id === cut.categoryId)
         ? cut.categoryId
         : 'otros';
       map[key] = [...(map[key] || []), cut];
       return map;
     }, {});
-  }, [analysisCutsRaw]);
+  }, [visibleCuts]);
+
+  const involvedPlayerIds = useMemo(() => {
+    return Array.from(new Set(allCuts.filter((cut) => cut.player_id).map((cut) => cut.player_id!)));
+  }, [allCuts]);
+
+  const involvedPlayers = useMemo(() => {
+    return involvedPlayerIds
+      .map((playerId) => ({
+        id: playerId,
+        name: jugadores.find((j) => j.id === playerId)?.nombre || `Jugador ${playerId}`,
+        email: users.find((u) => u.player_id === playerId)?.email || '',
+      }))
+      .filter((p) => p.email || true);
+  }, [involvedPlayerIds, jugadores, users]);
+
+  const staffAdmins = useMemo(() => {
+    return users.filter((u) => u.role === 'cuerpo_tecnico' || u.role === 'SUPER_ADMIN');
+  }, [users]);
+
+  const visibleChatMessages = useMemo(() => {
+    if (user?.role === 'cuerpo_tecnico' || user?.role === 'SUPER_ADMIN') {
+      return chatMessages;
+    }
+    if (user?.role === 'jugador' && user.player_id) {
+      return chatMessages.filter((message) =>
+        message.recipients.includes(`player:${user.player_id}`) || message.recipients.includes('all_players')
+      );
+    }
+    return [];
+  }, [chatMessages, user]);
+
+  const sendChatMessage = () => {
+    const text = messageText.trim();
+    if (!text || !user) return;
+
+    const recipientIds = selectedPlayerRecipients.length > 0
+      ? selectedPlayerRecipients
+      : involvedPlayerIds;
+
+    const recipients = ['staff_admin', ...recipientIds.map((id) => `player:${id}`)];
+
+    const message: ChatMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      senderId: user.id,
+      senderName: user.username,
+      senderRole: user.role,
+      text,
+      recipients,
+      createdAt: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [message, ...prev]);
+    setMessageText('');
+    setSelectedPlayerRecipients([]);
+  };
+
+  const getPlayerName = (playerId: string) => {
+    return jugadores.find((j) => j.id === playerId)?.nombre || users.find((u) => u.player_id === playerId)?.username || 'Jugador';
+  };
+
+  const sendBrevoNotification = async () => {
+    const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
+    const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
+    const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
+
+    if (!key || !senderEmail) {
+      setBrevoStatus('Falta configurar VITE_BREVO_API_KEY o VITE_BREVO_SENDER_EMAIL.');
+      return;
+    }
+
+    const recipients = [
+      ...new Set([
+        ...staffAdmins.map((u) => u.email),
+        ...involvedPlayers.map((p) => p.email).filter(Boolean),
+      ]),
+    ].filter(Boolean) as string[];
+
+    if (recipients.length === 0) {
+      setBrevoStatus('No hay destinatarios configurados para Brevo.');
+      return;
+    }
+
+    setSendingBrevo(true);
+    setBrevoStatus('Enviando notificación...');
+
+    try {
+      const messageText = visibleChatMessages.length > 0
+        ? visibleChatMessages[0].text
+        : 'Se ha publicado una nueva conversación en el análisis de partido.';
+
+      const template = `Se ha generado una conversación en Análisis de Partido. Revisa la app para ver los mensajes completos.\n\nMensaje principal:\n${messageText}`;
+
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          sender: { email: senderEmail, name: senderName || 'Mi Club' },
+          to: recipients.map((email) => ({ email })),
+          subject: 'Notificación interna de análisis de partido',
+          htmlContent: `<p>${template.replace(/\n/g, '<br/>')}</p>`,
+          textContent: template,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        setBrevoStatus(`Error Brevo: ${response.status} ${body}`);
+      } else {
+        setBrevoStatus('Notificación enviada correctamente por Brevo.');
+      }
+    } catch (error) {
+      setBrevoStatus(`Error enviando Brevo: ${error}`);
+    } finally {
+      setSendingBrevo(false);
+    }
+  };
 
   const sendToArchive = () => {
     if (!mainVideoUrl || !mainOpponent) return;
@@ -207,6 +374,103 @@ function AnalisisDePartido() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="card chat-card">
+        <div className="section-header">
+          <div>
+            <h2>Chat de análisis</h2>
+            <small>Comunicación interna entre cuerpo técnico, administrador y jugadores implicados</small>
+          </div>
+          <span className="badge">{visibleChatMessages.length} mensajes</span>
+        </div>
+
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'grid', gap: '0.75rem', padding: '0.75rem', background: '#111327', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 240 }}>
+                <strong>Jugadores implicados</strong>
+                <p style={{ margin: '0.25rem 0 0', color: '#9ca3af', fontSize: '0.9rem' }}>
+                  Sólo los jugadores asignados a los cortes pueden ver los mensajes.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button type="button" className="secondary-button" onClick={sendBrevoNotification} disabled={sendingBrevo || !(import.meta.env as any).VITE_BREVO_API_KEY}>
+                  {sendingBrevo ? 'Enviando Brevo...' : 'Enviar por Brevo'}
+                </button>
+                <span style={{ alignSelf: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>{brevoStatus}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              <label style={{ color: '#d1d5db', fontSize: '0.95rem' }}>Selecciona jugadores destinatarios</label>
+              <div style={{ display: 'grid', gap: '0.35rem' }}>
+                {involvedPlayers.length === 0 ? (
+                  <small style={{ color: '#9ca3af' }}>No hay jugadores asignados todavía.</small>
+                ) : (
+                  involvedPlayers.map((player) => (
+                    <label key={player.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e5e7eb' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedPlayerRecipients.includes(player.id)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...selectedPlayerRecipients, player.id]
+                            : selectedPlayerRecipients.filter((id) => id !== player.id);
+                          setSelectedPlayerRecipients(next);
+                        }}
+                      />
+                      {player.name}
+                    </label>
+                  ))
+                )}
+              </div>
+              <small style={{ color: '#9ca3af' }}>
+                Si no seleccionas ningún jugador, el mensaje se envía a todos los jugadores implicados actualmente.
+              </small>
+            </div>
+
+            <div>
+              <textarea
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="Escribe un mensaje para el chat interno..."
+                rows={4}
+                style={{ width: '100%', borderRadius: '10px', padding: '0.85rem', border: '1px solid #2d3748', background: '#0f172a', color: '#f8fafc' }}
+              />
+              <button type="button" className="primary-button" onClick={sendChatMessage} style={{ marginTop: '0.75rem' }}>
+                Enviar mensaje
+              </button>
+            </div>
+          </div>
+
+          <div style={{ background: '#0f172a', borderRadius: '12px', padding: '0.75rem', minHeight: '220px', maxHeight: '360px', overflowY: 'auto' }}>
+            {visibleChatMessages.length === 0 ? (
+              <p style={{ color: '#9ca3af', margin: 0 }}>No hay mensajes aún. Envía el primero.</p>
+            ) : (
+              visibleChatMessages.map((message) => (
+                <div key={message.id} style={{ marginBottom: '0.85rem', padding: '0.75rem', borderRadius: '10px', background: '#111827' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: '#f8fafc' }}>{message.senderName}</strong>
+                    <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{new Date(message.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div style={{ color: '#d1d5db', margin: '0.5rem 0' }}>{message.text}</div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#7c3aed', fontSize: '0.82rem' }}>{message.senderRole}</span>
+                    {message.recipients.includes('staff_admin') && (
+                      <span style={{ color: '#38bdf8', fontSize: '0.82rem' }}>Cuerpo técnico / admin</span>
+                    )}
+                    {message.recipients.filter((recipient) => recipient.startsWith('player:')).map((recipient) => (
+                      <span key={recipient} style={{ color: '#34d399', fontSize: '0.82rem' }}>
+                        {getPlayerName(recipient.replace('player:', ''))}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
