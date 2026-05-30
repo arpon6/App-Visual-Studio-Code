@@ -23,6 +23,8 @@ type ChatMessage = {
   senderRole: UserRole;
   text: string;
   recipients: string[];
+  relatedCutId?: string | null;
+  sent?: boolean;
   createdAt: string;
 };
 
@@ -100,6 +102,8 @@ function AnalisisDePartido() {
   const [selectedPlayerRecipients, setSelectedPlayerRecipients] = useState<string[]>([]);
   const [brevoStatus, setBrevoStatus] = useState('');
   const [sendingBrevo, setSendingBrevo] = useState(false);
+  const [openConversationId, setOpenConversationId] = useState<string | null>(null);
+  const [cutMessageText, setCutMessageText] = useState('');
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
@@ -170,7 +174,7 @@ function AnalisisDePartido() {
     return [];
   }, [chatMessages, user]);
 
-  const sendChatMessage = () => {
+  const sendChatMessage = (relatedCutId?: string | null) => {
     const text = messageText.trim();
     if (!text || !user) return;
 
@@ -187,6 +191,8 @@ function AnalisisDePartido() {
       senderRole: user.role,
       text,
       recipients,
+      relatedCutId: relatedCutId ?? undefined,
+      sent: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -194,6 +200,84 @@ function AnalisisDePartido() {
     setMessageText('');
     setSelectedPlayerRecipients([]);
   };
+
+    const sendCutMessageFor = (cutId: string, cutPlayerId?: string | null) => {
+      const text = cutMessageText.trim();
+      if (!text || !user) return;
+
+      const recipients = cutPlayerId ? ['staff_admin', `player:${cutPlayerId}`] : ['staff_admin', 'all_players'];
+
+      const message: ChatMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        senderId: user.id,
+        senderName: user.username,
+        senderRole: user.role,
+        text,
+        recipients,
+        relatedCutId: cutId,
+        sent: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      setChatMessages([message, ...chatMessages]);
+      setCutMessageText('');
+      setOpenConversationId(cutId);
+    };
+
+  // Envío automático por Brevo para mensajes nuevos no marcados como enviados
+  useEffect(() => {
+    const unsent = chatMessages.filter((m) => !m.sent);
+    if (unsent.length === 0) return;
+
+    unsent.forEach(async (m) => {
+      const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
+      const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
+      const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
+      if (!key || !senderEmail) {
+        console.warn('Brevo no configurado, marcando como enviado para evitar reintentos.');
+        const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
+        setChatMessages(next);
+        return;
+      }
+
+      const recipients = new Set<string>();
+      if (m.recipients.includes('staff_admin')) {
+        staffAdmins.forEach((u) => { if (u.email) recipients.add(u.email); });
+      }
+      m.recipients.filter(r => r.startsWith('player:')).forEach((r) => {
+        const pid = r.replace('player:', '');
+        const u = users.find((x) => String(x.player_id) === String(pid));
+        if (u?.email) recipients.add(u.email);
+      });
+
+      const recs = Array.from(recipients).filter(Boolean) as string[];
+      if (recs.length === 0) {
+        const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
+        setChatMessages(next);
+        return;
+      }
+
+      try {
+        await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            sender: { email: senderEmail, name: senderName || 'Mi Club' },
+            to: recs.map((email) => ({ email })),
+            subject: `Nuevo mensaje en Análisis de Partido de ${m.senderName}`,
+            htmlContent: `<p>${m.text.replace(/\n/g, '<br/>')}</p>`,
+            textContent: m.text,
+          }),
+        });
+      } catch (err) {
+        console.error('Error enviando Brevo', err);
+      }
+
+      const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
+      setChatMessages(next);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMessages, users, staffAdmins]);
 
   const getPlayerName = (playerId: string) => {
     return jugadores.find((j) => j.id === playerId)?.nombre || users.find((u) => u.player_id === playerId)?.username || 'Jugador';
@@ -360,12 +444,57 @@ function AnalisisDePartido() {
                 </button>
                 {activeCutIndex === index && cuts.length > 0 && (
                   <div style={{ padding: '0.75rem 1rem', display: 'grid', gap: '0.5rem' }}>
-                    {cuts.map((cut) => (
-                      <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                        <span>{cut.label}</span>
-                        <span style={{ color: '#7f96bc' }}>{cut.start}s → {cut.end}s</span>
-                      </div>
-                    ))}
+                    {cuts.map((cut) => {
+                      const cutMessages = visibleChatMessages.filter((m) => m.relatedCutId === cut.id);
+                      const isConvOpen = openConversationId === cut.id;
+                      return (
+                        <div key={cut.id} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'grid', gap: '0.5rem', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <strong>{cut.label}</strong>
+                              <div style={{ color: '#7f96bc', fontSize: '0.9rem' }}>{cut.start}s → {cut.end}s</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button type="button" className="secondary-button" onClick={() => setOpenConversationId(isConvOpen ? null : cut.id)}>
+                                {isConvOpen ? 'Cerrar conversación' : 'Abrir conversación'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isConvOpen && (
+                            <div style={{ background: '#0b1220', padding: '0.6rem', borderRadius: '8px' }}>
+                              <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
+                                {cutMessages.length === 0 ? (
+                                  <small style={{ color: '#9ca3af' }}>No hay mensajes para este corte.</small>
+                                ) : (
+                                  cutMessages.map((m) => (
+                                    <div key={m.id} style={{ padding: '0.4rem', borderRadius: '6px', background: '#071025' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <strong style={{ color: '#f8fafc' }}>{m.senderName}</strong>
+                                        <small style={{ color: '#9ca3af' }}>{new Date(m.createdAt).toLocaleString()}</small>
+                                      </div>
+                                      <div style={{ color: '#d1d5db', marginTop: 6 }}>{m.text}</div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                  <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, cut.player_id)}>
+                                    Enviar a destinatarios
+                                  </button>
+                                  <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); setOpenConversationId(null); }}>
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {activeCutIndex === index && cuts.length === 0 && (

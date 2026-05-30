@@ -156,6 +156,9 @@ function CortadorDeVideo() {
   const [editingShortcutValue, setEditingShortcutValue] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [editingCutId, setEditingCutId] = useState<string | null>(null);
+  const [editStartValue, setEditStartValue] = useState<number | null>(null);
+  const [editEndValue, setEditEndValue] = useState<number | null>(null);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -435,7 +438,7 @@ function CortadorDeVideo() {
           {isFullscreen && (
             <div className="fullscreen-overlay">
               {categories.map((cat) => (
-                <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)}>
+                <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)} style={{ padding: '6px 8px', fontSize: '12px', minWidth: 100 }}>
                   <span className="fsc-label">{cat.label}</span>
                   {cat.shortcut && <span className="fsc-shortcut">{cat.shortcut}</span>}
                 </button>
@@ -542,11 +545,35 @@ function CortadorDeVideo() {
                           ))}
                         </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
+                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+
+              {editingCutId && (
+                (() => {
+                  const c = cuts.find((x) => x.id === editingCutId);
+                  if (!c) return null;
+                  return (
+                    <div style={{ marginTop: 8, padding: '0.5rem', background: '#0f172a', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <label style={{ color: '#fff' }}>Inicio (s)</label>
+                        <input type="number" value={editStartValue ?? 0} onChange={(e) => setEditStartValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
+                        <label style={{ color: '#fff' }}>Fin (s)</label>
+                        <input type="number" value={editEndValue ?? 0} onChange={(e) => setEditEndValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
+                        <button type="button" className="primary-button" onClick={() => {
+                          if (editStartValue == null || editEndValue == null) return;
+                          setCuts(prev => prev.map(x => x.id === editingCutId ? { ...x, start: editStartValue, end: editEndValue } : x));
+                          setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
+                        }}>Guardar</button>
+                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
           ))}
