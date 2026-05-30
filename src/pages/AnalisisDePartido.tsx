@@ -568,7 +568,7 @@ function AnalisisDePartido() {
                 rows={4}
                 style={{ width: '100%', borderRadius: '10px', padding: '0.85rem', border: '1px solid #2d3748', background: '#0f172a', color: '#f8fafc' }}
               />
-              <button type="button" className="primary-button" onClick={sendChatMessage} style={{ marginTop: '0.75rem' }}>
+              <button type="button" className="primary-button" onClick={() => sendChatMessage()} style={{ marginTop: '0.75rem' }}>
                 Enviar mensaje
               </button>
             </div>
