@@ -109,6 +109,18 @@ function formatDuration(seconds: number) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function parseDuration(input: string): number {
+  if (!input) return 0;
+  input = input.trim();
+  if (/^\d+$/.test(input)) return Number(input);
+  const parts = input.split(':').map(p => p.trim()).filter(Boolean).map(Number).reverse();
+  let secs = 0;
+  if (parts[0]) secs += parts[0];
+  if (parts[1]) secs += parts[1] * 60;
+  if (parts[2]) secs += parts[2] * 3600;
+  return secs;
+}
+
 function loadState(): SavedState {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {} as SavedState; }
 }
@@ -174,6 +186,7 @@ function CortadorDeVideo() {
   const [annotationMode, setAnnotationMode] = useState<'none'|'spot'|'arrow'|'arrow-dashed'|'text'>('none');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const annotationTempRef = useRef<any>(null);
+  const [tempAnnotation, setTempAnnotation] = useState<any>(null);
   const [editingCutId, setEditingCutId] = useState<string | null>(null);
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
@@ -312,6 +325,16 @@ function CortadorDeVideo() {
         ctx.fillStyle = '#00ff8d'; ctx.font = '14px sans-serif'; ctx.fillText(a.text || '', a.x, a.y);
       }
     });
+    // draw temporary annotation if present
+    if (tempAnnotation) {
+      const a = tempAnnotation;
+      if (a.type === 'arrow' || a.type === 'arrow-dashed') {
+        ctx.beginPath(); ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2; if (a.type === 'arrow-dashed') ctx.setLineDash([6,4]);
+        ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke(); ctx.setLineDash([]);
+      } else if (a.type === 'spot') {
+        ctx.beginPath(); ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2; ctx.arc(a.x, a.y, 20, 0, Math.PI*2); ctx.stroke();
+      }
+    }
   }, [editingAnnotations]);
 
   useEffect(() => {
@@ -496,7 +519,18 @@ function CortadorDeVideo() {
               </div>
             </>
           ) : (
-            <input type="file" accept="video/*" onChange={handleFileChange} style={{ color: '#f4f7ff' }} />
+            <div style={{ display: 'grid', gap: 8 }}>
+              <input type="file" accept="video/*" onChange={handleFileChange} style={{ color: '#f4f7ff' }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="text" placeholder="URL pública (ej. Supabase) https://..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} style={{ flex: 1, padding: '0.45rem', borderRadius: 8, border: '1px solid #334155', background: '#081025', color: '#fff' }} />
+                <button type="button" className="secondary-button" onClick={() => {
+                  if (!videoUrl) { setStatusMessage('Introduce una URL válida.'); return; }
+                  setLocalVideoSrc(videoUrl);
+                  setPlayerReady(true);
+                  setStatusMessage('Vídeo cargado desde URL.');
+                }}>Cargar desde URL</button>
+              </div>
+            </div>
           )}
         </div>
         <div className="video-wrapper" ref={videoContainerRef}>
@@ -650,9 +684,7 @@ function CortadorDeVideo() {
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                               />
                             ) : (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111827', color: '#9ca3af' }}>
-                                <span>Vídeo local</span>
-                              </div>
+                              <div style={{ width: '100%', height: '100%', background: '#0b1220' }} />
                             )}
                             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <div style={{ width: 42, height: 42, background: 'rgba(0,0,0,0.6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -681,7 +713,7 @@ function CortadorDeVideo() {
                             <button type="button" className="secondary-button" onClick={() => setEditingAnnotations([])}>Borrar anotaciones</button>
                           </div>
                           <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#071025' }}>
-                            <canvas ref={canvasRef} style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair' }} onClick={(e) => {
+                            <canvas ref={canvasRef} style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair', pointerEvents: 'auto' }} onClick={(e) => {
                               if (annotationMode === 'none') return;
                               const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
                               const x = e.clientX - rect.left;
@@ -692,12 +724,12 @@ function CortadorDeVideo() {
                                 const txt = prompt('Texto de anotación (breve):');
                                 if (txt) setEditingAnnotations(a => [...a, { type: 'text', x, y, text: txt }]);
                               } else if (annotationMode === 'arrow' || annotationMode === 'arrow-dashed') {
-                                if (!annotationTempRef.current) {
-                                  annotationTempRef.current = { x1: x, y1: y };
+                                if (!tempAnnotation) {
+                                  setTempAnnotation({ type: annotationMode, x1: x, y1: y, x2: x, y2: y });
                                 } else {
-                                  const start = annotationTempRef.current;
-                                  setEditingAnnotations(a => [...a, { type: annotationMode, x1: start.x1, y1: start.y1, x2: x, y2: y }]);
-                                  annotationTempRef.current = null;
+                                  // finalize arrow
+                                  setEditingAnnotations(a => [...a, { type: tempAnnotation.type, x1: tempAnnotation.x1, y1: tempAnnotation.y1, x2: x, y2: y }]);
+                                  setTempAnnotation(null);
                                 }
                               }
                             }} />
@@ -730,7 +762,7 @@ function CortadorDeVideo() {
                               frameBorder="0"
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                               allowFullScreen
-                              style={{ width: '100%', height: 200, borderRadius: 8 }}
+                              style={{ width: '100%', height: 360, borderRadius: 8 }}
                             />
                           )}
                           {videoMode === 'file' && localVideoSrc && (
@@ -741,7 +773,7 @@ function CortadorDeVideo() {
                               onLoadedMetadata={() => {
                                 if (previewVideoRef.current) previewVideoRef.current.currentTime = cut.start;
                               }}
-                              style={{ width: '100%', display: 'block', borderRadius: 8 }}
+                              style={{ width: '100%', display: 'block', height: 360, borderRadius: 8 }}
                             />
                           )}
                         </div>
@@ -763,10 +795,10 @@ function CortadorDeVideo() {
                     <div style={{ marginTop: 8, padding: '0.5rem', background: '#0f172a', borderRadius: 8 }}>
                       <div style={{ display: 'grid', gap: '0.5rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <label style={{ color: '#fff', minWidth: 70 }}>Inicio (s)</label>
-                          <input type="number" value={start} onChange={(e) => setEditStartValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
-                          <label style={{ color: '#fff', minWidth: 50 }}>Fin (s)</label>
-                          <input type="number" value={end} onChange={(e) => setEditEndValue(Number(e.target.value) || 0)} style={{ width: 100 }} />
+                          <label style={{ color: '#fff', minWidth: 70 }}>Inicio</label>
+                          <input type="text" value={formatDuration(start)} onChange={(e) => setEditStartValue(parseDuration(e.target.value))} style={{ width: 120 }} />
+                          <label style={{ color: '#fff', minWidth: 50 }}>Fin</label>
+                          <input type="text" value={formatDuration(end)} onChange={(e) => setEditEndValue(parseDuration(e.target.value))} style={{ width: 120 }} />
                         </div>
 
                         <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Arrastra las barras para ajustar Inico/Fin (doble control).</div>
