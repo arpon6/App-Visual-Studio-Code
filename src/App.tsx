@@ -14,7 +14,6 @@ import Estadisticas from './pages/Estadisticas';
 import ResultadosYClasif from './pages/ResultadosYClasif';
 import RepositorioABP from './pages/RepositorioABP';
 import OtrasInformaciones from './pages/OtrasInformaciones';
-import Configuracion from './pages/Configuracion';
 import GestionUsuarios from './pages/GestionUsuarios';
 import Wellness from './pages/Wellness';
 import './App.css';
@@ -22,7 +21,7 @@ import './App.css';
 const ALL_SECTIONS = [
   'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
-  'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones', 'Configuración',
+  'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
   'Gestión de usuarios',
 ] as const;
 
@@ -48,8 +47,6 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Editor de vídeo propio': <CortadorDeVideo />,
   'Editor de vídeo rival': <CortadorDeVideoRival />,
   'Otras Informaciones': <OtrasInformaciones />,
-  'Configuración': <Configuracion />,
-  'Gestión de usuarios': <GestionUsuarios />,
 };
 
 function AppShell() {

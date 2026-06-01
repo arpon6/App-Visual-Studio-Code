@@ -192,7 +192,7 @@ function CortadorDeVideo() {
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
   const [cutName, setCutName] = useState('');
-  const [previewCutId, setPreviewCutId] = useState<string | null>(null);
+  const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -545,6 +545,7 @@ function CortadorDeVideo() {
 
   const handleDeleteCut = (cut: Cut, _categoryLabel: string) => {
     setCuts((prev) => prev.filter((c) => c.id !== cut.id));
+    if (fullscreenPreviewId === cut.id) setFullscreenPreviewId(null);
   };
 
   const getVideoDuration = () => {
@@ -565,6 +566,8 @@ function CortadorDeVideo() {
     ytPlayerRef.current.playVideo();
     setStatusMessage(`Reproduciendo corte: ${formatDuration(cut.start)} → ${formatDuration(cut.end)}`);
   };
+
+  const activePreviewCut = cuts.find(c => c.id === fullscreenPreviewId);
 
   return (
     <section className={`page-section cortador-video-page${focusMode ? ' focus-mode' : ''}`}>
@@ -759,7 +762,7 @@ function CortadorDeVideo() {
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => setPreviewCutId(previewCutId === cut.id ? null : cut.id)}
+                            onClick={() => setFullscreenPreviewId(fullscreenPreviewId === cut.id ? null : cut.id)}
                             style={{ padding: 0, minWidth: 180, minHeight: 100, borderRadius: 12, overflow: 'hidden', position: 'relative', textAlign: 'left' }}
                           >
                             {videoMode === 'url' && videoId ? (
@@ -814,48 +817,31 @@ function CortadorDeVideo() {
                           </div>
                         </div>
                       </div>
-                      <div className="cut-item-actions">
-                        <button type="button" className="secondary-button" onClick={() => setPreviewCutId(previewCutId === cut.id ? null : cut.id)}>
-                          {previewCutId === cut.id ? 'Ocultar vista previa' : 'Ver corte'}
+                      <div className="cut-item-actions" style={{ flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setFullscreenPreviewId(fullscreenPreviewId === cut.id ? null : cut.id)}
+                        >
+                          {fullscreenPreviewId === cut.id ? 'Cerrar vista completa' : 'Ver corte'}
                         </button>
                         <select
                           value={cut.player_id ?? ''}
                           onChange={e => handleAssignPlayer(cut.id, e.target.value || null)}
                           title="Asignar a jugador"
+                          style={{ minWidth: 160, background: '#111827', border: '1px solid #334155', borderRadius: 8, color: '#fff', padding: '0.9rem 1rem' }}
                         >
                           <option value="">Toda la plantilla</option>
                           {jugadores.map((j: any) => (
                             <option key={j.id} value={j.id}>{j.nombre}</option>
                           ))}
                         </select>
-                        <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
-                      </div>                      {previewCutId === cut.id && (
-                        <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', background: '#0b1220', padding: 10 }}>
-                          {videoMode === 'url' && videoId && (
-                            <iframe
-                              title={`Preview ${cut.id}`}
-                              src={`${extractYouTubeVideoId(videoUrl) ? `https://www.youtube.com/embed/${extractYouTubeVideoId(videoUrl)}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0` : ''}`}
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              style={{ width: '100%', height: 360, borderRadius: 8 }}
-                            />
-                          )}
-                          {videoMode === 'file' && localVideoSrc && (
-                            <video
-                              ref={previewVideoRef}
-                              src={localVideoSrc}
-                              controls
-                              onLoadedMetadata={() => {
-                                if (previewVideoRef.current) previewVideoRef.current.currentTime = cut.start;
-                              }}
-                              style={{ width: '100%', display: 'block', height: 360, borderRadius: 8 }}
-                            />
-                          )}
+                      </div>
                         </div>
-                      )}                    </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -908,8 +894,7 @@ function CortadorDeVideo() {
                             setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
                             // refresh preview immediately
                             if (editedId) {
-                              setPreviewCutId(null);
-                              setTimeout(() => setPreviewCutId(editedId), 50);
+                              setFullscreenPreviewId(null);
                             }
                           }}>Guardar</button>
                           <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>

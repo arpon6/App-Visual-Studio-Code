@@ -4,21 +4,29 @@ import { useAuth } from '../lib/AuthContext';
 
 function Inicio() {
   const { user } = useAuth();
-  const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
+  const [badgeUrl, setBadgeUrl] = useState<string | null>(() => localStorage.getItem('mi_club_badge_url'));
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    // Try to load a previously uploaded badge at path 'team_badge.png'
+    if (badgeUrl) return;
     const load = async () => {
       try {
         const { data } = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
-        if (data && data.publicUrl) setBadgeUrl(data.publicUrl);
+        if (data && data.publicUrl) {
+          setBadgeUrl(data.publicUrl);
+          localStorage.setItem('mi_club_badge_url', data.publicUrl);
+        }
       } catch (err) {
         console.warn('No se pudo obtener escudo:', err);
       }
     };
     load();
-  }, []);
+  }, [badgeUrl]);
+
+  const saveBadgeUrl = (url: string) => {
+    setBadgeUrl(url);
+    localStorage.setItem('mi_club_badge_url', url);
+  };
 
   const handleFile = async (f: File | null) => {
     if (!f) return;
@@ -35,7 +43,7 @@ function Inicio() {
       const { error: uploadError } = await supabase.storage.from('fotos').upload(path, f, { cacheControl: '3600', upsert: true });
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('fotos').getPublicUrl(path);
-      if (data && data.publicUrl) setBadgeUrl(data.publicUrl);
+      if (data && data.publicUrl) saveBadgeUrl(data.publicUrl);
     } catch (err) {
       console.error('Error subiendo escudo', err);
       const msg = (err as any)?.message || String(err);
@@ -50,8 +58,7 @@ function Inicio() {
   const [badgeUrlInput, setBadgeUrlInput] = useState('');
   const handleUseUrl = () => {
     if (!badgeUrlInput) return;
-    // allow any URL to be used as preview. Do not attempt to upload.
-    setBadgeUrl(badgeUrlInput);
+    saveBadgeUrl(badgeUrlInput);
   };
 
   return (
@@ -72,41 +79,51 @@ function Inicio() {
             </div>
             <span className="badge">AUTO</span>
           </div>
-          <div className="widget-box" style={{ minHeight: '320px', display: 'grid', placeItems: 'center' }}>
-            <div style={{ width: 520, height: 320, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr 1fr', alignItems: 'center', justifyItems: 'center', gap: 8 }}>
+          <div className="widget-box" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+            <div className="access-ring" style={{ position: 'relative', width: 520, height: 520 }}>
+              <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 90px)' }}>
+                {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc' }}>Escudo</div>}
+              </div>
               {['Inicio','Plantilla','Calendario','Plan de Partido','Análisis de Partido','Editor de vídeo propio','Editor de vídeo rival','Estadísticas'].map((s, i) => {
-                // positions around center: map to cells except center (1,1)
-                const cells = [0,1,2,3,5,6,7,8];
-                const cellIndex = cells[i];
-                const row = Math.floor(cellIndex / 3);
-                const col = cellIndex % 3;
+                const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+                const radius = 210;
+                const x = 260 + Math.cos(angle) * radius;
+                const y = 260 + Math.sin(angle) * radius;
                 return (
-                  <div key={s} style={{ gridColumn: col + 1, gridRow: row + 1 }}>
-                    <button type="button" className="secondary-button" onClick={() => { localStorage.setItem('app_active_section', s); window.dispatchEvent(new CustomEvent('app-navigate', { detail: s })); }}>{s}</button>
-                  </div>
+                  <button
+                    key={s}
+                    type="button"
+                    className="secondary-button access-ring-button"
+                    style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)', minWidth: 120, padding: '10px 12px' }}
+                    onClick={() => { localStorage.setItem('app_active_section', s); window.dispatchEvent(new CustomEvent('app-navigate', { detail: s })); }}
+                  >
+                    {s}
+                  </button>
                 );
               })}
-              <div style={{ gridColumn: 2, gridRow: 2, display: 'grid', placeItems: 'center' }}>
-                <div style={{ width: 160, height: 160, borderRadius: 160, background: '#081025', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                  {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ color: '#7f96bc' }}>Escudo</div>}
+            </div>
+
+            {user?.role !== 'jugador' && (
+              <div className="badge-controls" style={{ width: '100%', display: 'grid', gap: 10, justifyItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', padding: '10px 14px', borderRadius: 14, cursor: 'pointer' }}>
+                    <span>Seleccionar archivo</span>
+                    <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
+                  </label>
+                  {uploading && <div style={{ color: '#7f96bc', alignSelf: 'center' }}>Subiendo...</div>}
                 </div>
-                <div style={{ marginTop: 8 }}>
-                  {user?.role === 'jugador' ? (
-                    <div style={{ color: '#7f96bc' }}>No tienes permiso para cambiar el escudo.</div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0] || null)} />
-                      {uploading && <div style={{ color: '#7f96bc' }}>Subiendo...</div>}
-                    </div>
-                  )}
-                  <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input placeholder="Pegar URL pública del escudo" style={{ width: 260 }} value={badgeUrlInput} onChange={(e) => setBadgeUrlInput(e.target.value)} />
-                    <button type="button" className="secondary-button" onClick={handleUseUrl}>Usar URL</button>
-                  </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+                  <input
+                    placeholder="Pegar URL pública del escudo"
+                    style={{ width: 320, minWidth: 220, padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
+                    value={badgeUrlInput}
+                    onChange={(e) => setBadgeUrlInput(e.target.value)}
+                  />
+                  <button type="button" className="secondary-button" onClick={handleUseUrl}>Usar URL</button>
                 </div>
               </div>
-            </div>
-            <div style={{ marginTop: 10, color: '#7f96bc' }}>Haz clic en un apartado para acceder rápidamente.</div>
+            )}
+            <div style={{ color: '#7f96bc' }}>Haz clic en un apartado para acceder rápidamente.</div>
           </div>
         </div>
       </div>
