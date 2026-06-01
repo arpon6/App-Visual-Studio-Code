@@ -139,18 +139,11 @@ function AnalisisDePartido() {
   }, [analysisCutsRaw]);
 
   const visibleCuts = useMemo<AnalysisCut[]>(() => {
-    if (user?.role === 'cuerpo_tecnico' || user?.role === 'SUPER_ADMIN') {
-      return allCuts;
-    }
-    if (user?.role === 'jugador' && user.player_id) {
-      const playerId = user.player_id;
-      return allCuts.filter((cut) => {
-        const ids = getCutPlayerIds(cut);
-        return !ids || ids.includes(playerId);
-      });
-    }
-    return [];
-  }, [allCuts, user]);
+    return allCuts.filter((cut) => {
+      const ids = getCutPlayerIds(cut);
+      return !ids;
+    });
+  }, [allCuts]);
 
   const analysisCuts = useMemo<AnalysisCutsMap>(() => {
     return visibleCuts.reduce<AnalysisCutsMap>((map, cut) => {

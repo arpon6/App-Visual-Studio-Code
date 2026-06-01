@@ -199,6 +199,7 @@ function CortadorDeVideo() {
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
   const [cutName, setCutName] = useState('');
   const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
+  const [playingCutId, setPlayingCutId] = useState<string | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -567,6 +568,7 @@ function CortadorDeVideo() {
   };
 
   const handlePlayCut = (cut: Cut) => {
+    setPlayingCutId(cut.id);
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
       localVideoRef.current.play();
@@ -861,6 +863,30 @@ function CortadorDeVideo() {
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>
+                      {playingCutId === cut.id && (
+                        <div style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
+                          {videoMode === 'file' && localVideoSrc ? (
+                            <video
+                              key={`preview-${cut.id}`}
+                              src={localVideoSrc}
+                              controls
+                              autoPlay
+                              onLoadedMetadata={(e) => { e.currentTarget.currentTime = cut.start; }}
+                              style={{ width: '100%', display: 'block' }}
+                            />
+                          ) : videoMode === 'url' && videoId ? (
+                            <iframe
+                              title={`Corte ${cut.id}`}
+                              src={`https://www.youtube.com/embed/${videoId}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              style={{ width: '100%', height: 260, border: 'none' }}
+                            />
+                          ) : (
+                            <div style={{ padding: 12, color: '#9ca3af' }}>No hay vídeo cargado para mostrar este corte.</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
