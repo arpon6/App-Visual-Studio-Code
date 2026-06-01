@@ -839,8 +839,6 @@ function CortadorDeVideo() {
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>

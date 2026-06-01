@@ -47,6 +47,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Editor de vídeo propio': <CortadorDeVideo />,
   'Editor de vídeo rival': <CortadorDeVideoRival />,
   'Otras Informaciones': <OtrasInformaciones />,
+  'Gestión de usuarios': <GestionUsuarios />,
 };
 
 function AppShell() {
