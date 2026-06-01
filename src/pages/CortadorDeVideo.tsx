@@ -12,8 +12,14 @@ declare global {
 
 type Category = { id: string; label: string; shortcut: string };
 type Annotation = any;
-type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null; annotations?: Annotation[] };
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null; player_ids?: string[] | null; annotations?: Annotation[] };
 type SavedState = { videoMode: VideoMode };
+
+const getCutPlayerIds = (cut: Cut): string[] | null => {
+  if (cut.player_ids && cut.player_ids.length > 0) return cut.player_ids;
+  if (cut.player_id) return [cut.player_id];
+  return null;
+};
 type VideoMode = 'url' | 'file';
 
 const STORAGE_KEY = 'mi_club_cortador_video_v1';
@@ -462,6 +468,7 @@ function CortadorDeVideo() {
         start, end,
         createdAt: new Date().toISOString(),
         player_id: null,
+        player_ids: null,
       };
       setCuts((prev) => [cut, ...prev]);
       setStatusMessage(`Corte guardado en ${category.label}: ${formatDuration(start)} → ${formatDuration(end)}`);
@@ -492,6 +499,7 @@ function CortadorDeVideo() {
       end,
       createdAt: new Date().toISOString(),
       player_id: null,
+      player_ids: null,
     };
 
     setCuts(prev => [cut, ...prev]);
@@ -499,8 +507,12 @@ function CortadorDeVideo() {
     setCutName('');
   };
 
-  const handleAssignPlayer = (cutId: string, playerId: string | null) => {
-    setCuts(prev => prev.map(c => c.id === cutId ? { ...c, player_id: playerId } : c));
+  const handleAssignPlayers = (cutId: string, playerIds: string[] | null) => {
+    setCuts(prev => prev.map(c => c.id === cutId ? {
+      ...c,
+      player_ids: playerIds,
+      player_id: playerIds && playerIds.length === 1 ? playerIds[0] : null,
+    } : c));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -762,7 +774,7 @@ function CortadorDeVideo() {
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => setFullscreenPreviewId(fullscreenPreviewId === cut.id ? null : cut.id)}
+                            onClick={() => handlePlayCut(cut)}
                             style={{ padding: 0, minWidth: 180, minHeight: 100, borderRadius: 12, overflow: 'hidden', position: 'relative', textAlign: 'left' }}
                           >
                             {videoMode === 'url' && videoId ? (
@@ -817,25 +829,35 @@ function CortadorDeVideo() {
                           </div>
                         </div>
                       </div>
-                      <div className="cut-item-actions" style={{ flexWrap: 'wrap' }}>
+                      <div className="cut-item-actions" style={{ flexWrap: 'wrap', gap: 10 }}>
                         <button
                           type="button"
                           className="secondary-button"
-                          onClick={() => setFullscreenPreviewId(fullscreenPreviewId === cut.id ? null : cut.id)}
+                          onClick={() => handlePlayCut(cut)}
                         >
-                          {fullscreenPreviewId === cut.id ? 'Cerrar vista completa' : 'Ver corte'}
+                          Reproducir corte
                         </button>
-                        <select
-                          value={cut.player_id ?? ''}
-                          onChange={e => handleAssignPlayer(cut.id, e.target.value || null)}
-                          title="Asignar a jugador"
-                          style={{ minWidth: 160, background: '#111827', border: '1px solid #334155', borderRadius: 8, color: '#fff', padding: '0.9rem 1rem' }}
-                        >
-                          <option value="">Toda la plantilla</option>
-                          {jugadores.map((j: any) => (
-                            <option key={j.id} value={j.id}>{j.nombre}</option>
-                          ))}
-                        </select>
+                        <div style={{ minWidth: 240, display: 'grid', gap: 6 }}>
+                          <label style={{ color: '#9ca3af', fontSize: '0.85rem', margin: 0 }}>Asignar a jugador(es)</label>
+                          <select
+                            multiple
+                            size={Math.min(6, jugadores.length || 4)}
+                            value={getCutPlayerIds(cut) || []}
+                            onChange={(e) => {
+                              const selected = Array.from(e.target.selectedOptions).map((option) => option.value);
+                              handleAssignPlayers(cut.id, selected.length > 0 ? selected : null);
+                            }}
+                            title="Selecciona jugador(es)"
+                            style={{ minWidth: 240, background: '#111827', border: '1px solid #334155', borderRadius: 8, color: '#fff', padding: '0.75rem', minHeight: 120, appearance: 'none' }}
+                          >
+                            {jugadores.map((j: any) => (
+                              <option key={j.id} value={j.id}>{j.nombre}</option>
+                            ))}
+                          </select>
+                          <button type="button" className="secondary-button" style={{ width: '100%' }} onClick={() => handleAssignPlayers(cut.id, null)}>
+                            Toda la plantilla
+                          </button>
+                        </div>
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>

@@ -12,9 +12,21 @@ type AnalysisCut = {
   end: number;
   createdAt: string;
   player_id?: string | null;
+  player_ids?: string[] | null;
 };
 
 type AnalysisCutsMap = Record<string, AnalysisCut[]>;
+
+const getCutPlayerIds = (cut: AnalysisCut): string[] | null => {
+  if (cut.player_ids && cut.player_ids.length > 0) return cut.player_ids;
+  if (cut.player_id) return [cut.player_id];
+  return null;
+};
+
+const getCutPlayerRecipientIds = (cut: AnalysisCut): string[] | null => {
+  const ids = getCutPlayerIds(cut);
+  return ids && ids.length > 0 ? ids : null;
+};
 
 type ChatMessage = {
   id: string;
@@ -131,7 +143,11 @@ function AnalisisDePartido() {
       return allCuts;
     }
     if (user?.role === 'jugador' && user.player_id) {
-      return allCuts.filter((cut) => !cut.player_id || cut.player_id === user.player_id);
+      const playerId = user.player_id;
+      return allCuts.filter((cut) => {
+        const ids = getCutPlayerIds(cut);
+        return !ids || ids.includes(playerId);
+      });
     }
     return [];
   }, [allCuts, user]);
@@ -147,7 +163,10 @@ function AnalisisDePartido() {
   }, [visibleCuts]);
 
   const involvedPlayerIds = useMemo(() => {
-    return Array.from(new Set(allCuts.filter((cut) => cut.player_id).map((cut) => cut.player_id!)));
+    return Array.from(new Set(allCuts
+      .map((cut) => getCutPlayerIds(cut))
+      .flat()
+      .filter((id): id is string => !!id)));
   }, [allCuts]);
 
   const involvedPlayers = useMemo(() => {
@@ -205,11 +224,13 @@ function AnalisisDePartido() {
     setSelectedPlayerRecipients([]);
   };
 
-    const sendCutMessageFor = (cutId: string, cutPlayerId?: string | null) => {
+    const sendCutMessageFor = (cutId: string, cutPlayerIds?: string[] | null) => {
       const text = cutMessageText.trim();
       if (!text || !user) return;
 
-      const recipients = cutPlayerId ? ['staff_admin', `player:${cutPlayerId}`] : ['staff_admin', 'all_players'];
+      const recipients = cutPlayerIds && cutPlayerIds.length > 0
+        ? ['staff_admin', ...cutPlayerIds.map((id) => `player:${id}`)]
+        : ['staff_admin', 'all_players'];
 
       const message: ChatMessage = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -533,7 +554,7 @@ function AnalisisDePartido() {
                             <div style={{ marginTop: '0.75rem' }}>
                               <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
                               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, cut.player_id)}>
+                                <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, getCutPlayerIds(cut))}>
                                   Enviar a destinatarios
                                 </button>
                                 <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); }}>

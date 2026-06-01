@@ -8,7 +8,6 @@ function Inicio() {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    if (badgeUrl) return;
     const load = async () => {
       try {
         const { data } = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
@@ -21,7 +20,7 @@ function Inicio() {
       }
     };
     load();
-  }, [badgeUrl]);
+  }, []);
 
   const saveBadgeUrl = (url: string) => {
     setBadgeUrl(url);
@@ -81,8 +80,8 @@ function Inicio() {
           </div>
           <div className="widget-box" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
             <div className="access-ring" style={{ position: 'relative', width: 520, height: 520 }}>
-              <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 90px)' }}>
-                {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc' }}>Escudo</div>}
+              <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
+                {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
               </div>
               {['Inicio','Plantilla','Calendario','Plan de Partido','Análisis de Partido','Editor de vídeo propio','Editor de vídeo rival','Estadísticas'].map((s, i) => {
                 const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
