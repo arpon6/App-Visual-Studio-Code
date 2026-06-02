@@ -405,8 +405,12 @@ function AnalisisDePartido() {
     }
 
     if (message.recipients.includes('all_players')) {
-      const playerIds = getCutPlayerIds(cut);
-      if (playerIds) {
+      let playerIds: string[] | null = null;
+      if (message.relatedCutId) {
+        const relatedCut = allCuts.find((c) => c.id === message.relatedCutId);
+        if (relatedCut) playerIds = getCutPlayerIds(relatedCut);
+      }
+      if (playerIds && playerIds.length > 0) {
         playerIds.forEach((pId) => {
           const user = users.find((u) => u.player_id === pId && u.email);
           if (user) recipients.add(user.email);
