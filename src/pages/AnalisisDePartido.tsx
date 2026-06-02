@@ -101,6 +101,13 @@ const previousMatches: PreviousMatch[] = [
 function AnalisisDePartido() {
   const { user } = useAuth();
   const jugadores = usePlantilla();
+  const getPlayerName = (playerId: string | null | undefined): string => {
+    if (!playerId) return 'Sin asignar';
+    const player = jugadores.find((j) => j.id === playerId);
+    if (player) return player.nombre;
+    const user = users.find((u) => u.player_id === playerId);
+    return user?.username || `Jugador ${playerId}`;
+  };
   const [users, setUsers] = useState<AppUserInfo[]>([]);
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
@@ -287,13 +294,7 @@ function AnalisisDePartido() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages, users, staffAdmins]);
 
-  const getPlayerName = (playerId: string | null | undefined): string => {
-    if (!playerId) return 'Sin asignar';
-    const player = jugadores.find((j) => j.id === playerId);
-    if (player) return player.nombre;
-    const user = users.find((u) => u.player_id === playerId);
-    return user?.username || `Jugador ${playerId}`;
-  };
+  // moved getPlayerName earlier to avoid temporal-dead-zone at runtime
 
   const sendBrevoNotification = async () => {
     const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
