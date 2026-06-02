@@ -101,11 +101,17 @@ function DesarrolloIndividual() {
   const [users, setUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    supabase
-      .from('app_users')
-      .select('id, email, username, role, player_id')
-      .then(({ data }) => { if (data) setUsers(data as any[]); })
-      .catch(() => {});
+    const loadUsers = async () => {
+      try {
+        const { data } = await supabase
+          .from('app_users')
+          .select('id, email, username, role, player_id');
+        if (data) setUsers(data as any[]);
+      } catch (err) {
+        console.warn('Error loading app_users:', err);
+      }
+    };
+    loadUsers();
   }, []);
 
   const getPlayerNames = (cut: VideoCorte) => {
