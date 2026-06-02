@@ -4,16 +4,28 @@ import { useAuth } from '../lib/AuthContext';
 
 function Inicio() {
   const { user } = useAuth();
-  const [badgeUrl, setBadgeUrl] = useState<string | null>(() => localStorage.getItem('mi_club_badge_url'));
+  const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
+        // Intenta cargar de Supabase primero (compartido entre perfiles)
+        const { data: configs, error } = await supabase
+          .from('app_config')
+          .select('value')
+          .eq('key', 'team_badge_url')
+          .maybeSingle();
+        
+        if (configs && configs.value) {
+          setBadgeUrl(configs.value);
+          return;
+        }
+        
+        // Si no hay en la base de datos, intenta desde Storage
         const { data } = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
         if (data && data.publicUrl) {
           setBadgeUrl(data.publicUrl);
-          localStorage.setItem('mi_club_badge_url', data.publicUrl);
         }
       } catch (err) {
         console.warn('No se pudo obtener escudo:', err);
@@ -22,9 +34,17 @@ function Inicio() {
     load();
   }, []);
 
-  const saveBadgeUrl = (url: string) => {
+  const saveBadgeUrl = async (url: string) => {
     setBadgeUrl(url);
-    localStorage.setItem('mi_club_badge_url', url);
+    // Guarda en Supabase para que sea accesible desde cualquier perfil
+    try {
+      const { error } = await supabase
+        .from('app_config')
+        .upsert({ key: 'team_badge_url', value: url }, { onConflict: 'key' });
+      if (error) console.error('Error saving badge:', error);
+    } catch (err) {
+      console.error('Error saving badge to Supabase:', err);
+    }
   };
 
   const handleFile = async (f: File | null) => {
@@ -55,9 +75,9 @@ function Inicio() {
   };
 
   const [badgeUrlInput, setBadgeUrlInput] = useState('');
-  const handleUseUrl = () => {
+  const handleUseUrl = async () => {
     if (!badgeUrlInput) return;
-    saveBadgeUrl(badgeUrlInput);
+    await saveBadgeUrl(badgeUrlInput);
   };
 
   return (

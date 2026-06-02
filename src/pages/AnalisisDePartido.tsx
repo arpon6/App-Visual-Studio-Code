@@ -166,7 +166,7 @@ function AnalisisDePartido() {
     return involvedPlayerIds
       .map((playerId) => ({
         id: playerId,
-        name: jugadores.find((j) => j.id === playerId)?.nombre || `Jugador ${playerId}`,
+        name: getPlayerName(playerId),
         email: users.find((u) => u.player_id === playerId)?.email || '',
       }))
       .filter((p) => p.email || true);
@@ -287,8 +287,12 @@ function AnalisisDePartido() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages, users, staffAdmins]);
 
-  const getPlayerName = (playerId: string) => {
-    return jugadores.find((j) => j.id === playerId)?.nombre || users.find((u) => u.player_id === playerId)?.username || 'Jugador';
+  const getPlayerName = (playerId: string | null | undefined): string => {
+    if (!playerId) return 'Sin asignar';
+    const player = jugadores.find((j) => j.id === playerId);
+    if (player) return player.nombre;
+    const user = users.find((u) => u.player_id === playerId);
+    return user?.username || `Jugador ${playerId}`;
   };
 
   const sendBrevoNotification = async () => {
@@ -401,7 +405,15 @@ function AnalisisDePartido() {
     }
 
     if (message.recipients.includes('all_players')) {
-      users.filter((u) => u.role === 'jugador' && u.email).forEach((u) => recipients.add(u.email));
+      const playerIds = getCutPlayerIds(cut);
+      if (playerIds) {
+        playerIds.forEach((pId) => {
+          const user = users.find((u) => u.player_id === pId && u.email);
+          if (user) recipients.add(user.email);
+        });
+      } else {
+        users.filter((u) => u.role === 'jugador' && u.email).forEach((u) => recipients.add(u.email));
+      }
     }
 
     message.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
