@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
 import { usePlantilla } from '../lib/usePlantilla';
+import { supabase } from '../lib/supabaseClient';
 
 interface VideoCorte {
   id: string;
@@ -97,10 +98,26 @@ function DesarrolloIndividual() {
     }, {});
   }, [visibleCortes]);
 
+  const [users, setUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('app_users')
+      .select('id, email, username, role, player_id')
+      .then(({ data }) => { if (data) setUsers(data as any[]); })
+      .catch(() => {});
+  }, []);
+
   const getPlayerNames = (cut: VideoCorte) => {
     const ids = getCutPlayerIds(cut);
     if (!ids) return 'Toda la plantilla';
-    return ids.map((id) => jugadores.find((j) => j.id === id)?.nombre || `Jugador ${id}`).join(', ');
+    return ids.map((id) => {
+      const pj = jugadores.find((j) => j.id === id);
+      if (pj) return pj.nombre;
+      const fromUsers = users.find((u: any) => String(u.player_id) === String(id));
+      if (fromUsers) return fromUsers.username || `Jugador ${id}`;
+      return `Jugador ${id}`;
+    }).join(', ');
   };
 
   const toEmbedUrl = (url: string) => {

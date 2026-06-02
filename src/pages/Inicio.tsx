@@ -16,17 +16,37 @@ function Inicio() {
           .select('value')
           .eq('key', 'team_badge_url')
           .maybeSingle();
-        
+
         if (configs && configs.value) {
           setBadgeUrl(configs.value);
           return;
         }
-        
-        // Si no hay en la base de datos, intenta desde Storage
-        const { data } = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
-        if (data && data.publicUrl) {
-          setBadgeUrl(data.publicUrl);
+
+        // Si no hay en la base de datos, intenta desde Storage con el nombre estándar
+        const publicObj = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
+        if (publicObj?.data?.publicUrl) {
+          setBadgeUrl(publicObj.data.publicUrl);
+          return;
         }
+
+        // Si no existe 'team_badge.png', intenta listar el bucket y usar la primera coincidencia razonable
+        try {
+          const { data: list, error: listErr } = await supabase.storage.from('fotos').list('', { limit: 200 });
+          if (!listErr && Array.isArray(list) && list.length > 0) {
+            // Buscar archivo que contenga 'escudo' o 'badge'
+            const preferred = list.find((f: any) => /escudo|badge|team|logo/i.test(f.name)) || list[0];
+            if (preferred) {
+              const { data: p } = supabase.storage.from('fotos').getPublicUrl(preferred.name);
+              if (p?.publicUrl) {
+                setBadgeUrl(p.publicUrl);
+                return;
+              }
+            }
+          }
+        } catch (innerErr) {
+          console.warn('No se pudo listar bucket para escudo:', innerErr);
+        }
+
       } catch (err) {
         console.warn('No se pudo obtener escudo:', err);
       }
