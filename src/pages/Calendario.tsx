@@ -24,7 +24,10 @@ function Calendario() {
 
     const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 4, 1));
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [loaded, setLoaded] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [savedEvents, setSavedEvents] = useState<Event[]>([]);
@@ -151,10 +154,8 @@ function Calendario() {
 
     const handleAddEvent = async () => {
       console.log("Iniciando guardado de evento...");
-    
-      // Obtener la sesión manualmente para verificar autenticación
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+
+      if (!user) {
         alert("Error: No tienes una sesión activa. Por favor, inicia sesión de nuevo.");
         return;
       }
@@ -209,7 +210,7 @@ function Calendario() {
         description: formData.description || null,
         pdf_name: finalPdfName,
         pdf_url: finalPdfUrl,
-        created_by: session.user.id,
+        created_by: user.id,
       };
 
       console.log("Guardando evento en base de datos:", row);

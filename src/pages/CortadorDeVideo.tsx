@@ -201,6 +201,7 @@ function CortadorDeVideo() {
   const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
   const [playingCutId, setPlayingCutId] = useState<string | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const activeCutRef = useRef<Cut | null>(null);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -567,7 +568,45 @@ function CortadorDeVideo() {
     return 0;
   };
 
+  useEffect(() => {
+    if (!playingCutId) return;
+    const cut = cuts.find((c) => c.id === playingCutId);
+    if (!cut) return;
+
+    const checkEnd = () => {
+      let currentTime: number | null = null;
+      if (videoMode === 'file' && localVideoRef.current) {
+        currentTime = localVideoRef.current.currentTime;
+      } else if (ytPlayerRef.current?.getCurrentTime) {
+        const t = ytPlayerRef.current.getCurrentTime();
+        currentTime = typeof t === 'number' && !Number.isNaN(t) ? t : null;
+      }
+      if (currentTime == null) return;
+      if (currentTime >= cut.end - 0.1) {
+        if (videoMode === 'file' && localVideoRef.current) {
+          localVideoRef.current.pause();
+        } else if (ytPlayerRef.current?.pauseVideo) {
+          ytPlayerRef.current.pauseVideo();
+        }
+        setPlayingCutId(null);
+        activeCutRef.current = null;
+      }
+    };
+
+    const interval = window.setInterval(checkEnd, 200);
+    return () => window.clearInterval(interval);
+  }, [playingCutId, videoMode, cuts]);
+
+  const handlePreviewTimeUpdate = (cut: Cut) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const target = e.currentTarget;
+    if (target.currentTime >= cut.end - 0.1) {
+      target.pause();
+      setPlayingCutId(null);
+    }
+  };
+
   const handlePlayCut = (cut: Cut) => {
+    activeCutRef.current = cut;
     setPlayingCutId(cut.id);
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
@@ -805,31 +844,6 @@ function CortadorDeVideo() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <strong style={{ color: '#fff' }}>Anotar:</strong>
-                            <button type="button" className={annotationMode === 'spot' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'spot' ? 'none' : 'spot')}>Foco</button>
-                            <button type="button" className={annotationMode === 'arrow' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow' ? 'none' : 'arrow')}>Flecha</button>
-                            <button type="button" className={annotationMode === 'arrow-dashed' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'arrow-dashed' ? 'none' : 'arrow-dashed')}>Flecha discont.</button>
-                            <button type="button" className={annotationMode === 'text' ? 'primary-button' : 'secondary-button'} onClick={() => setAnnotationMode(annotationMode === 'text' ? 'none' : 'text')}>Texto</button>
-                            <button type="button" className="secondary-button" onClick={() => { setEditingAnnotations([]); setSelectedAnnotationIndex(null); }}>Borrar anotaciones</button>
-                            {selectedAnnotationIndex != null && (
-                              <button type="button" className="secondary-button" onClick={() => {
-                                setEditingAnnotations(prev => prev.filter((_, i) => i !== selectedAnnotationIndex));
-                                setSelectedAnnotationIndex(null);
-                              }}>Eliminar selección</button>
-                            )}
-                          </div>
-                          <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#071025' }}>
-                            <canvas
-                              ref={canvasRef}
-                              style={{ width: '100%', height: 180, display: 'block', cursor: annotationMode === 'none' ? 'default' : 'crosshair', pointerEvents: 'auto' }}
-                              onPointerDown={handleCanvasPointerDown}
-                              onPointerMove={handleCanvasPointerMove}
-                              onPointerUp={handleCanvasPointerUp}
-                            />
-                          </div>
-                        </div>
                       </div>
                       <div className="cut-item-actions" style={{ flexWrap: 'wrap', gap: 10 }}>
                         <button
@@ -872,6 +886,7 @@ function CortadorDeVideo() {
                               controls
                               autoPlay
                               onLoadedMetadata={(e) => { e.currentTarget.currentTime = cut.start; }}
+                              onTimeUpdate={handlePreviewTimeUpdate(cut)}
                               style={{ width: '100%', display: 'block' }}
                             />
                           ) : videoMode === 'url' && videoId ? (
