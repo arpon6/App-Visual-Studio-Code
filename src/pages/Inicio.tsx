@@ -17,15 +17,28 @@ function Inicio() {
           .eq('key', 'team_badge_url')
           .maybeSingle();
 
+        console.debug('app_config load result:', { configs, error });
+
         if (configs && configs.value) {
           setBadgeUrl(configs.value);
+          try { localStorage.setItem('team_badge_url', configs.value); } catch {};
           return;
         }
+
+        // fallback: check localStorage before listing bucket
+        try {
+          const cached = localStorage.getItem('team_badge_url');
+          if (cached) {
+            setBadgeUrl(cached);
+            return;
+          }
+        } catch {}
 
         // Si no hay en la base de datos, intenta desde Storage con el nombre estándar
         const publicObj = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
         if (publicObj?.data?.publicUrl) {
           setBadgeUrl(publicObj.data.publicUrl);
+          try { localStorage.setItem('team_badge_url', publicObj.data.publicUrl); } catch {};
           return;
         }
 
@@ -39,6 +52,7 @@ function Inicio() {
               const { data: p } = supabase.storage.from('fotos').getPublicUrl(preferred.name);
               if (p?.publicUrl) {
                 setBadgeUrl(p.publicUrl);
+                try { localStorage.setItem('team_badge_url', p.publicUrl); } catch {};
                 return;
               }
             }
