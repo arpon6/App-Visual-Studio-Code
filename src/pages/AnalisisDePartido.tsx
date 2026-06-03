@@ -266,12 +266,11 @@ function AnalisisDePartido() {
 
     try {
       const subject = m.relatedCutId ? `Nuevo mensaje en corte de partido de ${m.senderName}` : `Nuevo mensaje interno de ${m.senderName}`;
-      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      const response = await fetch('/api/send-brevo-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sender: { email: senderEmail, name: senderName || 'Mi Club' },
-          to: recs.map((email) => ({ email })),
+          to: recs,
           subject,
           htmlContent: `<p>${m.text.replace(/\n/g, '<br/>')}</p><p>Revisa la app para ver el mensaje completo.</p>`,
           textContent: m.text,
@@ -280,7 +279,7 @@ function AnalisisDePartido() {
 
       if (!response.ok) {
         const body = await response.text();
-        console.error('Error Brevo:', response.status, body);
+        console.error('Error enviando email Brevo:', response.status, body);
         return false;
       }
 

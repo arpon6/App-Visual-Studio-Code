@@ -15,11 +15,11 @@ function Inicio() {
     const load = async () => {
       try {
         const { data: configs, error } = await supabase
-          .from('app_config')
+          .from('shared_state')
           .select('key, value')
           .in('key', [BADGE_URL_KEY, BADGE_STORAGE_KEY]);
 
-        console.debug('app_config load result:', { configs, error });
+        console.debug('shared_state load result:', { configs, error });
 
         const configMap = (configs || []).reduce((acc: Record<string, string>, item: any) => {
           if (item?.key && item?.value) acc[item.key] = item.value;
@@ -81,7 +81,7 @@ function Inicio() {
     setBadgeUrl(url);
     try {
       const { error } = await supabase
-        .from('app_config')
+        .from('shared_state')
         .upsert({ key: BADGE_URL_KEY, value: url }, { onConflict: 'key' });
       if (error) console.error('Error saving badge URL:', error);
     } catch (err) {
@@ -93,7 +93,7 @@ function Inicio() {
     if (previewUrl) setBadgeUrl(previewUrl);
     try {
       const { error } = await supabase
-        .from('app_config')
+        .from('shared_state')
         .upsert({ key: BADGE_STORAGE_KEY, value: path }, { onConflict: 'key' });
       if (error) console.error('Error saving badge storage path:', error);
     } catch (err) {
