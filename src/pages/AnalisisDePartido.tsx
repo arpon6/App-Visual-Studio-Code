@@ -279,7 +279,7 @@ function AnalisisDePartido() {
           body: JSON.stringify({
             sender: { email: senderEmail, name: senderName || 'Mi Club' },
             to: recs.map((email) => ({ email })),
-            subject: `Nuevo mensaje en Análisis de Partido de ${m.senderName}`,
+            subject: `Nuevo mensaje en Desarrollo grupal de ${m.senderName}`,
             htmlContent: `<p>${m.text.replace(/\n/g, '<br/>')}</p>`,
             textContent: m.text,
           }),
@@ -324,9 +324,9 @@ function AnalisisDePartido() {
     try {
       const messageText = visibleChatMessages.length > 0
         ? visibleChatMessages[0].text
-        : 'Se ha publicado una nueva conversación en el análisis de partido.';
+        : 'Se ha publicado una nueva conversación en Desarrollo grupal.';
 
-      const template = `Se ha generado una conversación en Análisis de Partido. Revisa la app para ver los mensajes completos.\n\nMensaje principal:\n${messageText}`;
+      const template = `Se ha generado una conversación en Desarrollo grupal. Revisa la app para ver los mensajes completos.\n\nMensaje principal:\n${messageText}`;
 
       const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
@@ -337,7 +337,7 @@ function AnalisisDePartido() {
         body: JSON.stringify({
           sender: { email: senderEmail, name: senderName || 'Mi Club' },
           to: recipients.map((email) => ({ email })),
-          subject: 'Notificación interna de análisis de partido',
+          subject: 'Notificación interna de Desarrollo grupal',
           htmlContent: `<p>${template.replace(/\n/g, '<br/>')}</p>`,
           textContent: template,
         }),
@@ -435,7 +435,7 @@ function AnalisisDePartido() {
       <div className="page-title">
         <div>
           <small>Revisa el rendimiento</small>
-          <h1>Análisis de Partido</h1>
+          <h1>Desarrollo grupal</h1>
         </div>
       </div>
 

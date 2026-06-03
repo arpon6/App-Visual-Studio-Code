@@ -19,7 +19,7 @@ import Wellness from './pages/Wellness';
 import './App.css';
 
 const ALL_SECTIONS = [
-  'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Análisis de Partido',
+  'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
   'Gestión de usuarios',
@@ -28,9 +28,9 @@ const ALL_SECTIONS = [
 type PageKey = typeof ALL_SECTIONS[number];
 
 const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Análisis de Partido',
+  'Inicio', 'Calendario', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
- 'Otras Informaciones',
+  'Otras Informaciones',
 ];
 
 const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
@@ -38,7 +38,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Plantilla': <Plantilla />,
   'Calendario': <Calendario />,
   'Plan de Partido': <PlanDePartido />,
-  'Análisis de Partido': <AnalisisDePartido />,
+  'Desarrollo grupal': <AnalisisDePartido />,
   'Desarrollo Individual': <DesarrolloIndividual />,
   'Wellness': <Wellness />,
   'Estadísticas': <Estadisticas />,

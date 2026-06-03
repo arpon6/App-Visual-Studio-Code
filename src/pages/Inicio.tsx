@@ -35,25 +35,39 @@ function Inicio() {
         } catch {}
 
         // Si no hay en la base de datos, intenta desde Storage con el nombre estándar
-        const publicObj = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
-        if (publicObj?.data?.publicUrl) {
-          setBadgeUrl(publicObj.data.publicUrl);
-          try { localStorage.setItem('team_badge_url', publicObj.data.publicUrl); } catch {};
-          return;
-        }
-
-        // Si no existe 'team_badge.png', intenta listar el bucket y usar la primera coincidencia razonable
         try {
-          const { data: list, error: listErr } = await supabase.storage.from('fotos').list('', { limit: 200 });
+          const publicObj = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
+          if (publicObj?.data?.publicUrl) {
+            setBadgeUrl(publicObj.data.publicUrl);
+            try { localStorage.setItem('team_badge_url', publicObj.data.publicUrl); } catch {};
+            return;
+          }
+
+          // Si no existe 'team_badge.png', intenta listar el bucket y usar la primera coincidencia razonable
+          const { data: list, error: listErr } = await supabase.storage.from('fotos').list('', { limit: 500 });
           if (!listErr && Array.isArray(list) && list.length > 0) {
-            // Buscar archivo que contenga 'escudo' o 'badge'
-            const preferred = list.find((f: any) => /escudo|badge|team|logo/i.test(f.name)) || list[0];
-            if (preferred) {
-              const { data: p } = supabase.storage.from('fotos').getPublicUrl(preferred.name);
-              if (p?.publicUrl) {
-                setBadgeUrl(p.publicUrl);
-                try { localStorage.setItem('team_badge_url', p.publicUrl); } catch {};
-                return;
+            // Buscar archivo que contenga 'escudo' o 'badge' primero, si no, pruebo todos hasta encontrar uno accesible
+            const candidates = list.filter((f: any) => /escudo|badge|team|logo/i.test(f.name)).length ? list.filter((f: any) => /escudo|badge|team|logo/i.test(f.name)) : list;
+            for (const entry of candidates) {
+              try {
+                // Primero intento publicUrl
+                const { data: p } = supabase.storage.from('fotos').getPublicUrl(entry.name);
+                if (p?.publicUrl) {
+                  setBadgeUrl(p.publicUrl);
+                  try { localStorage.setItem('team_badge_url', p.publicUrl); } catch {};
+                  return;
+                }
+                // Si no es público, intento crear una URL firmada temporal
+                const expires = 60 * 60 * 24 * 7; // 7 días
+                const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(entry.name, expires);
+                if (!signedErr && signedData?.signedUrl) {
+                  setBadgeUrl(signedData.signedUrl);
+                  try { localStorage.setItem('team_badge_url', signedData.signedUrl); } catch {};
+                  return;
+                }
+              } catch (inner) {
+                // seguir con siguiente candidato
+                console.debug('Intento de obtener URL para escudo fallido en entry', entry.name, inner);
               }
             }
           }
@@ -137,7 +151,7 @@ function Inicio() {
               <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
                 {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
               </div>
-              {['Inicio','Plantilla','Calendario','Plan de Partido','Análisis de Partido','Editor de vídeo propio','Editor de vídeo rival','Estadísticas'].map((s, i) => {
+              {['Inicio','Plantilla','Calendario','Plan de Partido','Desarrollo grupal','Editor de vídeo propio','Editor de vídeo rival','Estadísticas'].map((s, i) => {
                 const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
                 const radius = 210;
                 const x = 260 + Math.cos(angle) * radius;

@@ -146,6 +146,11 @@ function CortadorDeVideoRival() {
   };
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [cutName, setCutName] = useState('');
+  const [editingCutId, setEditingCutId] = useState<string | null>(null);
+  const [editStartValue, setEditStartValue] = useState<number | null>(null);
+  const [editEndValue, setEditEndValue] = useState<number | null>(null);
+  const [playingCutId, setPlayingCutId] = useState<string | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [playerError, setPlayerError] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState(DEFAULT_CATEGORIES[0].id);
@@ -302,12 +307,13 @@ function CortadorDeVideoRival() {
     const cut: Cut = {
       id: `${categoryId}-${Date.now()}`,
       categoryId,
-      label: `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      label: cutName.trim() || `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       start, end,
       createdAt: new Date().toISOString(),
       player_id: null,
     };
     setCuts((prev) => [cut, ...prev]);
+    setCutName('');
     setStatusMessage(`Corte guardado en ${category.label}: ${start}s → ${end}s`);
   };
 
@@ -360,17 +366,63 @@ function CortadorDeVideoRival() {
   };
 
   const handlePlayCut = (cut: Cut) => {
+    // activamos modo previsualización en la lista; el reproductor principal seguirá funcionando
+    setPlayingCutId(cut.id);
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
       localVideoRef.current.play();
-      setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
+      setStatusMessage(`Reproduciendo corte: ${formatTime(cut.start)} → ${formatTime(cut.end)}`);
       return;
     }
     if (!ytPlayerRef.current || !playerReady) { setStatusMessage('Carga primero un vídeo para reproducir el corte.'); return; }
     ytPlayerRef.current.seekTo(cut.start, true);
     ytPlayerRef.current.playVideo();
-    setStatusMessage(`Reproduciendo corte: ${cut.start}s → ${cut.end}s`);
+    setStatusMessage(`Reproduciendo corte: ${formatTime(cut.start)} → ${formatTime(cut.end)}`);
   };
+
+  // asegura que la reproducción pare al final del corte cuando estemos en modo preview
+  useEffect(() => {
+    if (!playingCutId) return;
+    const cut = cuts.find(c => c.id === playingCutId);
+    if (!cut) return;
+    const checkEnd = () => {
+      let currentTime: number | null = null;
+      if (videoMode === 'file' && localVideoRef.current) {
+        currentTime = localVideoRef.current.currentTime;
+      } else if (ytPlayerRef.current?.getCurrentTime) {
+        const t = ytPlayerRef.current.getCurrentTime();
+        currentTime = typeof t === 'number' && !Number.isNaN(t) ? t : null;
+      }
+      if (currentTime == null) return;
+      if (currentTime >= cut.end - 0.1) {
+        if (videoMode === 'file' && localVideoRef.current) {
+          localVideoRef.current.pause();
+        } else if (ytPlayerRef.current?.pauseVideo) {
+          ytPlayerRef.current.pauseVideo();
+        }
+        setPlayingCutId(null);
+      }
+    };
+    const iv = window.setInterval(checkEnd, 200);
+    return () => window.clearInterval(iv);
+  }, [playingCutId, videoMode, cuts]);
+
+  const formatTime = (s: number) => {
+    const mins = Math.floor(s / 60); const secs = Math.floor(s % 60);
+    return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+  };
+  
+  function parseDuration(input: string): number {
+    if (!input) return 0;
+    input = input.trim();
+    if (/^\d+$/.test(input)) return Number(input);
+    const parts = input.split(':').map(p => p.trim()).filter(Boolean).map(Number).reverse();
+    let secs = 0;
+    if (parts[0]) secs += parts[0];
+    if (parts[1]) secs += parts[1] * 60;
+    if (parts[2]) secs += parts[2] * 3600;
+    return secs;
+  }
 
   return (
     <section className={`page-section cortador-video-page${focusMode ? ' focus-mode' : ''}`}>
@@ -542,9 +594,14 @@ function CortadorDeVideoRival() {
                 <div className="cut-items">
                   {categoryCuts.map((cut) => (
                     <div key={cut.id} className="cut-item">
-                      <div>
-                        <strong>{cut.label}</strong>
-                        <p>{cut.start}s → {cut.end}s</p>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <input
+                          type="text"
+                          value={cut.label}
+                          onChange={(e) => setCuts(prev => prev.map(c => c.id === cut.id ? { ...c, label: e.target.value } : c))}
+                          style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '6px', color: '#fff' }}
+                        />
+                        <div style={{ color: '#9ca3af' }}>{formatTime(cut.start)} → {formatTime(cut.end)}</div>
                       </div>
                       <div className="cut-item-actions">
                         <select
@@ -558,8 +615,73 @@ function CortadorDeVideoRival() {
                           ))}
                         </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
+                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut)}>Borrar</button>
                       </div>
+
+                      {playingCutId === cut.id && (
+                        <div style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
+                          {videoMode === 'file' && localVideoSrc ? (
+                            <video
+                              key={`preview-${cut.id}`}
+                              src={localVideoSrc}
+                              controls
+                              autoPlay
+                              onLoadedMetadata={(e) => { e.currentTarget.currentTime = cut.start; }}
+                              onTimeUpdate={(e) => { if (e.currentTarget.currentTime >= cut.end - 0.1) { e.currentTarget.pause(); setPlayingCutId(null); } }}
+                              style={{ width: '100%', display: 'block' }}
+                            />
+                          ) : videoMode === 'url' && videoId ? (
+                            <iframe
+                              title={`Corte ${cut.id}`}
+                              src={`https://www.youtube.com/embed/${videoId}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              style={{ width: '100%', height: 260, border: 'none' }}
+                            />
+                          ) : (
+                            <div style={{ padding: 12, color: '#9ca3af' }}>No hay vídeo cargado para mostrar este corte.</div>
+                          )}
+                        </div>
+                      )}
+
+                      {editingCutId === cut.id && (
+                        <div style={{ marginTop: 8, padding: '0.5rem', background: '#0f172a', borderRadius: 8 }}>
+                          <div style={{ display: 'grid', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <label style={{ color: '#fff', minWidth: 70 }}>Inicio</label>
+                              <input type="text" value={formatTime(editStartValue ?? cut.start)} onChange={(e) => setEditStartValue(parseDuration(e.target.value))} style={{ width: 120 }} />
+                              <label style={{ color: '#fff', minWidth: 50 }}>Fin</label>
+                              <input type="text" value={formatTime(editEndValue ?? cut.end)} onChange={(e) => setEditEndValue(parseDuration(e.target.value))} style={{ width: 120 }} />
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button type="button" className="primary-button" onClick={() => {
+                                if (editStartValue == null || editEndValue == null) return;
+                                const s = Math.max(0, Math.min(editStartValue, editEndValue - 0.1));
+                                const e = Math.max(s + 0.1, editEndValue);
+                                const editedId = editingCutId;
+                                setCuts(prev => prev.map(x => x.id === editedId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)) } : x));
+                                setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
+                                if (editedId) { setPlayingCutId(null); }
+                              }}>Guardar</button>
+                              <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
+                              <button type="button" className="secondary-button" onClick={() => {
+                                // Play preview between start and end
+                                const s = editStartValue ?? cut.start; const e = editEndValue ?? cut.end;
+                                if (videoMode === 'file' && localVideoRef.current) {
+                                  localVideoRef.current.currentTime = s; localVideoRef.current.play(); setStatusMessage(`Vista previa: ${formatTime(s)} → ${formatTime(e)}`);
+                                  const t = setTimeout(() => { localVideoRef.current?.pause(); clearTimeout(t); }, Math.max(1000, (e - s) * 1000));
+                                  return;
+                                }
+                                if (ytPlayerRef.current && playerReady) {
+                                  ytPlayerRef.current.seekTo(s, true); ytPlayerRef.current.playVideo(); setStatusMessage(`Vista previa: ${formatTime(s)} → ${formatTime(e)}`);
+                                  const t2 = setTimeout(() => { ytPlayerRef.current.pauseVideo?.(); clearTimeout(t2); }, Math.max(1000, (e - s) * 1000));
+                                }
+                              }}>Vista previa</button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
