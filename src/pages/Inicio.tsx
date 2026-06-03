@@ -12,6 +12,7 @@ function Inicio() {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     const load = async () => {
       try {
         const { data: configs, error } = await supabase
@@ -75,7 +76,7 @@ function Inicio() {
       }
     };
     load();
-  }, []);
+  }, [user]);
 
   const saveBadgeUrl = async (url: string) => {
     setBadgeUrl(url);

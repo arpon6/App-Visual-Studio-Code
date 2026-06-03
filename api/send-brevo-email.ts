@@ -8,6 +8,12 @@ export default async function handler(req: any, res: any) {
   const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.VITE_BREVO_SENDER_EMAIL;
   const senderName = process.env.BREVO_SENDER_NAME || process.env.VITE_BREVO_SENDER_NAME || 'Mi Club';
 
+  console.log('send-brevo-email called', {
+    hasApiKey: Boolean(apiKey),
+    senderEmail: Boolean(senderEmail),
+    senderName,
+  });
+
   if (!apiKey || !senderEmail) {
     return res.status(500).json({ error: 'Brevo credentials not configured on the server.' });
   }

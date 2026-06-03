@@ -250,15 +250,6 @@ function AnalisisDePartido() {
     };
 
   const sendBrevoEmailForMessage = async (m: ChatMessage): Promise<boolean> => {
-    const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
-    const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
-    const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
-
-    if (!key || !senderEmail) {
-      console.warn('Brevo no configurado, no se enviará correo en este momento.');
-      return false;
-    }
-
     const recs = getMessageRecipientsEmails(m);
     if (recs.length === 0) {
       return true;
@@ -279,12 +270,14 @@ function AnalisisDePartido() {
 
       if (!response.ok) {
         const body = await response.text();
+        setBrevoStatus(`Error enviando correo: ${response.status} ${body}`);
         console.error('Error enviando email Brevo:', response.status, body);
         return false;
       }
 
       return true;
     } catch (err) {
+      setBrevoStatus(`Error enviando Brevo: ${err}`);
       console.error('Error enviando Brevo', err);
       return false;
     }
@@ -310,15 +303,6 @@ function AnalisisDePartido() {
   // moved getPlayerName earlier to avoid temporal-dead-zone at runtime
 
   const sendBrevoNotification = async () => {
-    const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
-    const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
-    const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
-
-    if (!key || !senderEmail) {
-      setBrevoStatus('Falta configurar VITE_BREVO_API_KEY o VITE_BREVO_SENDER_EMAIL.');
-      return;
-    }
-
     const recipients = [
       ...new Set([
         ...staffAdmins.map((u) => u.email),
@@ -341,15 +325,13 @@ function AnalisisDePartido() {
 
       const template = `Se ha generado una conversación en Desarrollo grupal. Revisa la app para ver los mensajes completos.\n\nMensaje principal:\n${messageText}`;
 
-      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      const response = await fetch('/api/send-brevo-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${key}`,
         },
         body: JSON.stringify({
-          sender: { email: senderEmail, name: senderName || 'Mi Club' },
-          to: recipients.map((email) => ({ email })),
+          to: recipients,
           subject: 'Notificación interna de Desarrollo grupal',
           htmlContent: `<p>${template.replace(/\n/g, '<br/>')}</p>`,
           textContent: template,
