@@ -4,28 +4,43 @@ import { useAuth } from '../lib/AuthContext';
 
 function Inicio() {
   const { user } = useAuth();
+  const BADGE_URL_KEY = 'team_badge_url';
+  const BADGE_STORAGE_KEY = 'team_badge_storage_path';
+  const BADGE_STORAGE_PATH = 'team_badge.png';
+  const SIGNED_URL_EXPIRY = 60 * 60 * 24 * 30; // 30 days
   const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
-        // Intenta cargar de Supabase primero (compartido entre perfiles)
         const { data: configs, error } = await supabase
           .from('app_config')
-          .select('value')
-          .eq('key', 'team_badge_url')
-          .maybeSingle();
+          .select('key, value')
+          .in('key', [BADGE_URL_KEY, BADGE_STORAGE_KEY]);
 
         console.debug('app_config load result:', { configs, error });
 
-        if (configs && configs.value) {
-          setBadgeUrl(configs.value);
-          try { localStorage.setItem('team_badge_url', configs.value); } catch {};
+        const configMap = (configs || []).reduce((acc: Record<string, string>, item: any) => {
+          if (item?.key && item?.value) acc[item.key] = item.value;
+          return acc;
+        }, {} as Record<string, string>);
+
+        if (configMap[BADGE_URL_KEY]) {
+          setBadgeUrl(configMap[BADGE_URL_KEY]);
+          try { localStorage.setItem('team_badge_url', configMap[BADGE_URL_KEY]); } catch {};
           return;
         }
 
-        // fallback: check localStorage before listing bucket
+        if (configMap[BADGE_STORAGE_KEY]) {
+          const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(configMap[BADGE_STORAGE_KEY], SIGNED_URL_EXPIRY);
+          if (!signedErr && signedData?.signedUrl) {
+            setBadgeUrl(signedData.signedUrl);
+            try { localStorage.setItem('team_badge_url', signedData.signedUrl); } catch {};
+            return;
+          }
+        }
+
         try {
           const cached = localStorage.getItem('team_badge_url');
           if (cached) {
@@ -34,39 +49,19 @@ function Inicio() {
           }
         } catch {}
 
-        // Si no hay en la base de datos, intenta desde Storage con el nombre estándar
         try {
-          const publicObj = supabase.storage.from('fotos').getPublicUrl('team_badge.png');
-          if (publicObj?.data?.publicUrl) {
-            setBadgeUrl(publicObj.data.publicUrl);
-            try { localStorage.setItem('team_badge_url', publicObj.data.publicUrl); } catch {};
-            return;
-          }
-
-          // Si no existe 'team_badge.png', intenta listar el bucket y usar la primera coincidencia razonable
           const { data: list, error: listErr } = await supabase.storage.from('fotos').list('', { limit: 500 });
           if (!listErr && Array.isArray(list) && list.length > 0) {
-            // Buscar archivo que contenga 'escudo' o 'badge' primero, si no, pruebo todos hasta encontrar uno accesible
             const candidates = list.filter((f: any) => /escudo|badge|team|logo/i.test(f.name)).length ? list.filter((f: any) => /escudo|badge|team|logo/i.test(f.name)) : list;
             for (const entry of candidates) {
               try {
-                // Primero intento publicUrl
-                const { data: p } = supabase.storage.from('fotos').getPublicUrl(entry.name);
-                if (p?.publicUrl) {
-                  setBadgeUrl(p.publicUrl);
-                  try { localStorage.setItem('team_badge_url', p.publicUrl); } catch {};
-                  return;
-                }
-                // Si no es público, intento crear una URL firmada temporal
-                const expires = 60 * 60 * 24 * 7; // 7 días
-                const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(entry.name, expires);
+                const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(entry.name, SIGNED_URL_EXPIRY);
                 if (!signedErr && signedData?.signedUrl) {
                   setBadgeUrl(signedData.signedUrl);
                   try { localStorage.setItem('team_badge_url', signedData.signedUrl); } catch {};
                   return;
                 }
               } catch (inner) {
-                // seguir con siguiente candidato
                 console.debug('Intento de obtener URL para escudo fallido en entry', entry.name, inner);
               }
             }
@@ -84,14 +79,25 @@ function Inicio() {
 
   const saveBadgeUrl = async (url: string) => {
     setBadgeUrl(url);
-    // Guarda en Supabase para que sea accesible desde cualquier perfil
     try {
       const { error } = await supabase
         .from('app_config')
-        .upsert({ key: 'team_badge_url', value: url }, { onConflict: 'key' });
-      if (error) console.error('Error saving badge:', error);
+        .upsert({ key: BADGE_URL_KEY, value: url }, { onConflict: 'key' });
+      if (error) console.error('Error saving badge URL:', error);
     } catch (err) {
-      console.error('Error saving badge to Supabase:', err);
+      console.error('Error saving badge URL to Supabase:', err);
+    }
+  };
+
+  const saveBadgeStoragePath = async (path: string, previewUrl?: string) => {
+    if (previewUrl) setBadgeUrl(previewUrl);
+    try {
+      const { error } = await supabase
+        .from('app_config')
+        .upsert({ key: BADGE_STORAGE_KEY, value: path }, { onConflict: 'key' });
+      if (error) console.error('Error saving badge storage path:', error);
+    } catch (err) {
+      console.error('Error saving badge storage path to Supabase:', err);
     }
   };
 
@@ -104,13 +110,15 @@ function Inicio() {
     }
     setUploading(true);
     try {
-      // upload to 'fotos/team_badge.png' (overwrite)
-      const path = 'team_badge.png';
-      // try to upload (use upsert=true). Avoid removing first to not trigger RLS for some roles.
+      const path = BADGE_STORAGE_PATH;
       const { error: uploadError } = await supabase.storage.from('fotos').upload(path, f, { cacheControl: '3600', upsert: true });
       if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('fotos').getPublicUrl(path);
-      if (data && data.publicUrl) saveBadgeUrl(data.publicUrl);
+      const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(path, SIGNED_URL_EXPIRY);
+      if (signedErr || !signedData?.signedUrl) {
+        const msg = signedErr?.message || 'No se pudo obtener URL firmada del escudo.';
+        throw new Error(msg);
+      }
+      await saveBadgeStoragePath(path, signedData.signedUrl);
     } catch (err) {
       console.error('Error subiendo escudo', err);
       const msg = (err as any)?.message || String(err);

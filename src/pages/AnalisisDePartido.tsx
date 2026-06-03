@@ -219,7 +219,7 @@ function AnalisisDePartido() {
       createdAt: new Date().toISOString(),
     };
 
-    setChatMessages([message, ...chatMessages]);
+    setChatMessages((prev) => [message, ...prev]);
     setMessageText('');
     setSelectedPlayerRecipients([]);
   };
@@ -244,53 +244,67 @@ function AnalisisDePartido() {
         createdAt: new Date().toISOString(),
       };
 
-      setChatMessages([message, ...chatMessages]);
+      setChatMessages((prev) => [message, ...prev]);
       setCutMessageText('');
       setOpenConversationId(cutId);
     };
 
-  // Envío automático por Brevo para mensajes nuevos no marcados como enviados
+  const sendBrevoEmailForMessage = async (m: ChatMessage): Promise<boolean> => {
+    const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
+    const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
+    const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
+
+    if (!key || !senderEmail) {
+      console.warn('Brevo no configurado, no se enviará correo en este momento.');
+      return false;
+    }
+
+    const recs = getMessageRecipientsEmails(m);
+    if (recs.length === 0) {
+      return true;
+    }
+
+    try {
+      const subject = m.relatedCutId ? `Nuevo mensaje en corte de partido de ${m.senderName}` : `Nuevo mensaje interno de ${m.senderName}`;
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          sender: { email: senderEmail, name: senderName || 'Mi Club' },
+          to: recs.map((email) => ({ email })),
+          subject,
+          htmlContent: `<p>${m.text.replace(/\n/g, '<br/>')}</p><p>Revisa la app para ver el mensaje completo.</p>`,
+          textContent: m.text,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        console.error('Error Brevo:', response.status, body);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Error enviando Brevo', err);
+      return false;
+    }
+  };
+
   useEffect(() => {
-    const unsent = chatMessages.filter((m) => !m.sent);
-    if (unsent.length === 0) return;
+    const processUnsentMessages = async () => {
+      const unsent = chatMessages.filter((m) => !m.sent);
+      if (unsent.length === 0) return;
 
-    unsent.forEach(async (m) => {
-      const key = (import.meta.env as any).VITE_BREVO_API_KEY as string | undefined;
-      const senderEmail = (import.meta.env as any).VITE_BREVO_SENDER_EMAIL as string | undefined;
-      const senderName = (import.meta.env as any).VITE_BREVO_SENDER_NAME as string | undefined;
-      if (!key || !senderEmail) {
-        console.warn('Brevo no configurado, marcando como enviado para evitar reintentos.');
-        const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
-        setChatMessages(next);
-        return;
+      for (const m of unsent) {
+        const sent = await sendBrevoEmailForMessage(m);
+        if (sent) {
+          setChatMessages((prev) => prev.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm));
+        }
       }
+    };
 
-      const recs = getMessageRecipientsEmails(m);
-      if (recs.length === 0) {
-        const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
-        setChatMessages(next);
-        return;
-      }
-
-      try {
-        await fetch('https://api.brevo.com/v3/smtp/email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-          body: JSON.stringify({
-            sender: { email: senderEmail, name: senderName || 'Mi Club' },
-            to: recs.map((email) => ({ email })),
-            subject: `Nuevo mensaje en Desarrollo grupal de ${m.senderName}`,
-            htmlContent: `<p>${m.text.replace(/\n/g, '<br/>')}</p>`,
-            textContent: m.text,
-          }),
-        });
-      } catch (err) {
-        console.error('Error enviando Brevo', err);
-      }
-
-      const next = chatMessages.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm);
-      setChatMessages(next);
-    });
+    processUnsentMessages();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages, users, staffAdmins]);
 
