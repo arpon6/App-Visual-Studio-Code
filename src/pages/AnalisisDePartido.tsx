@@ -433,7 +433,7 @@ function AnalisisDePartido() {
 
     const previousMuted = video.muted;
     video.muted = true;
-    const stream = video.captureStream();
+    const stream = (video as HTMLVideoElement & { captureStream: () => MediaStream }).captureStream();
     const recorder = new MediaRecorder(stream, { mimeType });
     const chunks: BlobPart[] = [];
 
