@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, ChangeEvent } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
 import { usePlantilla } from '../lib/usePlantilla';
@@ -67,9 +67,13 @@ function DesarrolloIndividual() {
   const jugadores = usePlantilla();
   const [analysisCuts] = useSharedState<VideoCorte[]>('analisis_cuts', []);
   const [analysisCutsRival] = useSharedState<VideoCorte[]>('analisis_cuts_rival', []);
-  const [mainVideoUrl] = useSharedState<string>('analisis_main_video', '');
+  const [mainVideoUrl, setMainVideoUrl] = useSharedState<string>('analisis_main_video', '');
+  const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
+  const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [analysisChat, setAnalysisChat] = useSharedState<ChatMessage[]>('analisis_chat', []);
   const [cutMessageText, setCutMessageText] = useState('');
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const allCortes = useMemo(
     () => [
@@ -142,8 +146,61 @@ function DesarrolloIndividual() {
     return match ? `https://www.youtube.com/watch?v=${match[1]}` : url;
   };
 
-  const downloadFile = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const getMp4MimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4',
+    ];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+  };
+
+  const captureSegmentToMp4 = async (start: number, end: number): Promise<Blob> => {
+    if (!localVideoRef.current) throw new Error('Carga un vídeo local para exportar el corte.');
+    const video = localVideoRef.current;
+    const mimeType = getMp4MimeType();
+    if (!mimeType) throw new Error('Tu navegador no soporta grabación MP4.');
+
+    await new Promise<void>((resolve, reject) => {
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
+      video.addEventListener('seeked', onSeeked);
+      try {
+        video.currentTime = start;
+      } catch (error) {
+        video.removeEventListener('seeked', onSeeked);
+        reject(error);
+      }
+    });
+
+    const previousMuted = video.muted;
+    video.muted = true;
+    const stream = video.captureStream();
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: BlobPart[] = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+
+    const stopPromise = new Promise<Blob>((resolve, reject) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+      recorder.onerror = (event) => reject(event.error || new Error('Error al grabar el vídeo.'));
+    });
+
+    recorder.start(200);
+    await video.play().catch(() => null);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(300, (end - start) * 1000 + 400)));
+    video.pause();
+    video.muted = previousMuted;
+    recorder.stop();
+
+    return stopPromise;
+  };
+
+  const downloadVideoBlob = (filename: string, blob: Blob) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -152,39 +209,62 @@ function DesarrolloIndividual() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadCut = (cut: VideoCorte) => {
-    const source = mainVideoUrl || '';
-    const watchUrl = source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '';
-    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
-      id: cut.id,
-      category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-      label: cut.label,
-      start: cut.start,
-      end: cut.end,
-      source,
-      watchUrl,
-      sourceType: cut.source || 'propio',
-      createdAt: cut.createdAt,
-    }, null, 2));
+  const downloadCut = async (cut: VideoCorte) => {
+    if (!localVideoSrc) {
+      alert('Carga un vídeo local para exportar cortes en MP4.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const blob = await captureSegmentToMp4(cut.start, cut.end);
+      downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando el corte en MP4.';
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const downloadAllCuts = () => {
-    const source = mainVideoUrl || '';
-    downloadFile('cortes-desarrollo-individual.json', JSON.stringify({
-      source,
-      videoUrl: source,
-      cuts: visibleCortes.map((cut) => ({
-        id: cut.id,
-        category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-        label: cut.label,
-        start: cut.start,
-        end: cut.end,
-        sourceType: cut.source || 'propio',
-        watchUrl: source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '',
-        createdAt: cut.createdAt,
-      })),
-    }, null, 2));
+  const downloadAllCuts = async () => {
+    if (!localVideoSrc) {
+      alert('Carga un vídeo local para exportar los cortes en MP4.');
+      return;
+    }
+    if (visibleCortes.length === 0) {
+      alert('No hay cortes para descargar.');
+      return;
+    }
+    setExporting(true);
+    try {
+      for (const cut of visibleCortes) {
+        const blob = await captureSegmentToMp4(cut.start, cut.end);
+        downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando los cortes en MP4.';
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
+
+  const handleLocalVideoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (localVideoSrc) URL.revokeObjectURL(localVideoSrc);
+    const src = URL.createObjectURL(file);
+    setLocalVideoFile(file);
+    setLocalVideoSrc(src);
+    setMainVideoUrl('');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (localVideoSrc) URL.revokeObjectURL(localVideoSrc);
+    };
+  }, [localVideoSrc]);
 
   const visibleChatMessages = useMemo(() => {
     if (!user) return [];
@@ -225,6 +305,24 @@ function DesarrolloIndividual() {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="section-header">
+          <div>
+            <h2>Vídeo local para MP4</h2>
+            <small style={{ color: '#7f96bc' }}>Carga un vídeo local para exportar los cortes a MP4.</small>
+          </div>
+        </div>
+        <input
+          type="file"
+          accept="video/*"
+          onChange={handleLocalVideoFileChange}
+          style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
+        />
+        {localVideoSrc && (
+          <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%', borderRadius: 10, background: '#000' }} />
+        )}
+      </div>
+
       <div className="card">
         <div className="section-header">
           <div>
@@ -236,7 +334,7 @@ function DesarrolloIndividual() {
             </small>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={visibleCortes.length === 0}>
+            <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={exporting || !localVideoSrc || visibleCortes.length === 0}>
               Descargar todos
             </button>
             <span className="badge">{cortesCount} cortes</span>
@@ -291,8 +389,8 @@ function DesarrolloIndividual() {
                           )}
 
                           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <button type="button" className="secondary-button" onClick={() => downloadCut(corte)}>
-                              Descargar corte
+                            <button type="button" className="secondary-button" onClick={() => downloadCut(corte)} disabled={exporting || !localVideoSrc}>
+                              Descargar MP4
                             </button>
                           </div>
 

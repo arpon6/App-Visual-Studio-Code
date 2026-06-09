@@ -158,6 +158,7 @@ function CortadorDeVideoRival() {
   const [editingShortcutValue, setEditingShortcutValue] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -429,8 +430,61 @@ function CortadorDeVideoRival() {
     return id ? `https://www.youtube.com/watch?v=${id}` : url;
   };
 
-  const downloadFile = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const getMp4MimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4',
+    ];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+  };
+
+  const captureSegmentToMp4 = async (start: number, end: number): Promise<Blob> => {
+    if (!localVideoRef.current) throw new Error('Carga un vídeo local para exportar el corte.');
+    const video = localVideoRef.current;
+    const mimeType = getMp4MimeType();
+    if (!mimeType) throw new Error('Tu navegador no soporta grabación MP4.');
+
+    await new Promise<void>((resolve, reject) => {
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
+      video.addEventListener('seeked', onSeeked);
+      try {
+        video.currentTime = start;
+      } catch (error) {
+        video.removeEventListener('seeked', onSeeked);
+        reject(error);
+      }
+    });
+
+    const previousMuted = video.muted;
+    video.muted = true;
+    const stream = video.captureStream();
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: BlobPart[] = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+
+    const stopPromise = new Promise<Blob>((resolve, reject) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+      recorder.onerror = (event) => reject(event.error || new Error('Error al grabar el vídeo.'));
+    });
+
+    recorder.start(200);
+    await video.play().catch(() => null);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(300, (end - start) * 1000 + 400)));
+    video.pause();
+    video.muted = previousMuted;
+    recorder.stop();
+
+    return stopPromise;
+  };
+
+  const downloadVideoBlob = (filename: string, blob: Blob) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -439,38 +493,47 @@ function CortadorDeVideoRival() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadCut = (cut: Cut) => {
-    const source = videoMode === 'url' ? videoUrl : 'local video';
-    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
-      id: cut.id,
-      label: cut.label,
-      categoryId: cut.categoryId,
-      categoryLabel: categories.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-      start: cut.start,
-      end: cut.end,
-      videoMode,
-      source,
-      watchUrl: videoMode === 'url' ? `${getYouTubeWatchUrl(videoUrl)}&t=${Math.floor(cut.start)}s` : undefined,
-      createdAt: cut.createdAt,
-    }, null, 2));
+  const downloadMp4Cut = async (cut: Cut) => {
+    if (videoMode !== 'file' || !localVideoSrc) {
+      alert('Carga un archivo local para exportar cortes en MP4.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const blob = await captureSegmentToMp4(cut.start, cut.end);
+      downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando el MP4.';
+      setStatusMessage(message);
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const downloadAllCuts = () => {
-    const source = videoMode === 'url' ? videoUrl : 'local video';
-    downloadFile('cortes-video-rival.json', JSON.stringify({
-      videoMode,
-      source,
-      cuts: cuts.map((cut) => ({
-        id: cut.id,
-        label: cut.label,
-        categoryId: cut.categoryId,
-        categoryLabel: categories.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-        start: cut.start,
-        end: cut.end,
-        watchUrl: videoMode === 'url' ? `${getYouTubeWatchUrl(videoUrl)}&t=${Math.floor(cut.start)}s` : undefined,
-        createdAt: cut.createdAt,
-      })),
-    }, null, 2));
+  const downloadAllCuts = async () => {
+    if (videoMode !== 'file' || !localVideoSrc) {
+      alert('Carga un archivo local para exportar cortes en MP4.');
+      return;
+    }
+    if (cuts.length === 0) {
+      alert('No hay cortes para descargar.');
+      return;
+    }
+    setExporting(true);
+    try {
+      for (const cut of cuts) {
+        const blob = await captureSegmentToMp4(cut.start, cut.end);
+        downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando los cortes.';
+      setStatusMessage(message);
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -629,7 +692,7 @@ function CortadorDeVideoRival() {
             <small>Cortes guardados</small>
             <h2>Historial por categoría</h2>
           </div>
-          <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={cuts.length === 0}>
+          <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={exporting || videoMode !== 'file' || !localVideoSrc || cuts.length === 0}>
             Descargar todos
           </button>
         </div>
@@ -667,7 +730,9 @@ function CortadorDeVideoRival() {
                           ))}
                         </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
-                        <button type="button" className="secondary-button" onClick={() => downloadCut(cut)}>Descargar</button>
+                        <button type="button" className="secondary-button" onClick={() => downloadMp4Cut(cut)} disabled={exporting || videoMode !== 'file' || !localVideoSrc}>
+                          Descargar MP4
+                        </button>
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut)}>Borrar</button>
                       </div>

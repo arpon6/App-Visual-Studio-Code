@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, ChangeEvent } from 'react';
 import { useAuth, UserRole } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
 import { supabase } from '../lib/supabaseClient';
@@ -117,6 +117,9 @@ function AnalisisDePartido() {
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
   const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
   const [mainOpponent, setMainOpponentState] = useSharedState<string>('analisis_main_opponent', '');
+  const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
+  const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [selectedPlayerRecipients, setSelectedPlayerRecipients] = useState<string[]>([]);
   const [brevoStatus, setBrevoStatus] = useState('');
@@ -125,6 +128,7 @@ function AnalisisDePartido() {
   const [cutMessageText, setCutMessageText] = useState('');
   const [playingCut, setPlayingCut] = useState<AnalysisCut | null>(null);
   const [playingEmbedUrl, setPlayingEmbedUrl] = useState<string | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
@@ -398,8 +402,61 @@ function AnalisisDePartido() {
     return id ? `https://www.youtube.com/watch?v=${id}` : url;
   };
 
-  const downloadFile = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const getMp4MimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4',
+    ];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+  };
+
+  const captureSegmentToMp4 = async (start: number, end: number): Promise<Blob> => {
+    if (!localVideoRef.current) throw new Error('Carga un vídeo local para exportar el corte.');
+    const video = localVideoRef.current;
+    const mimeType = getMp4MimeType();
+    if (!mimeType) throw new Error('Tu navegador no soporta grabación MP4.');
+
+    await new Promise<void>((resolve, reject) => {
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
+      video.addEventListener('seeked', onSeeked);
+      try {
+        video.currentTime = start;
+      } catch (error) {
+        video.removeEventListener('seeked', onSeeked);
+        reject(error);
+      }
+    });
+
+    const previousMuted = video.muted;
+    video.muted = true;
+    const stream = video.captureStream();
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: BlobPart[] = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+
+    const stopPromise = new Promise<Blob>((resolve, reject) => {
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+      recorder.onerror = (event) => reject(event.error || new Error('Error al grabar el vídeo.'));
+    });
+
+    recorder.start(200);
+    await video.play().catch(() => null);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(300, (end - start) * 1000 + 400)));
+    video.pause();
+    video.muted = previousMuted;
+    recorder.stop();
+
+    return stopPromise;
+  };
+
+  const downloadVideoBlob = (filename: string, blob: Blob) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -408,37 +465,62 @@ function AnalisisDePartido() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadCut = (cut: AnalysisCut) => {
-    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
-    const watchUrl = source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '';
-    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
-      id: cut.id,
-      category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-      label: cut.label,
-      start: cut.start,
-      end: cut.end,
-      source,
-      watchUrl,
-      createdAt: cut.createdAt,
-    }, null, 2));
+  const downloadCut = async (cut: AnalysisCut) => {
+    if (!localVideoSrc) {
+      alert('Carga un vídeo local para exportar cortes en MP4.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const blob = await captureSegmentToMp4(cut.start, cut.end);
+      downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando el corte en MP4.';
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const downloadAllCuts = () => {
-    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
-    downloadFile('cortes-desarrollo-grupal.json', JSON.stringify({
-      source,
-      videoUrl: source,
-      cuts: visibleCuts.map((cut) => ({
-        id: cut.id,
-        category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
-        label: cut.label,
-        start: cut.start,
-        end: cut.end,
-        watchUrl: source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '',
-        createdAt: cut.createdAt,
-      })),
-    }, null, 2));
+  const downloadAllCuts = async () => {
+    if (!localVideoSrc) {
+      alert('Carga un vídeo local para exportar los cortes en MP4.');
+      return;
+    }
+    if (visibleCuts.length === 0) {
+      alert('No hay cortes para descargar.');
+      return;
+    }
+    setExporting(true);
+    try {
+      for (const cut of visibleCuts) {
+        const blob = await captureSegmentToMp4(cut.start, cut.end);
+        downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error exportando los cortes en MP4.';
+      alert(message);
+    } finally {
+      setExporting(false);
+    }
   };
+
+  const handleLocalVideoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (localVideoSrc) URL.revokeObjectURL(localVideoSrc);
+    const src = URL.createObjectURL(file);
+    setLocalVideoFile(file);
+    setLocalVideoSrc(src);
+    setMainVideoUrl('');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (localVideoSrc) URL.revokeObjectURL(localVideoSrc);
+    };
+  }, [localVideoSrc]);
 
   const getMessageRecipientsEmails = (message: ChatMessage) => {
     const recipients = new Set<string>();
@@ -501,7 +583,18 @@ function AnalisisDePartido() {
               onChange={e => setMainVideoUrl(e.target.value)}
               style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
             />
+            <input
+              type="file"
+              accept="video/*"
+              onChange={handleLocalVideoFileChange}
+              style={{ width: '100%', marginBottom: '0.75rem', padding: '0.4rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
+            />
           </>
+        )}
+        {localVideoSrc && (
+          <div className="video-wrapper" style={{ marginBottom: '1rem' }}>
+            <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%' }} />
+          </div>
         )}
         {mainVideoUrl && (
           <div className="video-wrapper">
@@ -531,12 +624,12 @@ function AnalisisDePartido() {
             <h2>Cortes</h2>
             <small>Revisa los registros tácticos guardados en el último encuentro</small>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
               className="secondary-button"
               onClick={downloadAllCuts}
-              disabled={visibleCuts.length === 0}
+              disabled={exporting || !localVideoSrc || visibleCuts.length === 0}
             >
               Descargar todos
             </button>
@@ -578,8 +671,8 @@ function AnalisisDePartido() {
                               }}>
                                 Reproducir corte
                               </button>
-                              <button type="button" className="secondary-button" onClick={() => downloadCut(cut)}>
-                                Descargar corte
+                              <button type="button" className="secondary-button" onClick={() => downloadCut(cut)} disabled={exporting || !localVideoSrc}>
+                                Descargar MP4
                               </button>
                             </div>
                           </div>
