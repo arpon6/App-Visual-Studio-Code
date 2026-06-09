@@ -137,6 +137,55 @@ function DesarrolloIndividual() {
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
   };
 
+  const getYouTubeWatchUrl = (url: string) => {
+    const match = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
+    return match ? `https://www.youtube.com/watch?v=${match[1]}` : url;
+  };
+
+  const downloadFile = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCut = (cut: VideoCorte) => {
+    const source = mainVideoUrl || '';
+    const watchUrl = source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '';
+    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
+      id: cut.id,
+      category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+      label: cut.label,
+      start: cut.start,
+      end: cut.end,
+      source,
+      watchUrl,
+      sourceType: cut.source || 'propio',
+      createdAt: cut.createdAt,
+    }, null, 2));
+  };
+
+  const downloadAllCuts = () => {
+    const source = mainVideoUrl || '';
+    downloadFile('cortes-desarrollo-individual.json', JSON.stringify({
+      source,
+      videoUrl: source,
+      cuts: visibleCortes.map((cut) => ({
+        id: cut.id,
+        category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+        label: cut.label,
+        start: cut.start,
+        end: cut.end,
+        sourceType: cut.source || 'propio',
+        watchUrl: source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '',
+        createdAt: cut.createdAt,
+      })),
+    }, null, 2));
+  };
+
   const visibleChatMessages = useMemo(() => {
     if (!user) return [];
     if (user.role === 'jugador' && user.player_id) {
@@ -186,7 +235,12 @@ function DesarrolloIndividual() {
                 : 'Aquí se muestran los cortes asignados a jugadores específicos.'}
             </small>
           </div>
-          <span className="badge">{cortesCount} cortes</span>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={visibleCortes.length === 0}>
+              Descargar todos
+            </button>
+            <span className="badge">{cortesCount} cortes</span>
+          </div>
         </div>
 
         {cortesCount === 0 ? (
@@ -235,6 +289,12 @@ function DesarrolloIndividual() {
                           ) : (
                             <div style={{ color: '#9ca3af' }}>No hay vídeo disponible para este corte.</div>
                           )}
+
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button type="button" className="secondary-button" onClick={() => downloadCut(corte)}>
+                              Descargar corte
+                            </button>
+                          </div>
 
                           <div style={{ display: 'grid', gap: 10 }}>
                             <div style={{ display: 'grid', gap: 6 }}>

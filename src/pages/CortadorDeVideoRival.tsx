@@ -424,6 +424,55 @@ function CortadorDeVideoRival() {
     return secs;
   }
 
+  const getYouTubeWatchUrl = (url: string) => {
+    const id = extractYouTubeVideoId(url);
+    return id ? `https://www.youtube.com/watch?v=${id}` : url;
+  };
+
+  const downloadFile = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCut = (cut: Cut) => {
+    const source = videoMode === 'url' ? videoUrl : 'local video';
+    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
+      id: cut.id,
+      label: cut.label,
+      categoryId: cut.categoryId,
+      categoryLabel: categories.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+      start: cut.start,
+      end: cut.end,
+      videoMode,
+      source,
+      watchUrl: videoMode === 'url' ? `${getYouTubeWatchUrl(videoUrl)}&t=${Math.floor(cut.start)}s` : undefined,
+      createdAt: cut.createdAt,
+    }, null, 2));
+  };
+
+  const downloadAllCuts = () => {
+    const source = videoMode === 'url' ? videoUrl : 'local video';
+    downloadFile('cortes-video-rival.json', JSON.stringify({
+      videoMode,
+      source,
+      cuts: cuts.map((cut) => ({
+        id: cut.id,
+        label: cut.label,
+        categoryId: cut.categoryId,
+        categoryLabel: categories.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+        start: cut.start,
+        end: cut.end,
+        watchUrl: videoMode === 'url' ? `${getYouTubeWatchUrl(videoUrl)}&t=${Math.floor(cut.start)}s` : undefined,
+        createdAt: cut.createdAt,
+      })),
+    }, null, 2));
+  };
+
   return (
     <section className={`page-section cortador-video-page${focusMode ? ' focus-mode' : ''}`}>
       <div className="page-title">
@@ -575,11 +624,14 @@ function CortadorDeVideoRival() {
       </div>
 
       <div className="card cortes-card">
-        <div className="section-header">
+        <div className="section-header" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <div>
             <small>Cortes guardados</small>
             <h2>Historial por categoría</h2>
           </div>
+          <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={cuts.length === 0}>
+            Descargar todos
+          </button>
         </div>
         <div className="cuts-list">
           {groupedCuts.map(({ category, cuts: categoryCuts }) => (
@@ -615,6 +667,7 @@ function CortadorDeVideoRival() {
                           ))}
                         </select>
                         <button type="button" className="secondary-button" onClick={() => handlePlayCut(cut)}>Reproducir</button>
+                        <button type="button" className="secondary-button" onClick={() => downloadCut(cut)}>Descargar</button>
                         <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut)}>Borrar</button>
                       </div>

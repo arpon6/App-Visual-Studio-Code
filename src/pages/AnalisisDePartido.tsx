@@ -393,6 +393,53 @@ function AnalisisDePartido() {
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
   };
 
+  const getYouTubeWatchUrl = (url: string) => {
+    const id = getYouTubeId(url);
+    return id ? `https://www.youtube.com/watch?v=${id}` : url;
+  };
+
+  const downloadFile = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCut = (cut: AnalysisCut) => {
+    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
+    const watchUrl = source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '';
+    downloadFile(`corte-${cut.id}.json`, JSON.stringify({
+      id: cut.id,
+      category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+      label: cut.label,
+      start: cut.start,
+      end: cut.end,
+      source,
+      watchUrl,
+      createdAt: cut.createdAt,
+    }, null, 2));
+  };
+
+  const downloadAllCuts = () => {
+    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
+    downloadFile('cortes-desarrollo-grupal.json', JSON.stringify({
+      source,
+      videoUrl: source,
+      cuts: visibleCuts.map((cut) => ({
+        id: cut.id,
+        category: TACTICAL_CATEGORIES.find((cat) => cat.id === cut.categoryId)?.label || cut.categoryId,
+        label: cut.label,
+        start: cut.start,
+        end: cut.end,
+        watchUrl: source ? `${getYouTubeWatchUrl(source)}&t=${Math.floor(cut.start)}s` : '',
+        createdAt: cut.createdAt,
+      })),
+    }, null, 2));
+  };
+
   const getMessageRecipientsEmails = (message: ChatMessage) => {
     const recipients = new Set<string>();
 
@@ -484,7 +531,17 @@ function AnalisisDePartido() {
             <h2>Cortes</h2>
             <small>Revisa los registros tácticos guardados en el último encuentro</small>
           </div>
-          <span className="badge">{TACTICAL_CATEGORIES.reduce((acc, cat) => acc + (analysisCuts[cat.id]?.length ?? 0), 0)} cortes</span>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={downloadAllCuts}
+              disabled={visibleCuts.length === 0}
+            >
+              Descargar todos
+            </button>
+            <span className="badge">{TACTICAL_CATEGORIES.reduce((acc, cat) => acc + (analysisCuts[cat.id]?.length ?? 0), 0)} cortes</span>
+          </div>
         </div>
 
         <div className="accordion-list">
@@ -520,6 +577,9 @@ function AnalisisDePartido() {
                                 setPlayingCut(cut);
                               }}>
                                 Reproducir corte
+                              </button>
+                              <button type="button" className="secondary-button" onClick={() => downloadCut(cut)}>
+                                Descargar corte
                               </button>
                             </div>
                           </div>
