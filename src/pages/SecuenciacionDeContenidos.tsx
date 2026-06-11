@@ -176,32 +176,35 @@ function SecuenciacionDeContenidos() {
       notas: notas || null,
     };
 
-    try {
-      if (editingId) {
-        await supabase.from('secuenciacion_contenidos').update(row).eq('id', editingId);
-      } else {
-        await supabase.from('secuenciacion_contenidos').insert([row]);
-      }
-      await loadSecuenciaciones();
-      resetModal();
-    } catch (error) {
-      console.error('Error saving secuenciacion:', error);
-      alert('Error al guardar la secuenciación');
+    let error;
+    if (editingId) {
+      ({ error } = await supabase.from('secuenciacion_contenidos').update(row).eq('id', editingId));
+    } else {
+      ({ error } = await supabase.from('secuenciacion_contenidos').insert([row]));
     }
+
+    if (error) {
+      console.error('Error saving secuenciacion:', error);
+      alert('Error al guardar: ' + error.message);
+      return;
+    }
+
+    await loadSecuenciaciones();
+    resetModal();
   };
 
   const handleDeleteSecuenciacion = async () => {
     if (!editingId) return;
     if (!confirm('¿Deseas eliminar esta secuenciación?')) return;
 
-    try {
-      await supabase.from('secuenciacion_contenidos').delete().eq('id', editingId);
-      await loadSecuenciaciones();
-      resetModal();
-    } catch (error) {
+    const { error } = await supabase.from('secuenciacion_contenidos').delete().eq('id', editingId);
+    if (error) {
       console.error('Error deleting secuenciacion:', error);
-      alert('Error al eliminar la secuenciación');
+      alert('Error al eliminar: ' + error.message);
+      return;
     }
+    await loadSecuenciaciones();
+    resetModal();
   };
 
   const resetModal = () => {
@@ -271,21 +274,28 @@ function SecuenciacionDeContenidos() {
                       </div>
                       {event && (
                         <div className="day-events-indicator">
-                          <span className="event-label type-entrenamiento">
-                            <span className="event-label-type">Entrenamiento</span>
-                            {event.time && <span className="event-label-time">{event.time}</span>}
-                          </span>
-                        </div>
-                      )}
-                      {hasContent && (
-                        <div style={{
-                          fontSize: '0.7rem',
-                          color: 'var(--accent, #0ea5e9)',
-                          marginTop: '4px',
-                          textAlign: 'center',
-                          fontWeight: 'bold'
-                        }}>
-                          {secuenciacion.contenidos.length} contenido{secuenciacion.contenidos.length !== 1 ? 's' : ''}
+                          {hasContent ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+                              {secuenciacion.contenidos.map((c, i) => (
+                                <span key={i} style={{
+                                  fontSize: '0.6rem',
+                                  background: 'rgba(144,244,174,0.15)',
+                                  color: '#90f4ae',
+                                  borderRadius: '3px',
+                                  padding: '2px 4px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'block'
+                                }}>{c}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="event-label type-entrenamiento">
+                              <span className="event-label-type">Entrenamiento</span>
+                              {event.time && <span className="event-label-time">{event.time}</span>}
+                            </span>
+                          )}
                         </div>
                       )}
                     </>
