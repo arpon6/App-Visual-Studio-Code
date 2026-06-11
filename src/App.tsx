@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
 import Calendario from './pages/Calendario';
+import SecuenciacionDeContenidos from './pages/SecuenciacionDeContenidos';
 import PlanDePartido from './pages/PlanDePartido';
 import AnalisisDePartido from './pages/AnalisisDePartido';
 import CortadorDeVideo from './pages/CortadorDeVideo';
@@ -19,7 +20,7 @@ import Wellness from './pages/Wellness';
 import './App.css';
 
 const ALL_SECTIONS = [
-  'Inicio', 'Plantilla', 'Calendario', 'Plan de Partido', 'Desarrollo grupal',
+  'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Plan de Partido', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
   'Gestión de usuarios',
@@ -28,7 +29,7 @@ const ALL_SECTIONS = [
 type PageKey = typeof ALL_SECTIONS[number];
 
 const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Desarrollo grupal',
+  'Inicio', 'Calendario', 'Secuenciación de contenidos', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Otras Informaciones',
 ];
@@ -37,6 +38,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Inicio': <Inicio />,
   'Plantilla': <Plantilla />,
   'Calendario': <Calendario />,
+  'Secuenciación de contenidos': <SecuenciacionDeContenidos />,
   'Plan de Partido': <PlanDePartido />,
   'Desarrollo grupal': <AnalisisDePartido />,
   'Desarrollo Individual': <DesarrolloIndividual />,
