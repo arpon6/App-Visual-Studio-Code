@@ -444,8 +444,7 @@ function SecuenciacionDeContenidos() {
                           style={{
                             padding: '8px 12px',
                             cursor: 'pointer',
-                            borderBottom: '1px solid var(--border, #333)',
-                            hover: { backgroundColor: 'var(--background, #0f0f23)' }
+                            borderBottom: '1px solid var(--border, #333)'
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--background, #0f0f23)'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
