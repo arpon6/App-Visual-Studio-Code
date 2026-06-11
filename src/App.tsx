@@ -29,7 +29,7 @@ const ALL_SECTIONS = [
 type PageKey = typeof ALL_SECTIONS[number];
 
 const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Secuenciación de contenidos', 'Desarrollo grupal',
+  'Inicio', 'Calendario', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Otras Informaciones',
 ];
