@@ -6,6 +6,7 @@ import Inicio from './pages/Inicio';
 import Plantilla from './pages/Plantilla';
 import Calendario from './pages/Calendario';
 import SecuenciacionDeContenidos from './pages/SecuenciacionDeContenidos';
+import GeneradorDeSesiones from './pages/GeneradorDeSesiones';
 import PlanDePartido from './pages/PlanDePartido';
 import AnalisisDePartido from './pages/AnalisisDePartido';
 import CortadorDeVideo from './pages/CortadorDeVideo';
@@ -20,7 +21,7 @@ import Wellness from './pages/Wellness';
 import './App.css';
 
 const ALL_SECTIONS = [
-  'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Plan de Partido', 'Desarrollo grupal',
+  'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Generador de sesiones', 'Plan de Partido', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
   'Gestión de usuarios',
@@ -39,6 +40,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Plantilla': <Plantilla />,
   'Calendario': <Calendario />,
   'Secuenciación de contenidos': <SecuenciacionDeContenidos />,
+  'Generador de sesiones': <GeneradorDeSesiones />,
   'Plan de Partido': <PlanDePartido />,
   'Desarrollo grupal': <AnalisisDePartido />,
   'Desarrollo Individual': <DesarrolloIndividual />,
