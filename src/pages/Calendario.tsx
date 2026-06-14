@@ -12,17 +12,32 @@ interface Event {
   time?: string;
   description?: string;
   playerName?: string;
+  rival?: string;
+  jornada?: string;
+  matchType?: string;
   pdfFile?: {
     name: string;
-    data?: string;    // base64, si se subió como archivo
-    url?: string;     // URL directa (Supabase Storage u otra)
+    data?: string;
+    url?: string;
   };
 }
 
+const RIVALS = ['Agoncillo', 'Alfaro', 'Anguiano', 'Arnedo', 'Berceo', 'Calahorra', 'Calasancio', 'Casalarreina', 'Comillas', 'Haro', 'La Calzada', 'Pradejón', 'Ríver Ebro', 'San Marcial', 'Varea', 'Vianés', 'Yagüe'];
+
+const EMPTY_FORM = {
+  type: 'partido' as 'partido' | 'entrenamiento' | 'otro',
+  customType: '',
+  place: '',
+  time: '10:00',
+  description: '',
+  rival: '',
+  rivalCustom: '',
+  jornada: '-',
+  matchType: 'Liga',
+};
+
 function Calendario() {
-
-
-    const { user } = useAuth();
+  const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
@@ -33,18 +48,11 @@ function Calendario() {
   const [savedEvents, setSavedEvents] = useState<Event[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    type: 'partido' as 'partido' | 'entrenamiento' | 'otro',
-    customType: '',
-    place: '',
-    time: '10:00',
-    description: '',
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pdfUrl, setPdfUrl] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-  // Cargar eventos de Supabase
   useEffect(() => {
     loadEvents();
   }, []);
@@ -62,13 +70,13 @@ function Calendario() {
       place: r.place,
       time: r.time,
       description: r.description,
+      rival: r.rival,
+      jornada: r.jornada,
+      matchType: r.match_type,
       pdfFile: r.pdf_url ? { name: r.pdf_name || 'documento.pdf', url: r.pdf_url } : undefined,
     }));
     setSavedEvents(saved);
-
-    // Guardar los eventos en localStorage para que otras páginas los lean
     localStorage.setItem('calendarEvents', JSON.stringify(saved));
-
     loadBirthdayEvents(saved, currentDate.getFullYear());
     setLoaded(true);
   };
@@ -78,9 +86,7 @@ function Calendario() {
       const { data, error } = await supabase
         .from('plantilla')
         .select('first_name, last_name1, last_name2, birth_date');
-
       if (error) throw error;
-
       if (data) {
         const birthdayEvents: Event[] = data
           .filter(player => player.birth_date)
@@ -97,8 +103,6 @@ function Calendario() {
               description: `Cumpleaños de ${fullName}`,
             };
           });
-
-        // Combinar con eventos guardados, evitando duplicados
         const nonBirthday = baseEvents.filter(e => e.type !== 'cumpleaños');
         setEvents([...nonBirthday, ...birthdayEvents]);
       }
@@ -107,12 +111,10 @@ function Calendario() {
     }
   };
 
-
-
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => {
     const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-    return (day + 6) % 7; // 0=Lun, 1=Mar, ..., 6=Dom
+    return (day + 6) % 7;
   };
 
   const monthDays = getDaysInMonth(currentDate);
@@ -136,7 +138,7 @@ function Calendario() {
     if ((e.target as HTMLElement).closest('.event-label')) return;
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
     setSelectedDate(dateStr);
-    setFormData({ type: 'partido', customType: '', place: '', time: '10:00', description: '' });
+    setFormData(EMPTY_FORM);
     setSelectedFile(null);
     setPdfUrl('');
     setEditingEventId(null);
@@ -152,99 +154,82 @@ function Calendario() {
     }
   };
 
-    const handleAddEvent = async () => {
-      console.log("Iniciando guardado de evento...");
+  const handleAddEvent = async () => {
+    if (!user) {
+      alert('Error: No tienes una sesión activa. Por favor, inicia sesión de nuevo.');
+      return;
+    }
+    if (!selectedDate || !formData.place) {
+      alert('Por favor, completa fecha y lugar');
+      return;
+    }
+    if (formData.type === 'otro' && !formData.customType) {
+      alert('Por favor, especifica el tipo de evento personalizado');
+      return;
+    }
 
-      if (!user) {
-        alert("Error: No tienes una sesión activa. Por favor, inicia sesión de nuevo.");
+    let finalPdfUrl = pdfUrl;
+    let finalPdfName = selectedFile ? selectedFile.name : (pdfUrl ? pdfUrl.split('/').pop() || 'documento.pdf' : null);
+
+    if (selectedFile) {
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
+      const filePath = `eventos/${fileName}`;
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('documentos')
+        .upload(filePath, selectedFile);
+      if (uploadError) {
+        alert('Error al subir el archivo: ' + uploadError.message);
         return;
       }
+      console.log('Archivo subido con éxito:', uploadData);
+      const { data: urlData } = supabase.storage.from('documentos').getPublicUrl(filePath);
+      finalPdfUrl = urlData.publicUrl;
+    }
 
-      if (!selectedDate || !formData.place) {
-        alert('Por favor, completa fecha y lugar');
-        return;
-      }
+    const finalRival = formData.rival === '__custom__' ? formData.rivalCustom : formData.rival;
 
-      if (formData.type === 'otro' && !formData.customType) {
-        alert('Por favor, especifica el tipo de evento personalizado');
-        return;
-      }
-
-      // 1. Lógica para subir archivo
-      let finalPdfUrl = pdfUrl;
-      let finalPdfName = selectedFile ? selectedFile.name : (pdfUrl ? pdfUrl.split('/').pop() || 'documento.pdf' : null);
-
-      if (selectedFile) {
-        console.log("Subiendo archivo al bucket...", selectedFile.name);
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
-        const filePath = `eventos/${fileName}`;
-
-        const { error: uploadError, data: uploadData } = await supabase.storage
-          .from('documentos')
-          .upload(filePath, selectedFile);
-
-        if (uploadError) {
-          console.error("Error al subir archivo a Storage:", uploadError);
-          alert('Error al subir el archivo: ' + uploadError.message);
-          return;
-        }
-      
-        console.log("Archivo subido con éxito:", uploadData);
-
-        const { data: urlData } = supabase.storage
-          .from('documentos')
-          .getPublicUrl(filePath);
-        
-        finalPdfUrl = urlData.publicUrl;
-        console.log("URL pública obtenida:", finalPdfUrl);
-      }
-
-      // 2. Preparar el objeto para la base de datos
-      const row = {
-        date: selectedDate,
-        type: formData.type,
-        custom_type: formData.customType || null,
-        place: formData.place,
-        time: formData.time || null,
-        description: formData.description || null,
-        pdf_name: finalPdfName,
-        pdf_url: finalPdfUrl,
-        created_by: user.id,
-      };
-
-      console.log("Guardando evento en base de datos:", row);
-
-      // 3. Guardar en la tabla
-      let error;
-      if (editingEventId) {
-        const { error: updateError } = await supabase
-          .from('calendar_events')
-          .update({ ...row, id: editingEventId })
-          .eq('id', editingEventId);
-        error = updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from('calendar_events')
-          .insert([row]);
-        error = insertError;
-      }
-
-      if (error) {
-        console.error('Error final al guardar en tabla calendar_events:', error);
-        alert('Error al guardar el evento: ' + error.message);
-        return;
-      }
-    
-      console.log("Guardado completado exitosamente");
-      await loadEvents();
-      resetModal();
+    const row = {
+      date: selectedDate,
+      type: formData.type,
+      custom_type: formData.customType || null,
+      place: formData.place,
+      time: formData.time || null,
+      description: formData.description || null,
+      rival: formData.type === 'partido' ? (finalRival || null) : null,
+      jornada: formData.type === 'partido' ? (formData.jornada || null) : null,
+      match_type: formData.type === 'partido' ? (formData.matchType || null) : null,
+      pdf_name: finalPdfName,
+      pdf_url: finalPdfUrl,
+      created_by: user.id,
     };
+
+    let error;
+    if (editingEventId) {
+      const { error: updateError } = await supabase
+        .from('calendar_events')
+        .update({ ...row, id: editingEventId })
+        .eq('id', editingEventId);
+      error = updateError;
+    } else {
+      const { error: insertError } = await supabase
+        .from('calendar_events')
+        .insert([row]);
+      error = insertError;
+    }
+
+    if (error) {
+      alert('Error al guardar el evento: ' + error.message);
+      return;
+    }
+    await loadEvents();
+    resetModal();
+  };
 
   const resetModal = () => {
     setShowModal(false);
     setSelectedDate(null);
-    setFormData({ type: 'partido', customType: '', place: '', time: '10:00', description: '' });
+    setFormData(EMPTY_FORM);
     setSelectedFile(null);
     setPdfUrl('');
     setEditingEventId(null);
@@ -259,12 +244,17 @@ function Calendario() {
 
   const handleEditEvent = (event: Event) => {
     setSelectedDate(event.date);
+    const rivalIsCustom = !!event.rival && !RIVALS.includes(event.rival) && event.rival !== 'Por determinar';
     setFormData({
       type: event.type as 'partido' | 'entrenamiento' | 'otro',
       customType: event.customType || '',
       place: event.place,
       time: event.time || '10:00',
       description: event.description || '',
+      rival: rivalIsCustom ? '__custom__' : (event.rival || ''),
+      rivalCustom: rivalIsCustom ? (event.rival || '') : '',
+      jornada: event.jornada || '-',
+      matchType: event.matchType || 'Liga',
     });
     setSelectedFile(null);
     setPdfUrl(event.pdfFile?.url || '');
@@ -279,23 +269,15 @@ function Calendario() {
   };
 
   const getEventTypeLabel = (event: Event): string => {
-    if (event.type === 'cumpleaños') {
-      return 'Cumpleaños';
-    }
-    if (event.type === 'otro' && event.customType) {
-      return event.customType;
-    }
+    if (event.type === 'cumpleaños') return 'Cumpleaños';
+    if (event.type === 'otro' && event.customType) return event.customType;
     return event.type.charAt(0).toUpperCase() + event.type.slice(1);
   };
 
   const getEventsBetweenDates = (startDate: Date, endDate: Date): Event[] => {
     return events.filter(event => {
       const parts = event.date.split('/');
-      const eventDate = new Date(
-        parseInt(parts[2]),
-        parseInt(parts[1]) - 1,
-        parseInt(parts[0])
-      );
+      const eventDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
       return eventDate >= startDate && eventDate <= endDate;
     });
   };
@@ -318,6 +300,8 @@ function Calendario() {
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
     return events.filter(evt => evt.date === dateStr);
   };
+
+  if (!loaded) return null;
 
   return (
     <section className="page-section">
@@ -362,14 +346,14 @@ function Calendario() {
                         <div className="day-events-indicator">
                           {dayEvents.slice(0, 3).map(evt => (
                             <span
-                                                            key={evt.id}
+                              key={evt.id}
                               className={`event-label type-${evt.type}`}
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (evt.pdfFile) {
                                   openPDF(evt);
                                 } else if (!isReadOnly && evt.type !== 'cumpleaños') {
-                                  handleEditEvent(evt); 
+                                  handleEditEvent(evt);
                                 }
                               }}
                               title={evt.type !== 'cumpleaños' ? (evt.pdfFile ? 'Clic para abrir documento' : 'Clic para editar') : evt.description}
@@ -409,6 +393,7 @@ function Calendario() {
                   </div>
                   <div className="event-details">
                     <strong>{evt.place}</strong>
+                    {evt.type === 'partido' && evt.rival && <p>⚔️ <strong>Rival:</strong> {evt.rival}</p>}
                     {evt.playerName && <p><em>📅 {evt.playerName}</em></p>}
                     {evt.description && <p>{evt.description}</p>}
                   </div>
@@ -420,8 +405,8 @@ function Calendario() {
                     )}
                     {!isReadOnly && evt.type !== 'cumpleaños' && (
                       <>
-                        <button className="action-btn edit-btn" onClick={() => handleEditEvent(evt)}>✏️</button>
-                        <button className="action-btn delete-btn" onClick={() => handleDeleteEvent(evt.id)}>🗑️</button>
+                        <button className="action-btn edit-btn" onClick={() => handleEditEvent(evt)}>✏️ Editar</button>
+                        <button className="action-btn delete-btn" onClick={() => handleDeleteEvent(evt.id)}>🗑️ Eliminar</button>
                       </>
                     )}
                   </div>
@@ -436,8 +421,8 @@ function Calendario() {
       {showModal && !isReadOnly && (
         <div className="modal-overlay" onClick={resetModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2>{editingEventId ? 'Editar evento' : 'Crear evento 123'}</h2>
-            
+            <h2>{editingEventId ? 'Editar evento' : 'Crear evento'}</h2>
+
             <div className="form-group">
               <label>Fecha: <strong>{selectedDate}</strong></label>
             </div>
@@ -468,16 +453,76 @@ function Calendario() {
               </div>
             )}
 
+            {formData.type === 'partido' && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="rival">Rival</label>
+                  <select
+                    id="rival"
+                    value={formData.rival}
+                    onChange={e => setFormData({ ...formData, rival: e.target.value, rivalCustom: '' })}
+                  >
+                    <option value="">-- Seleccionar rival --</option>
+                    {RIVALS.map(r => <option key={r} value={r}>{r}</option>)}
+                    <option value="__custom__">Otro (escribir nombre)</option>
+                    <option value="Por determinar">Por determinar</option>
+                  </select>
+                </div>
+                {formData.rival === '__custom__' && (
+                  <div className="form-group">
+                    <label htmlFor="rivalCustom">Nombre del rival</label>
+                    <input
+                      id="rivalCustom"
+                      type="text"
+                      value={formData.rivalCustom}
+                      onChange={e => setFormData({ ...formData, rivalCustom: e.target.value })}
+                      placeholder="Escribe el nombre del equipo"
+                    />
+                  </div>
+                )}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="matchType">Tipo de partido</label>
+                    <select
+                      id="matchType"
+                      value={formData.matchType}
+                      onChange={e => setFormData({ ...formData, matchType: e.target.value })}
+                    >
+                      <option value="Liga">Liga</option>
+                      <option value="Copa Federación">Copa Federación</option>
+                      <option value="Amistoso">Amistoso</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="jornada">Jornada</label>
+                    <select
+                      id="jornada"
+                      value={formData.jornada}
+                      onChange={e => setFormData({ ...formData, jornada: e.target.value })}
+                    >
+                      <option value="-">-</option>
+                      {Array.from({ length: 34 }, (_, i) => i + 1).map(n => (
+                        <option key={n} value={String(n)}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="place">Lugar *</label>
-                <input
+                <select
                   id="place"
-                  type="text"
                   value={formData.place}
                   onChange={e => setFormData({ ...formData, place: e.target.value })}
-                  placeholder="Ej: Estadio Municipal, Cancha 3, etc."
-                />
+                >
+                  <option value="">-- Seleccionar lugar --</option>
+                  <option value="Casa">Casa</option>
+                  <option value="Fuera">Fuera</option>
+                  <option value="Por determinar">Por determinar</option>
+                </select>
               </div>
 
               <div className="form-group">
@@ -487,21 +532,13 @@ function Calendario() {
                   value={formData.time}
                   onChange={e => setFormData({ ...formData, time: e.target.value })}
                 >
-                  {Array.from({ length: 24 }).map((_, i) => {
+                  <option value="Por determinar">Por determinar</option>
+                  {Array.from({ length: 24 }).flatMap((_, i) => {
                     const hour = String(i).padStart(2, '0');
-                    return (
-                      <option key={hour} value={`${hour}:00`}>
-                        {hour}:00
-                      </option>
-                    );
-                  })}
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const hour = String(i).padStart(2, '0');
-                    return (
-                      <option key={`${hour}:30`} value={`${hour}:30`}>
-                        {hour}:30
-                      </option>
-                    );
+                    return [
+                      <option key={`${hour}:00`} value={`${hour}:00`}>{hour}:00</option>,
+                      <option key={`${hour}:30`} value={`${hour}:30`}>{hour}:30</option>,
+                    ];
                   })}
                 </select>
               </div>
@@ -542,7 +579,7 @@ function Calendario() {
 
             <div className="modal-buttons">
               <button className="btn-cancel" onClick={resetModal}>Cancelar</button>
-                            <button className="btn-save" onClick={() => { console.log("Botón clicado"); handleAddEvent(); }}>
+              <button className="btn-save" onClick={handleAddEvent}>
                 {editingEventId ? 'Actualizar' : 'Crear'} Evento
               </button>
             </div>
