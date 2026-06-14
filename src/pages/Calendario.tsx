@@ -348,21 +348,32 @@ function Calendario() {
                             <span
                               key={evt.id}
                               className={`event-label type-${evt.type}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (evt.pdfFile) {
-                                  openPDF(evt);
-                                } else if (!isReadOnly && evt.type !== 'cumpleaños') {
-                                  handleEditEvent(evt);
-                                }
-                              }}
-                              title={evt.type !== 'cumpleaños' ? (evt.pdfFile ? 'Clic para abrir documento' : 'Clic para editar') : evt.description}
                             >
-                              <span className="event-label-type">{getEventTypeLabel(evt)}</span>
-                              {evt.type === 'cumpleaños' && evt.playerName && <span className="event-label-place">{evt.playerName}</span>}
-                              {evt.time && evt.type !== 'cumpleaños' && <span className="event-label-time">{evt.time}</span>}
-                              {evt.place && evt.type !== 'cumpleaños' && <span className="event-label-place">{evt.place}</span>}
-                              {evt.pdfFile && <span className="event-label-pdf">📄</span>}
+                              <span
+                                className="event-label-body"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (evt.pdfFile) {
+                                    openPDF(evt);
+                                  } else if (!isReadOnly && evt.type !== 'cumpleaños') {
+                                    handleEditEvent(evt);
+                                  }
+                                }}
+                                title={evt.type !== 'cumpleaños' ? (evt.pdfFile ? 'Clic para abrir documento' : 'Clic para editar') : evt.description}
+                              >
+                                <span className="event-label-type">{getEventTypeLabel(evt)}</span>
+                                {evt.type === 'cumpleaños' && evt.playerName && <span className="event-label-place">{evt.playerName}</span>}
+                                {evt.time && evt.type !== 'cumpleaños' && <span className="event-label-time">{evt.time}</span>}
+                                {evt.place && evt.type !== 'cumpleaños' && <span className="event-label-place">{evt.place}</span>}
+                                {evt.pdfFile && <span className="event-label-pdf">📄</span>}
+                              </span>
+                              {!isReadOnly && evt.type !== 'cumpleaños' && (
+                                <span
+                                  className="event-label-delete"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteEvent(evt.id); }}
+                                  title="Eliminar evento"
+                                >✕</span>
+                              )}
                             </span>
                           ))}
                           {dayEvents.length > 3 && <span className="more-events">+{dayEvents.length - 3}</span>}
@@ -513,16 +524,22 @@ function Calendario() {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="place">Lugar *</label>
-                <select
+                <input
                   id="place"
-                  value={formData.place}
+                  type="text"
+                  value={formData.place === 'Por determinar' ? '' : formData.place}
                   onChange={e => setFormData({ ...formData, place: e.target.value })}
-                >
-                  <option value="">-- Seleccionar lugar --</option>
-                  <option value="Casa">Casa</option>
-                  <option value="Fuera">Fuera</option>
-                  <option value="Por determinar">Por determinar</option>
-                </select>
+                  placeholder="Ej: Estadio Municipal, Cancha 3..."
+                  disabled={formData.place === 'Por determinar'}
+                />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#cdd4f1', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.place === 'Por determinar'}
+                    onChange={e => setFormData({ ...formData, place: e.target.checked ? 'Por determinar' : '' })}
+                  />
+                  Por determinar
+                </label>
               </div>
 
               <div className="form-group">
