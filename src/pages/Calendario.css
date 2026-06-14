@@ -36,8 +36,16 @@
   transition: all 0.2s;
 }
 
-.nav-btn:hover {
-  background: rgba(50, 70, 100, 0.9);
+.export-btn {
+  background: rgba(144, 244, 174, 0.12);
+  border-color: rgba(144, 244, 174, 0.3);
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.export-btn:hover {
+  background: rgba(144, 244, 174, 0.25);
   border-color: #90f4ae;
 }
 
@@ -152,6 +160,19 @@
 
 .event-label-place {
   opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-label-meta {
+  opacity: 0.9;
+  font-style: italic;
+  font-size: 0.6rem;
+}
+
+.event-label-rival {
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

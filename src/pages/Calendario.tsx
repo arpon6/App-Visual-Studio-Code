@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import jsPDF from 'jspdf';
 import './Calendario.css';
 
 interface Event {
@@ -301,6 +302,107 @@ function Calendario() {
     return events.filter(evt => evt.date === dateStr);
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const nombre = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // Título
+    doc.setFillColor(10, 20, 40);
+    doc.rect(0, 0, pageW, 22, 'F');
+    doc.setTextColor(144, 244, 174);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Calendario — ${nombre}`, margin, 14);
+
+    // Recoger eventos del mes ordenados
+    const mm = currentDate.getMonth() + 1;
+    const yyyy = currentDate.getFullYear();
+    const monthEvents = events
+      .filter(e => {
+        const parts = e.date.split('/');
+        return parseInt(parts[1]) === mm && parseInt(parts[2]) === yyyy;
+      })
+      .sort((a, b) => {
+        const da = new Date(a.date.split('/').reverse().join('-'));
+        const db = new Date(b.date.split('/').reverse().join('-'));
+        return da.getTime() - db.getTime();
+      });
+
+    if (monthEvents.length === 0) {
+      doc.setTextColor(160, 160, 180);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text('No hay eventos este mes.', margin, 36);
+      doc.save(`Calendario_${nombre}.pdf`);
+      return;
+    }
+
+    const typeColors: Record<string, [number, number, number]> = {
+      partido: [255, 107, 107],
+      entrenamiento: [78, 205, 196],
+      cumpleaños: [255, 165, 0],
+      otro: [255, 217, 61],
+    };
+
+    let y = 30;
+    const lineH = 7;
+    const blockPad = 4;
+
+    for (const evt of monthEvents) {
+      const label = getEventTypeLabel(evt);
+      const color = typeColors[evt.type] ?? [180, 180, 180];
+
+      // Calcular altura del bloque
+      const lines: string[] = [];
+      lines.push(`${evt.date}  ·  ${evt.time ?? 'Hora por determinar'}  ·  ${evt.place}`); 
+      if (evt.type === 'partido') {
+        if (evt.matchType) lines.push(`Tipo: ${evt.matchType}${evt.jornada && evt.jornada !== '-' ? `  ·  Jornada ${evt.jornada}` : ''}`);
+        if (evt.rival) lines.push(`Rival: ${evt.rival}`);
+      }
+      if (evt.description) lines.push(evt.description);
+
+      const blockH = blockPad * 2 + lineH + lines.length * lineH;
+
+      if (y + blockH > 280) {
+        doc.addPage();
+        y = 14;
+      }
+
+      // Fondo del bloque
+      doc.setFillColor(20, 32, 52);
+      doc.roundedRect(margin, y, pageW - margin * 2, blockH, 3, 3, 'F');
+
+      // Pastilla de color tipo
+      doc.setFillColor(...color);
+      doc.roundedRect(margin, y, 3, blockH, 1, 1, 'F');
+
+      // Badge tipo
+      doc.setFillColor(color[0], color[1], color[2], 0.2);
+      const badgeW = doc.getTextWidth(label.toUpperCase()) + 6;
+      doc.roundedRect(margin + 6, y + blockPad - 1, badgeW, lineH, 2, 2, 'F');
+      doc.setTextColor(...color);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(label.toUpperCase(), margin + 9, y + blockPad + lineH - 3);
+
+      // Líneas de texto
+      doc.setTextColor(205, 212, 241);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      let ty = y + blockPad + lineH + 2;
+      for (const line of lines) {
+        doc.text(line, margin + 6, ty + lineH - 2);
+        ty += lineH;
+      }
+
+      y += blockH + 3;
+    }
+
+    doc.save(`Calendario_${nombre}.pdf`);
+  };
+
   if (!loaded) return null;
 
   return (
@@ -319,6 +421,7 @@ function Calendario() {
             <button className="nav-btn" onClick={handlePrevMonth}>←</button>
             <h2 className="month-label">{monthName}</h2>
             <button className="nav-btn" onClick={handleNextMonth}>→</button>
+            <button className="nav-btn export-btn" onClick={handleExportPDF} title="Descargar PDF del mes">⬇ PDF</button>
           </div>
 
           <div className="calendar-weekdays">
@@ -349,8 +452,7 @@ function Calendario() {
                               key={evt.id}
                               className={`event-label type-${evt.type}`}
                             >
-                              <span
-                                className="event-label-body"
+                              <span className="event-label-body"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (evt.pdfFile) {
@@ -362,6 +464,8 @@ function Calendario() {
                                 title={evt.type !== 'cumpleaños' ? (evt.pdfFile ? 'Clic para abrir documento' : 'Clic para editar') : evt.description}
                               >
                                 <span className="event-label-type">{getEventTypeLabel(evt)}</span>
+                                {evt.type === 'partido' && evt.matchType && <span className="event-label-meta">{evt.matchType}</span>}
+                                {evt.type === 'partido' && evt.rival && <span className="event-label-rival">vs {evt.rival}</span>}
                                 {evt.type === 'cumpleaños' && evt.playerName && <span className="event-label-place">{evt.playerName}</span>}
                                 {evt.time && evt.type !== 'cumpleaños' && <span className="event-label-time">{evt.time}</span>}
                                 {evt.place && evt.type !== 'cumpleaños' && <span className="event-label-place">{evt.place}</span>}
