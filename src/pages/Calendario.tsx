@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './Calendario.css';
 
 interface Event {
@@ -302,105 +303,29 @@ function Calendario() {
     return events.filter(evt => evt.date === dateStr);
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const handleExportPDF = async () => {
     const nombre = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-    const pageW = doc.internal.pageSize.getWidth();
-    const margin = 14;
+    const element = document.querySelector('.calendar-card') as HTMLElement;
+    if (!element) return;
 
-    // Título
-    doc.setFillColor(10, 20, 40);
-    doc.rect(0, 0, pageW, 22, 'F');
-    doc.setTextColor(144, 244, 174);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Calendario — ${nombre}`, margin, 14);
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#0c1622',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
 
-    // Recoger eventos del mes ordenados
-    const mm = currentDate.getMonth() + 1;
-    const yyyy = currentDate.getFullYear();
-    const monthEvents = events
-      .filter(e => {
-        const parts = e.date.split('/');
-        return parseInt(parts[1]) === mm && parseInt(parts[2]) === yyyy;
-      })
-      .sort((a, b) => {
-        const da = new Date(a.date.split('/').reverse().join('-'));
-        const db = new Date(b.date.split('/').reverse().join('-'));
-        return da.getTime() - db.getTime();
-      });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const ratio = canvas.width / canvas.height;
+    const imgW = pageW;
+    const imgH = imgW / ratio;
+    const offsetY = imgH < pageH ? (pageH - imgH) / 2 : 0;
 
-    if (monthEvents.length === 0) {
-      doc.setTextColor(160, 160, 180);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      doc.text('No hay eventos este mes.', margin, 36);
-      doc.save(`Calendario_${nombre}.pdf`);
-      return;
-    }
-
-    const typeColors: Record<string, [number, number, number]> = {
-      partido: [255, 107, 107],
-      entrenamiento: [78, 205, 196],
-      cumpleaños: [255, 165, 0],
-      otro: [255, 217, 61],
-    };
-
-    let y = 30;
-    const lineH = 7;
-    const blockPad = 4;
-
-    for (const evt of monthEvents) {
-      const label = getEventTypeLabel(evt);
-      const color = typeColors[evt.type] ?? [180, 180, 180];
-
-      // Calcular altura del bloque
-      const lines: string[] = [];
-      lines.push(`${evt.date}  ·  ${evt.time ?? 'Hora por determinar'}  ·  ${evt.place}`); 
-      if (evt.type === 'partido') {
-        if (evt.matchType) lines.push(`Tipo: ${evt.matchType}${evt.jornada && evt.jornada !== '-' ? `  ·  Jornada ${evt.jornada}` : ''}`);
-        if (evt.rival) lines.push(`Rival: ${evt.rival}`);
-      }
-      if (evt.description) lines.push(evt.description);
-
-      const blockH = blockPad * 2 + lineH + lines.length * lineH;
-
-      if (y + blockH > 280) {
-        doc.addPage();
-        y = 14;
-      }
-
-      // Fondo del bloque
-      doc.setFillColor(20, 32, 52);
-      doc.roundedRect(margin, y, pageW - margin * 2, blockH, 3, 3, 'F');
-
-      // Pastilla de color tipo
-      doc.setFillColor(...color);
-      doc.roundedRect(margin, y, 3, blockH, 1, 1, 'F');
-
-      // Badge tipo
-      doc.setFillColor(color[0], color[1], color[2], 0.2);
-      const badgeW = doc.getTextWidth(label.toUpperCase()) + 6;
-      doc.roundedRect(margin + 6, y + blockPad - 1, badgeW, lineH, 2, 2, 'F');
-      doc.setTextColor(...color);
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.text(label.toUpperCase(), margin + 9, y + blockPad + lineH - 3);
-
-      // Líneas de texto
-      doc.setTextColor(205, 212, 241);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      let ty = y + blockPad + lineH + 2;
-      for (const line of lines) {
-        doc.text(line, margin + 6, ty + lineH - 2);
-        ty += lineH;
-      }
-
-      y += blockH + 3;
-    }
-
-    doc.save(`Calendario_${nombre}.pdf`);
+    pdf.addImage(imgData, 'PNG', 0, offsetY, imgW, imgH);
+    pdf.save(`Calendario_${nombre}.pdf`);
   };
 
   if (!loaded) return null;
