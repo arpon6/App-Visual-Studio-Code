@@ -6,8 +6,8 @@ import './Calendario.css';
 // A: Tipo de tarea | B: Intención | C: Socioestructura | D: Nombre
 // E: Enlace Imagen | F: Imagen | G: Vídeo | H: Descripción
 const MATRIZ: {
-  tipo: string; intencion: string; socioestructura: string; nombre: string;
-  enlaceImagen: string; video: string; descripcion: string;
+  momento: string; submomento: string; nombre: string; descripcion: string;
+  objetivo: string; tipo: string; jugadores: string; duracion: string;
 }[] = [
   // FASE OFENSIVA
   { momento: 'Fase Ofensiva', submomento: 'Finalizar', nombre: 'Definición 1vs1 portero', descripcion: 'El atacante enfrenta al portero en situación de 1vs1 para finalizar', objetivo: 'Mejorar la toma de decisión ante portero', tipo: 'Finalización', jugadores: '2-4', duracion: '8-10 min' },
