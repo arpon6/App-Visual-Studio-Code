@@ -150,6 +150,7 @@ function Estadisticas() {
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseMsg, setParseMsg] = useState('');
   const [urlActa, setUrlActa] = useState('');
@@ -194,11 +195,7 @@ function Estadisticas() {
         nombre: [p.first_name, p.last_name1, p.last_name2].filter(Boolean).join(' ') || 'Sin nombre',
         posicion: p.position || 'Sin posicion',
       }))
-      .sort((a, b) => {
-        const byPos = (posicionOrder[a.posicion] ?? 99) - (posicionOrder[b.posicion] ?? 99);
-        if (byPos !== 0) return byPos;
-        return a.dorsal - b.dorsal;
-      });
+      .sort((a, b) => a.dorsal - b.dorsal);
 
     setPlayers(mapped);
     setForm((prev) => ({ ...prev, jugadores: mergeActaJugadores(mapped, prev.jugadores) }));
@@ -380,22 +377,43 @@ function Estadisticas() {
   const handleGuardar = async () => {
     if (!form.fecha || !form.rival) return;
     setSaving(true);
-    const { data: acta, error } = await supabase
-      .from('actas_partidos')
-      .insert({ fecha: form.fecha, rival: form.rival, resultado: form.resultado, competicion: form.competicion })
-      .select().maybeSingle();
+    setSaveError('');
 
-    if (!error && acta) {
-      const lineas = form.jugadores
-        .filter(j => j.titular || j.goles > 0 || j.tarjetas > 0 || j.minutos > 0)
-        .map(j => ({ acta_id: acta.id, dorsal: j.dorsal, nombre: j.nombre, titular: j.titular, goles: j.goles, tarjetas: j.tarjetas, minutos: j.minutos }));
-      if (lineas.length > 0) await supabase.from('estadisticas_actas').insert(lineas);
-      await fetchActas();
-      setShowForm(false);
-      setUrlActa('');
-      setParseMsg('');
-      setForm({ fecha: '', rival: '', resultado: '', competicion: '', jugadores: createActaJugadores(players) });
+    const { data: acta, error: errorActa } = await supabase
+      .from('actas_partidos')
+      .insert({ fecha: form.fecha, rival: form.rival, resultado: form.resultado || null, competicion: form.competicion || null })
+      .select()
+      .single();
+
+    if (errorActa || !acta) {
+      const msg = errorActa?.message || 'No se pudo crear el partido. Comprueba que la fecha y el rival están rellenos.';
+      console.error('Error guardando acta:', errorActa);
+      setSaveError(msg);
+      setSaving(false);
+      return;
     }
+
+    const lineas = form.jugadores
+      .filter(j => j.titular || j.goles > 0 || j.tarjetas > 0 || j.minutos > 0)
+      .map(j => ({ acta_id: acta.id, dorsal: j.dorsal, nombre: j.nombre, titular: j.titular, goles: j.goles, tarjetas: j.tarjetas, minutos: j.minutos }));
+
+    if (lineas.length > 0) {
+      const { error: errorStats } = await supabase.from('estadisticas_actas').insert(lineas);
+      if (errorStats) {
+        console.error('Error guardando estadísticas del acta:', errorStats);
+        setSaveError('Partido guardado pero hubo un error al guardar las estadísticas: ' + errorStats.message);
+        setSaving(false);
+        await fetchActas();
+        return;
+      }
+    }
+
+    await fetchActas();
+    setShowForm(false);
+    setUrlActa('');
+    setParseMsg('');
+    setSaveError('');
+    setForm({ fecha: '', rival: '', resultado: '', competicion: '', jugadores: createActaJugadores(players) });
     setSaving(false);
   };
 
@@ -493,13 +511,16 @@ function Estadisticas() {
               {!ultimaActa && !showForm && <small style={{ color: '#7f96bc' }}>Aún no hay partidos registrados esta temporada.</small>}
             </div>
             {showForm && !isReadOnly && (
-              <button
-                onClick={handleGuardar}
-                disabled={saving || !form.fecha || !form.rival}
-                style={{ padding: '10px 24px', borderRadius: '12px', background: saving ? '#555' : '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
-              >
-                {saving ? 'Guardando...' : 'Guardar partido'}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                <button
+                  onClick={handleGuardar}
+                  disabled={saving || !form.fecha || !form.rival}
+                  style={{ padding: '10px 24px', borderRadius: '12px', background: saving ? '#555' : '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
+                >
+                  {saving ? 'Guardando...' : 'Guardar partido'}
+                </button>
+                {saveError && <p style={{ margin: 0, fontSize: '0.82rem', color: '#f44242', maxWidth: '280px', textAlign: 'right' }}>{saveError}</p>}
+              </div>
             )}
           </div>
 
