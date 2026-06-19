@@ -1,33 +1,49 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import { useSharedState } from '../lib/useSharedState';
 
-const statsBase = [
-  { dorsal: 1,  nombre: 'Adrián González',    posicion: 'Portero',        pj: 17, pt: 17, goles: 0, tarjetas: 0, minutos: 1530 },
-  { dorsal: 13, nombre: 'Rubén García',        posicion: 'Portero',        pj: 9,  pt: 9,  goles: 0, tarjetas: 0, minutos: 810  },
-  { dorsal: 5,  nombre: 'Raúl Muñoz',          posicion: 'Defensa',        pj: 27, pt: 27, goles: 1, tarjetas: 3, minutos: 2430 },
-  { dorsal: 11, nombre: 'Guillermo',           posicion: 'Defensa',        pj: 30, pt: 29, goles: 4, tarjetas: 9, minutos: 2610 },
-  { dorsal: 4,  nombre: 'Alfonso Corbacho',    posicion: 'Defensa',        pj: 22, pt: 22, goles: 0, tarjetas: 7, minutos: 1980 },
-  { dorsal: 2,  nombre: 'Marco Clavijo',       posicion: 'Defensa',        pj: 30, pt: 27, goles: 0, tarjetas: 3, minutos: 2520 },
-  { dorsal: 3,  nombre: 'Paulino León',        posicion: 'Defensa',        pj: 3,  pt: 2,  goles: 0, tarjetas: 0, minutos: 180  },
-  { dorsal: 6,  nombre: 'Sergio Argáiz',       posicion: 'Defensa',        pj: 23, pt: 4,  goles: 0, tarjetas: 2, minutos: 720  },
-  { dorsal: 14, nombre: 'Diego Ruiz',          posicion: 'Defensa',        pj: 16, pt: 11, goles: 0, tarjetas: 1, minutos: 990  },
-  { dorsal: 10, nombre: 'Iván Pascual',        posicion: 'Centrocampista', pj: 34, pt: 31, goles: 4, tarjetas: 4, minutos: 2790 },
-  { dorsal: 22, nombre: 'David Palacios',      posicion: 'Centrocampista', pj: 17, pt: 14, goles: 0, tarjetas: 3, minutos: 1260 },
-  { dorsal: 21, nombre: 'Sergio Santolaya',    posicion: 'Centrocampista', pj: 32, pt: 31, goles: 5, tarjetas: 11, minutos: 2770 },
-  { dorsal: 24, nombre: 'Miguel Ángel Martín', posicion: 'Centrocampista', pj: 18, pt: 7,  goles: 7, tarjetas: 2, minutos: 900  },
-  { dorsal: 23, nombre: 'Youssef El Airy',     posicion: 'Centrocampista', pj: 13, pt: 0,  goles: 0, tarjetas: 0, minutos: 360  },
-  { dorsal: 7,  nombre: 'David Ruiz',          posicion: 'Centrocampista', pj: 9,  pt: 0,  goles: 0, tarjetas: 1, minutos: 270  },
-  { dorsal: 8,  nombre: 'David Pérez',         posicion: 'Centrocampista', pj: 27, pt: 24, goles: 2, tarjetas: 5, minutos: 2160 },
-  { dorsal: 18, nombre: 'Guillermo Gázquez',   posicion: 'Centrocampista', pj: 23, pt: 15, goles: 0, tarjetas: 3, minutos: 1350 },
-  { dorsal: 9,  nombre: 'Iván Moreno',         posicion: 'Centrocampista', pj: 11, pt: 4,  goles: 1, tarjetas: 0, minutos: 540  },
-  { dorsal: 17, nombre: 'Ingoma Mwanza',       posicion: 'Delantero',      pj: 31, pt: 24, goles: 6, tarjetas: 0, minutos: 2160 },
-  { dorsal: 20, nombre: 'Samuel Vallejo',      posicion: 'Delantero',      pj: 29, pt: 15, goles: 2, tarjetas: 4, minutos: 1530 },
-  { dorsal: 19, nombre: 'David González',      posicion: 'Delantero',      pj: 31, pt: 22, goles: 0, tarjetas: 6, minutos: 1980 },
-  { dorsal: 26, nombre: 'Dayán Ochoa',         posicion: 'Delantero',      pj: 29, pt: 20, goles: 0, tarjetas: 3, minutos: 1800 },
-  { dorsal: 9,  nombre: 'Isaac Manjón',        posicion: 'Delantero',      pj: 11, pt: 10, goles: 3, tarjetas: 0, minutos: 900  },
-  { dorsal: 15, nombre: 'Pablo Lerís',         posicion: 'Delantero',      pj: 8,  pt: 0,  goles: 0, tarjetas: 1, minutos: 180  },
-];
+interface PlantillaJugador {
+  id: string;
+  dorsal: number;
+  nombre: string;
+  posicion: string;
+}
+
+interface EstadisticasLinea {
+  pj: number;
+  pt: number;
+  goles: number;
+  tarjetas: number;
+  minutos: number;
+}
+
+type AjustesManuales = Record<string, EstadisticasLinea>;
+
+interface EstadisticaActaLinea {
+  dorsal: number;
+  nombre: string;
+  titular: boolean;
+  goles: number;
+  tarjetas: number;
+  minutos: number;
+}
+
+interface ActaPartido {
+  id: string;
+  fecha: string;
+  rival: string;
+  resultado: string | null;
+  competicion: string | null;
+  estadisticas_actas?: EstadisticaActaLinea[];
+}
+
+const posicionOrder: Record<string, number> = {
+  Portero: 0,
+  Defensa: 1,
+  Centrocampista: 2,
+  Delantero: 3,
+};
 
 const posicionColor: Record<string, string> = {
   Portero: '#4a9eff', Defensa: '#90f4ae', Centrocampista: '#f4c842', Delantero: '#f47c42',
@@ -46,6 +62,7 @@ const smallInputStyle = {
 };
 
 interface ActaJugador {
+  playerId: string;
   dorsal: number; nombre: string; titular: boolean;
   goles: number; tarjetas: number; minutos: number;
 }
@@ -55,8 +72,36 @@ interface ActaForm {
   jugadores: ActaJugador[];
 }
 
-const emptyJugadores = () =>
-  statsBase.map(p => ({ dorsal: p.dorsal, nombre: p.nombre, titular: false, goles: 0, tarjetas: 0, minutos: 0 }));
+const statsEnCero = (): EstadisticasLinea => ({ pj: 0, pt: 0, goles: 0, tarjetas: 0, minutos: 0 });
+
+const getPlayerKey = (id: string) => String(id);
+
+const createActaJugadores = (players: PlantillaJugador[]): ActaJugador[] =>
+  players.map(p => ({
+    playerId: p.id,
+    dorsal: p.dorsal,
+    nombre: p.nombre,
+    titular: false,
+    goles: 0,
+    tarjetas: 0,
+    minutos: 0,
+  }));
+
+const mergeActaJugadores = (players: PlantillaJugador[], current: ActaJugador[]): ActaJugador[] => {
+  const byId = new Map(current.map(j => [j.playerId, j]));
+  return players.map((p) => {
+    const prev = byId.get(p.id);
+    return {
+      playerId: p.id,
+      dorsal: p.dorsal,
+      nombre: p.nombre,
+      titular: prev?.titular ?? false,
+      goles: prev?.goles ?? 0,
+      tarjetas: prev?.tarjetas ?? 0,
+      minutos: prev?.minutos ?? 0,
+    };
+  });
+};
 
 // Intenta extraer datos de jugadores del texto del acta
 function parsearTextoActa(texto: string, jugadores: ActaJugador[]): ActaJugador[] {
@@ -100,39 +145,139 @@ function parsearTextoActa(texto: string, jugadores: ActaJugador[]): ActaJugador[
 function Estadisticas() {
   const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
-  const [actas, setActas] = useState<any[]>([]);
+  const [actas, setActas] = useState<ActaPartido[]>([]);
+  const [players, setPlayers] = useState<PlantillaJugador[]>([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseMsg, setParseMsg] = useState('');
   const [urlActa, setUrlActa] = useState('');
+  const [manualStats, setManualStats] = useSharedState<AjustesManuales>('estadisticas_ajustes_manuales', {});
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<ActaForm>({
     fecha: '', rival: '', resultado: '', competicion: '',
-    jugadores: emptyJugadores(),
+    jugadores: [],
   });
 
-  useEffect(() => { fetchActas(); }, []);
+  useEffect(() => {
+    fetchActas();
+    fetchPlayers();
+
+    const channel = supabase
+      .channel('estadisticas_plantilla_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plantilla' }, () => {
+        fetchPlayers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const fetchActas = async () => {
     const { data } = await supabase.from('actas_partidos').select('*, estadisticas_actas(*)');
     setActas(data || []);
   };
 
-  const statsFinales = statsBase.map(base => {
-    let pjExtra = 0, ptExtra = 0, golesExtra = 0, tarjetasExtra = 0, minutosExtra = 0;
-    actas.forEach(acta => {
-      const linea = acta.estadisticas_actas?.find((e: any) => e.dorsal === base.dorsal && e.nombre === base.nombre);
-      if (linea) {
-        pjExtra += 1;
-        if (linea.titular) ptExtra += 1;
-        golesExtra += linea.goles || 0;
-        tarjetasExtra += linea.tarjetas || 0;
-        minutosExtra += linea.minutos || 0;
-      }
+  const fetchPlayers = async () => {
+    setLoadingPlayers(true);
+    const { data } = await supabase
+      .from('plantilla')
+      .select('id, number, first_name, last_name1, last_name2, position');
+
+    const mapped: PlantillaJugador[] = ((data || []) as any[])
+      .map((p) => ({
+        id: String(p.id),
+        dorsal: Number(p.number) || 0,
+        nombre: [p.first_name, p.last_name1, p.last_name2].filter(Boolean).join(' ') || 'Sin nombre',
+        posicion: p.position || 'Sin posicion',
+      }))
+      .sort((a, b) => {
+        const byPos = (posicionOrder[a.posicion] ?? 99) - (posicionOrder[b.posicion] ?? 99);
+        if (byPos !== 0) return byPos;
+        return a.dorsal - b.dorsal;
+      });
+
+    setPlayers(mapped);
+    setForm((prev) => ({ ...prev, jugadores: mergeActaJugadores(mapped, prev.jugadores) }));
+    setLoadingPlayers(false);
+  };
+
+  const statsFinales = useMemo(() => {
+    return players.map((player) => {
+      let pjActas = 0;
+      let ptActas = 0;
+      let golesActas = 0;
+      let tarjetasActas = 0;
+      let minutosActas = 0;
+
+      actas.forEach((acta) => {
+        const linea = acta.estadisticas_actas?.find((e) => {
+          const mismoDorsal = e.dorsal === player.dorsal;
+          const mismoNombre = e.nombre?.trim().toLowerCase() === player.nombre.trim().toLowerCase();
+          return mismoDorsal || mismoNombre;
+        });
+
+        if (linea) {
+          pjActas += 1;
+          if (linea.titular) ptActas += 1;
+          golesActas += linea.goles || 0;
+          tarjetasActas += linea.tarjetas || 0;
+          minutosActas += linea.minutos || 0;
+        }
+      });
+
+      const ajuste = manualStats[getPlayerKey(player.id)] || statsEnCero();
+      return {
+        ...player,
+        pj: pjActas + (ajuste.pj || 0),
+        pt: ptActas + (ajuste.pt || 0),
+        goles: golesActas + (ajuste.goles || 0),
+        tarjetas: tarjetasActas + (ajuste.tarjetas || 0),
+        minutos: minutosActas + (ajuste.minutos || 0),
+      };
     });
-    return { ...base, pj: base.pj + pjExtra, pt: base.pt + ptExtra, goles: base.goles + golesExtra, tarjetas: base.tarjetas + tarjetasExtra, minutos: base.minutos + minutosExtra };
-  });
+  }, [actas, manualStats, players]);
+
+  const handleManualStatChange = (playerId: string, field: keyof EstadisticasLinea, value: number) => {
+    setManualStats((prev) => {
+      const key = getPlayerKey(playerId);
+      const current = prev[key] || statsEnCero();
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          [field]: Math.max(0, Number.isFinite(value) ? value : 0),
+        },
+      };
+    });
+  };
+
+  const resetManualStats = () => {
+    const confirmReset = window.confirm('Esto pondra los ajustes manuales en 0 para todos los jugadores. Continuar?');
+    if (!confirmReset) return;
+    setManualStats({});
+  };
+
+  const toggleForm = () => {
+    setShowForm((prev) => {
+      const next = !prev;
+      if (next) {
+        setForm({
+          fecha: '',
+          rival: '',
+          resultado: '',
+          competicion: '',
+          jugadores: createActaJugadores(players),
+        });
+        setUrlActa('');
+        setParseMsg('');
+      }
+      return next;
+    });
+  };
 
   const handleJugadorChange = (idx: number, field: keyof ActaJugador, value: any) => {
     setForm(f => {
@@ -211,7 +356,7 @@ function Estadisticas() {
       setShowForm(false);
       setUrlActa('');
       setParseMsg('');
-      setForm({ fecha: '', rival: '', resultado: '', competicion: '', jugadores: emptyJugadores() });
+      setForm({ fecha: '', rival: '', resultado: '', competicion: '', jugadores: createActaJugadores(players) });
     }
     setSaving(false);
   };
@@ -229,12 +374,20 @@ function Estadisticas() {
           <h1>Estadísticas</h1>
         </div>
         <button
-          onClick={() => setShowForm(v => !v)}
+          onClick={toggleForm}
           style={{ marginLeft: 'auto', padding: '10px 20px', borderRadius: '12px', background: '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: 'pointer', display: isReadOnly ? 'none' : undefined }}
         >
           {showForm ? 'Cancelar' : '+ Cargar acta'}
         </button>
       </div>
+
+      {loadingPlayers && <div className="card" style={{ padding: '16px' }}>Cargando plantilla...</div>}
+
+      {!loadingPlayers && players.length === 0 && (
+        <div className="card" style={{ padding: '16px' }}>
+          No hay jugadores en plantilla. Anade jugadores para ver y cargar estadisticas.
+        </div>
+      )}
 
       {showForm && !isReadOnly && (
         <div className="card" style={{ padding: '24px', display: 'grid', gap: '20px' }}>
@@ -282,7 +435,7 @@ function Estadisticas() {
                 disabled={parsing}
                 style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}
               >
-                📎 Seleccionar archivo
+                Seleccionar archivo
               </button>
             </div>
 
@@ -299,14 +452,14 @@ function Estadisticas() {
                   <th>#</th>
                   <th>Jugador</th>
                   <th style={{ textAlign: 'center' }}>Titular</th>
-                  <th style={{ textAlign: 'center' }}>⚽</th>
-                  <th style={{ textAlign: 'center' }}>🟨🟥</th>
+                  <th style={{ textAlign: 'center' }}>Goles</th>
+                  <th style={{ textAlign: 'center' }}>Tarjetas</th>
                   <th style={{ textAlign: 'center' }}>Min.</th>
                 </tr>
               </thead>
               <tbody>
                 {form.jugadores.map((j, idx) => (
-                  <tr key={idx}>
+                  <tr key={j.playerId}>
                     <td style={{ color: '#7f96bc' }}>{j.dorsal}</td>
                     <td style={{ color: '#fff' }}>{j.nombre}</td>
                     <td style={{ textAlign: 'center' }}>
@@ -337,6 +490,62 @@ function Estadisticas() {
         </div>
       )}
 
+      {!isReadOnly && players.length > 0 && (
+        <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
+          <div className="section-header" style={{ marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Ajuste manual de estadisticas</h2>
+            <button
+              onClick={resetManualStats}
+              style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}
+            >
+              Poner ajustes a 0
+            </button>
+          </div>
+          <p style={{ marginTop: 0, color: '#7f96bc', fontSize: '0.9rem' }}>
+            Puedes sumar datos manuales si aun no hay actas o quieres corregir algun valor.
+          </p>
+          <table className="list-table" style={{ minWidth: '700px' }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Jugador</th>
+                <th style={{ textAlign: 'center' }}>PJ</th>
+                <th style={{ textAlign: 'center' }}>PT</th>
+                <th style={{ textAlign: 'center' }}>Goles</th>
+                <th style={{ textAlign: 'center' }}>Tarjetas</th>
+                <th style={{ textAlign: 'center' }}>Min.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.map((p) => {
+                const ajuste = manualStats[getPlayerKey(p.id)] || statsEnCero();
+                return (
+                  <tr key={p.id}>
+                    <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
+                    <td style={{ color: '#fff' }}>{p.nombre}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" min={0} value={ajuste.pj} onChange={(e) => handleManualStatChange(p.id, 'pj', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" min={0} value={ajuste.pt} onChange={(e) => handleManualStatChange(p.id, 'pt', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" min={0} value={ajuste.goles} onChange={(e) => handleManualStatChange(p.id, 'goles', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" min={0} value={ajuste.tarjetas} onChange={(e) => handleManualStatChange(p.id, 'tarjetas', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" min={0} value={ajuste.minutos} onChange={(e) => handleManualStatChange(p.id, 'minutos', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {actas.length > 0 && (
         <div className="card" style={{ padding: '24px' }}>
           <div className="section-header" style={{ marginBottom: '14px' }}>
@@ -355,8 +564,11 @@ function Estadisticas() {
 
       <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
         <div className="section-header" style={{ marginBottom: '18px' }}>
-          <h2>CD Arnedo — Estadísticas individuales</h2>
-          <small>Base: BeSoccer 23/24{actas.length > 0 ? ` + ${actas.length} acta${actas.length > 1 ? 's' : ''} cargada${actas.length > 1 ? 's' : ''}` : ''}</small>
+          <h2>Estadisticas individuales</h2>
+          <small>
+            Temporada actual: todo parte en 0
+            {actas.length > 0 ? ` + ${actas.length} acta${actas.length > 1 ? 's' : ''} cargada${actas.length > 1 ? 's' : ''}` : ''}
+          </small>
         </div>
         <table className="list-table" style={{ minWidth: '700px' }}>
           <thead>
@@ -366,18 +578,18 @@ function Estadisticas() {
               <th>Posición</th>
               <th style={{ textAlign: 'center' }}>PJ</th>
               <th style={{ textAlign: 'center' }}>PT</th>
-              <th style={{ textAlign: 'center' }}>⚽</th>
-              <th style={{ textAlign: 'center' }}>🟨🟥</th>
+              <th style={{ textAlign: 'center' }}>Goles</th>
+              <th style={{ textAlign: 'center' }}>Tarjetas</th>
               <th style={{ textAlign: 'center' }}>Min.</th>
             </tr>
           </thead>
           <tbody>
-            {statsFinales.map((p, i) => (
-              <tr key={i}>
+            {statsFinales.map((p) => (
+              <tr key={p.id}>
                 <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
                 <td style={{ fontWeight: 600, color: '#fff' }}>{p.nombre}</td>
                 <td>
-                  <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${posicionColor[p.posicion]}22`, color: posicionColor[p.posicion], border: `1px solid ${posicionColor[p.posicion]}55` }}>
+                  <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${(posicionColor[p.posicion] || '#7f96bc')}22`, color: posicionColor[p.posicion] || '#7f96bc', border: `1px solid ${(posicionColor[p.posicion] || '#7f96bc')}55` }}>
                     {p.posicion}
                   </span>
                 </td>
