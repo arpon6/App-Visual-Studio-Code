@@ -10,6 +10,7 @@ export const LEAGUE_TEAMS = [
   'Comillas',
   'Haro',
   'La Calzada',
+  'Oyonesa',
   'Pradejon',
   'River Ebro',
   'San Marcial',
