@@ -241,6 +241,34 @@ function Estadisticas() {
     });
   }, [actas, manualStats, players]);
 
+  // Última acta cargada (la más reciente por fecha)
+  const ultimaActa = useMemo(() => {
+    if (actas.length === 0) return null;
+    return [...actas].sort((a, b) => {
+      if (a.fecha > b.fecha) return -1;
+      if (a.fecha < b.fecha) return 1;
+      return 0;
+    })[0];
+  }, [actas]);
+
+  // Stats de solo el último partido
+  const statsUltimoPartido = useMemo(() => {
+    return players.map((player) => {
+      const linea = ultimaActa?.estadisticas_actas?.find((e) => {
+        const mismoDorsal = e.dorsal === player.dorsal;
+        const mismoNombre = e.nombre?.trim().toLowerCase() === player.nombre.trim().toLowerCase();
+        return mismoDorsal || mismoNombre;
+      });
+      return {
+        ...player,
+        titular: linea?.titular ?? false,
+        goles: linea?.goles ?? 0,
+        tarjetas: linea?.tarjetas ?? 0,
+        minutos: linea?.minutos ?? 0,
+      };
+    });
+  }, [ultimaActa, players]);
+
   const handleManualStatChange = (playerId: string, field: keyof EstadisticasLinea, value: number) => {
     setManualStats((prev) => {
       const key = getPlayerKey(playerId);
@@ -259,6 +287,16 @@ function Estadisticas() {
     const confirmReset = window.confirm('Esto pondra los ajustes manuales en 0 para todos los jugadores. Continuar?');
     if (!confirmReset) return;
     setManualStats({});
+  };
+
+  const reiniciarTemporada = async () => {
+    const confirmReset = window.confirm(
+      '¿Reiniciar la temporada? Se borrarán todas las actas registradas y los ajustes manuales. Esta acción no se puede deshacer.'
+    );
+    if (!confirmReset) return;
+    await supabase.from('actas_partidos').delete().not('id', 'is', null);
+    setManualStats({});
+    await fetchActas();
   };
 
   const toggleForm = () => {
@@ -368,32 +406,43 @@ function Estadisticas() {
 
   return (
     <section className="page-section">
+      {/* ── Cabecera ── */}
       <div className="page-title">
         <div>
-          <small>Temporada 2023-24</small>
+          <small>Temporada actual</small>
           <h1>Estadísticas</h1>
         </div>
-        <button
-          onClick={toggleForm}
-          style={{ marginLeft: 'auto', padding: '10px 20px', borderRadius: '12px', background: '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: 'pointer', display: isReadOnly ? 'none' : undefined }}
-        >
-          {showForm ? 'Cancelar' : '+ Cargar acta'}
-        </button>
+        {!isReadOnly && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+            <button
+              onClick={toggleForm}
+              style={{ padding: '10px 20px', borderRadius: '12px', background: '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+            >
+              {showForm ? 'Cancelar' : '+ Nuevo partido'}
+            </button>
+            <button
+              onClick={reiniciarTemporada}
+              style={{ padding: '10px 20px', borderRadius: '12px', background: 'rgba(244,66,66,0.15)', color: '#f44242', fontWeight: 700, border: '1px solid rgba(244,66,66,0.35)', cursor: 'pointer' }}
+            >
+              Reiniciar temporada
+            </button>
+          </div>
+        )}
       </div>
 
       {loadingPlayers && <div className="card" style={{ padding: '16px' }}>Cargando plantilla...</div>}
 
       {!loadingPlayers && players.length === 0 && (
         <div className="card" style={{ padding: '16px' }}>
-          No hay jugadores en plantilla. Anade jugadores para ver y cargar estadisticas.
+          No hay jugadores en plantilla. Añade jugadores para ver y cargar estadísticas.
         </div>
       )}
 
+      {/* ── Formulario nuevo partido (datos cabecera + extracción automática) ── */}
       {showForm && !isReadOnly && (
         <div className="card" style={{ padding: '24px', display: 'grid', gap: '20px' }}>
-          <h2 style={{ margin: 0 }}>Nueva acta de partido</h2>
+          <h2 style={{ margin: 0 }}>Datos del partido</h2>
 
-          {/* Datos del partido */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             {([['Fecha', 'fecha', 'date'], ['Rival', 'rival', 'text'], ['Resultado', 'resultado', 'text'], ['Competición', 'competicion', 'text']] as const).map(([label, field, type]) => (
               <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
@@ -403,112 +452,129 @@ function Estadisticas() {
             ))}
           </div>
 
-          {/* Carga automática */}
+          {/* Extracción automática */}
           <div style={{ borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', padding: '18px', display: 'grid', gap: '14px', background: 'rgba(10,18,30,0.6)' }}>
             <p style={{ margin: 0, fontWeight: 700, color: '#fff' }}>Extracción automática <span style={{ fontWeight: 400, color: '#7f96bc', fontSize: '0.85rem' }}>(opcional)</span></p>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
                 URL del acta o pega el texto directamente
-                <textarea
-                  value={urlActa}
-                  onChange={e => setUrlActa(e.target.value)}
-                  rows={2}
-                  placeholder="https://... o pega aquí el texto del acta"
-                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-                />
+                <textarea value={urlActa} onChange={e => setUrlActa(e.target.value)} rows={2} placeholder="https://... o pega aquí el texto del acta" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
               </label>
-              <button
-                onClick={handleUrl}
-                disabled={parsing || !urlActa.trim()}
-                style={{ padding: '10px 16px', borderRadius: '10px', background: '#2d68ff', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
+              <button onClick={handleUrl} disabled={parsing || !urlActa.trim()} style={{ padding: '10px 16px', borderRadius: '10px', background: '#2d68ff', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {parsing ? '...' : 'Extraer datos'}
               </button>
             </div>
-
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube un archivo (.txt, .html):</span>
               <input ref={fileRef} type="file" accept=".txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={parsing}
-                style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}
-              >
+              <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>
                 Seleccionar archivo
               </button>
             </div>
-
-            {parseMsg && (
-              <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>
-            )}
+            {parseMsg && <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>}
           </div>
-
-          {/* Tabla manual */}
-          <div style={{ overflowX: 'auto' }}>
-            <table className="list-table" style={{ minWidth: '640px' }}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Jugador</th>
-                  <th style={{ textAlign: 'center' }}>Titular</th>
-                  <th style={{ textAlign: 'center' }}>Goles</th>
-                  <th style={{ textAlign: 'center' }}>Tarjetas</th>
-                  <th style={{ textAlign: 'center' }}>Min.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {form.jugadores.map((j, idx) => (
-                  <tr key={j.playerId}>
-                    <td style={{ color: '#7f96bc' }}>{j.dorsal}</td>
-                    <td style={{ color: '#fff' }}>{j.nombre}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="checkbox" checked={j.titular} onChange={e => handleJugadorChange(idx, 'titular', e.target.checked)} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} max={20} value={j.goles} onChange={e => handleJugadorChange(idx, 'goles', parseInt(e.target.value) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} max={3} value={j.tarjetas} onChange={e => handleJugadorChange(idx, 'tarjetas', parseInt(e.target.value) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} max={120} value={j.minutos} onChange={e => handleJugadorChange(idx, 'minutos', parseInt(e.target.value) || 0)} style={smallInputStyle} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <button
-            onClick={handleGuardar}
-            disabled={saving || !form.fecha || !form.rival}
-            style={{ justifySelf: 'start', padding: '10px 24px', borderRadius: '12px', background: saving ? '#555' : '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
-          >
-            {saving ? 'Guardando...' : 'Guardar acta'}
-          </button>
         </div>
       )}
 
-      {!isReadOnly && players.length > 0 && (
+      {/* ── TABLA 1: Estadísticas último partido ── */}
+      {players.length > 0 && (
         <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
-          <div className="section-header" style={{ marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>Ajuste manual de estadisticas</h2>
-            <button
-              onClick={resetManualStats}
-              style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer' }}
-            >
-              Poner ajustes a 0
-            </button>
+          <div className="section-header" style={{ marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h2 style={{ margin: 0 }}>Estadísticas último partido</h2>
+              {ultimaActa && !showForm && (
+                <small style={{ color: '#7f96bc' }}>
+                  {ultimaActa.fecha} · <strong style={{ color: '#fff' }}>{ultimaActa.rival}</strong>
+                  {ultimaActa.resultado ? ` · ${ultimaActa.resultado}` : ''}
+                  {ultimaActa.competicion ? ` · ${ultimaActa.competicion}` : ''}
+                </small>
+              )}
+              {showForm && <small style={{ color: '#16d67a' }}>Introduce los datos del nuevo partido</small>}
+              {!ultimaActa && !showForm && <small style={{ color: '#7f96bc' }}>Aún no hay partidos registrados esta temporada.</small>}
+            </div>
+            {showForm && !isReadOnly && (
+              <button
+                onClick={handleGuardar}
+                disabled={saving || !form.fecha || !form.rival}
+                style={{ padding: '10px 24px', borderRadius: '12px', background: saving ? '#555' : '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
+              >
+                {saving ? 'Guardando...' : 'Guardar partido'}
+              </button>
+            )}
           </div>
-          <p style={{ marginTop: 0, color: '#7f96bc', fontSize: '0.9rem' }}>
-            Puedes sumar datos manuales si aun no hay actas o quieres corregir algun valor.
-          </p>
+
+          <table className="list-table" style={{ minWidth: '660px' }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Jugador</th>
+                <th>Posición</th>
+                <th style={{ textAlign: 'center' }}>Titular</th>
+                <th style={{ textAlign: 'center' }}>Goles</th>
+                <th style={{ textAlign: 'center' }}>Tarjetas</th>
+                <th style={{ textAlign: 'center' }}>Min.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {showForm
+                ? form.jugadores.map((j, idx) => (
+                    <tr key={j.playerId}>
+                      <td style={{ color: '#7f96bc' }}>{j.dorsal}</td>
+                      <td style={{ color: '#fff', fontWeight: 600 }}>{j.nombre}</td>
+                      <td>
+                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${(posicionColor[players.find(p => p.id === j.playerId)?.posicion || ''] || '#7f96bc')}22`, color: posicionColor[players.find(p => p.id === j.playerId)?.posicion || ''] || '#7f96bc', border: `1px solid ${(posicionColor[players.find(p => p.id === j.playerId)?.posicion || ''] || '#7f96bc')}55` }}>
+                          {players.find(p => p.id === j.playerId)?.posicion || '—'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="checkbox" checked={j.titular} onChange={e => handleJugadorChange(idx, 'titular', e.target.checked)} />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="number" min={0} max={20} value={j.goles} onChange={e => handleJugadorChange(idx, 'goles', parseInt(e.target.value) || 0)} style={smallInputStyle} />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="number" min={0} max={3} value={j.tarjetas} onChange={e => handleJugadorChange(idx, 'tarjetas', parseInt(e.target.value) || 0)} style={smallInputStyle} />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="number" min={0} max={120} value={j.minutos} onChange={e => handleJugadorChange(idx, 'minutos', parseInt(e.target.value) || 0)} style={smallInputStyle} />
+                      </td>
+                    </tr>
+                  ))
+                : statsUltimoPartido.map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
+                      <td style={{ fontWeight: 600, color: '#fff' }}>{p.nombre}</td>
+                      <td>
+                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${(posicionColor[p.posicion] || '#7f96bc')}22`, color: posicionColor[p.posicion] || '#7f96bc', border: `1px solid ${(posicionColor[p.posicion] || '#7f96bc')}55` }}>
+                          {p.posicion}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', color: p.titular ? '#16d67a' : '#7f96bc' }}>{p.titular ? 'Sí' : '—'}</td>
+                      <td style={{ textAlign: 'center', color: p.goles > 0 ? '#90f4ae' : '#cdd4f1', fontWeight: p.goles > 0 ? 700 : 400 }}>{p.goles}</td>
+                      <td style={{ textAlign: 'center', color: p.tarjetas > 0 ? '#f4c842' : '#cdd4f1' }}>{p.tarjetas}</td>
+                      <td style={{ textAlign: 'center', color: '#7f96bc' }}>{p.minutos > 0 ? `${p.minutos}'` : '—'}</td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── TABLA 2: Estadísticas temporada ── */}
+      {players.length > 0 && (
+        <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
+          <div className="section-header" style={{ marginBottom: '18px' }}>
+            <h2>Estadísticas temporada</h2>
+            <small style={{ color: '#7f96bc' }}>
+              {actas.length === 0 ? 'Sin partidos registrados' : `${actas.length} partido${actas.length > 1 ? 's' : ''} registrado${actas.length > 1 ? 's' : ''}`}
+            </small>
+          </div>
           <table className="list-table" style={{ minWidth: '700px' }}>
             <thead>
               <tr>
                 <th>#</th>
                 <th>Jugador</th>
+                <th>Posición</th>
                 <th style={{ textAlign: 'center' }}>PJ</th>
                 <th style={{ textAlign: 'center' }}>PT</th>
                 <th style={{ textAlign: 'center' }}>Goles</th>
@@ -517,92 +583,90 @@ function Estadisticas() {
               </tr>
             </thead>
             <tbody>
-              {players.map((p) => {
-                const ajuste = manualStats[getPlayerKey(p.id)] || statsEnCero();
-                return (
-                  <tr key={p.id}>
-                    <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
-                    <td style={{ color: '#fff' }}>{p.nombre}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} value={ajuste.pj} onChange={(e) => handleManualStatChange(p.id, 'pj', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} value={ajuste.pt} onChange={(e) => handleManualStatChange(p.id, 'pt', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} value={ajuste.goles} onChange={(e) => handleManualStatChange(p.id, 'goles', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} value={ajuste.tarjetas} onChange={(e) => handleManualStatChange(p.id, 'tarjetas', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="number" min={0} value={ajuste.minutos} onChange={(e) => handleManualStatChange(p.id, 'minutos', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} />
-                    </td>
-                  </tr>
-                );
-              })}
+              {statsFinales.map((p) => (
+                <tr key={p.id}>
+                  <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
+                  <td style={{ fontWeight: 600, color: '#fff' }}>{p.nombre}</td>
+                  <td>
+                    <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${(posicionColor[p.posicion] || '#7f96bc')}22`, color: posicionColor[p.posicion] || '#7f96bc', border: `1px solid ${(posicionColor[p.posicion] || '#7f96bc')}55` }}>
+                      {p.posicion}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>{p.pj}</td>
+                  <td style={{ textAlign: 'center', color: '#7f96bc' }}>{p.pt}</td>
+                  <td style={{ textAlign: 'center', color: p.goles > 0 ? '#90f4ae' : '#cdd4f1', fontWeight: p.goles > 0 ? 700 : 400 }}>{p.goles}</td>
+                  <td style={{ textAlign: 'center', color: p.tarjetas > 0 ? '#f4c842' : '#cdd4f1' }}>{p.tarjetas}</td>
+                  <td style={{ textAlign: 'center', color: '#7f96bc' }}>{p.minutos > 0 ? `${p.minutos}'` : '0'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
+
+          {/* Ajuste manual (desplegable dentro de estadísticas temporada) */}
+          {!isReadOnly && (
+            <details style={{ marginTop: '20px' }}>
+              <summary style={{ cursor: 'pointer', color: '#7f96bc', fontSize: '0.9rem', padding: '8px 0', userSelect: 'none' }}>
+                Ajuste manual de datos adicionales
+              </summary>
+              <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
+                <p style={{ margin: 0, color: '#7f96bc', fontSize: '0.85rem' }}>
+                  Suma valores extra a los acumulados de actas (por ejemplo, partidos de pretemporada sin acta registrada).
+                </p>
+                <button onClick={resetManualStats} style={{ justifySelf: 'start', padding: '6px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Poner ajustes a 0
+                </button>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="list-table" style={{ minWidth: '700px' }}>
+                    <thead>
+                      <tr>
+                        <th>#</th><th>Jugador</th>
+                        <th style={{ textAlign: 'center' }}>PJ</th><th style={{ textAlign: 'center' }}>PT</th>
+                        <th style={{ textAlign: 'center' }}>Goles</th><th style={{ textAlign: 'center' }}>Tarjetas</th>
+                        <th style={{ textAlign: 'center' }}>Min.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {players.map((p) => {
+                        const ajuste = manualStats[getPlayerKey(p.id)] || statsEnCero();
+                        return (
+                          <tr key={p.id}>
+                            <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
+                            <td style={{ color: '#fff' }}>{p.nombre}</td>
+                            <td style={{ textAlign: 'center' }}><input type="number" min={0} value={ajuste.pj} onChange={(e) => handleManualStatChange(p.id, 'pj', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} /></td>
+                            <td style={{ textAlign: 'center' }}><input type="number" min={0} value={ajuste.pt} onChange={(e) => handleManualStatChange(p.id, 'pt', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} /></td>
+                            <td style={{ textAlign: 'center' }}><input type="number" min={0} value={ajuste.goles} onChange={(e) => handleManualStatChange(p.id, 'goles', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} /></td>
+                            <td style={{ textAlign: 'center' }}><input type="number" min={0} value={ajuste.tarjetas} onChange={(e) => handleManualStatChange(p.id, 'tarjetas', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} /></td>
+                            <td style={{ textAlign: 'center' }}><input type="number" min={0} value={ajuste.minutos} onChange={(e) => handleManualStatChange(p.id, 'minutos', parseInt(e.target.value, 10) || 0)} style={smallInputStyle} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          )}
         </div>
       )}
 
+      {/* ── Actas registradas ── */}
       {actas.length > 0 && (
         <div className="card" style={{ padding: '24px' }}>
           <div className="section-header" style={{ marginBottom: '14px' }}>
-            <h2>Actas cargadas ({actas.length})</h2>
+            <h2>Partidos registrados ({actas.length})</h2>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            {actas.map(acta => (
+            {[...actas].sort((a, b) => (b.fecha > a.fecha ? 1 : -1)).map(acta => (
               <div key={acta.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '10px', background: 'rgba(10,18,30,0.9)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <span style={{ color: '#fff', fontSize: '0.9rem' }}>{acta.fecha} · <strong>{acta.rival}</strong>{acta.resultado ? ` · ${acta.resultado}` : ''}</span>
-                <button onClick={() => handleEliminarActa(acta.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '1rem' }} title="Eliminar acta">✕</button>
+                {!isReadOnly && (
+                  <button onClick={() => handleEliminarActa(acta.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '1rem' }} title="Eliminar acta">✕</button>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
-
-      <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
-        <div className="section-header" style={{ marginBottom: '18px' }}>
-          <h2>Estadisticas individuales</h2>
-          <small>
-            Temporada actual: todo parte en 0
-            {actas.length > 0 ? ` + ${actas.length} acta${actas.length > 1 ? 's' : ''} cargada${actas.length > 1 ? 's' : ''}` : ''}
-          </small>
-        </div>
-        <table className="list-table" style={{ minWidth: '700px' }}>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Jugador</th>
-              <th>Posición</th>
-              <th style={{ textAlign: 'center' }}>PJ</th>
-              <th style={{ textAlign: 'center' }}>PT</th>
-              <th style={{ textAlign: 'center' }}>Goles</th>
-              <th style={{ textAlign: 'center' }}>Tarjetas</th>
-              <th style={{ textAlign: 'center' }}>Min.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {statsFinales.map((p) => (
-              <tr key={p.id}>
-                <td style={{ color: '#7f96bc', width: '40px' }}>{p.dorsal}</td>
-                <td style={{ fontWeight: 600, color: '#fff' }}>{p.nombre}</td>
-                <td>
-                  <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, background: `${(posicionColor[p.posicion] || '#7f96bc')}22`, color: posicionColor[p.posicion] || '#7f96bc', border: `1px solid ${(posicionColor[p.posicion] || '#7f96bc')}55` }}>
-                    {p.posicion}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'center' }}>{p.pj}</td>
-                <td style={{ textAlign: 'center', color: '#7f96bc' }}>{p.pt}</td>
-                <td style={{ textAlign: 'center', color: p.goles > 0 ? '#90f4ae' : '#cdd4f1', fontWeight: p.goles > 0 ? 700 : 400 }}>{p.goles}</td>
-                <td style={{ textAlign: 'center', color: p.tarjetas > 0 ? '#f4c842' : '#cdd4f1' }}>{p.tarjetas}</td>
-                <td style={{ textAlign: 'center', color: '#7f96bc' }}>{p.minutos}'</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </section>
   );
 }
