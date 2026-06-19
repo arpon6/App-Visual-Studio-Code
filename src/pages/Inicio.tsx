@@ -141,26 +141,25 @@ function Inicio() {
     <section className="page-section">
       <div className="page-title">
         <div>
-          <div className="badge">TEMPORADA 2025/26</div>
-          <h1>Mi Club PRO</h1>
+          <div className="badge">TEMPORADA 26-27</div>
+          <h1>SD Oyonesa</h1>
         </div>
       </div>
 
       <div>
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-              <div className="badge">TEMPORADA 26-27</div>
-              <h1>SD Oyonesa</h1>
+          <div className="section-header">
+            <div>
               <small>Panel principal</small>
-              <h2>Bienvenido, entrenador</h2>
+              <h2>Bienvenido, {user?.username || 'entrenador'}</h2>
             </div>
-            <span className="badge">AUTO</span>
           </div>
           <div className="widget-box" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
             <div className="access-ring" style={{ position: 'relative', width: 520, height: 520 }}>
               <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
-                  <h2>Bienvenido, {user?.email?.split('@')[0] || 'entrenador'}</h2>
+                {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
               </div>
-                <span className="badge"></span>
+              {['Inicio','Plantilla','Calendario','Plan de Partido','Desarrollo grupal','Editor de video propio','Editor de video rival','Estadisticas'].map((s, i) => {
                 const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
                 const radius = 210;
                 const x = 260 + Math.cos(angle) * radius;
