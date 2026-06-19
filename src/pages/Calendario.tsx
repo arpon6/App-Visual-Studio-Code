@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import { DEFAULT_MATCH_TYPE, LEAGUE_TEAMS } from '../lib/leagueTeams';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Calendario.css';
@@ -24,8 +25,6 @@ interface Event {
   };
 }
 
-const RIVALS = ['Agoncillo', 'Alfaro', 'Anguiano', 'Arnedo', 'Berceo', 'Calahorra', 'Calasancio', 'Casalarreina', 'Comillas', 'Haro', 'La Calzada', 'Pradejón', 'Ríver Ebro', 'San Marcial', 'Varea', 'Vianés', 'Yagüe'];
-
 const EMPTY_FORM = {
   type: 'partido' as 'partido' | 'entrenamiento' | 'otro',
   customType: '',
@@ -35,7 +34,7 @@ const EMPTY_FORM = {
   rival: '',
   rivalCustom: '',
   jornada: '-',
-  matchType: 'Liga',
+  matchType: DEFAULT_MATCH_TYPE,
 };
 
 function Calendario() {
@@ -246,7 +245,7 @@ function Calendario() {
 
   const handleEditEvent = (event: Event) => {
     setSelectedDate(event.date);
-    const rivalIsCustom = !!event.rival && !RIVALS.includes(event.rival) && event.rival !== 'Por determinar';
+    const rivalIsCustom = !!event.rival && !LEAGUE_TEAMS.includes(event.rival) && event.rival !== 'Por determinar';
     setFormData({
       type: event.type as 'partido' | 'entrenamiento' | 'otro',
       customType: event.customType || '',
@@ -256,7 +255,7 @@ function Calendario() {
       rival: rivalIsCustom ? '__custom__' : (event.rival || ''),
       rivalCustom: rivalIsCustom ? (event.rival || '') : '',
       jornada: event.jornada || '-',
-      matchType: event.matchType || 'Liga',
+      matchType: event.matchType || DEFAULT_MATCH_TYPE,
     });
     setSelectedFile(null);
     setPdfUrl(event.pdfFile?.url || '');
@@ -503,7 +502,7 @@ function Calendario() {
                     onChange={e => setFormData({ ...formData, rival: e.target.value, rivalCustom: '' })}
                   >
                     <option value="">-- Seleccionar rival --</option>
-                    {RIVALS.map(r => <option key={r} value={r}>{r}</option>)}
+                    {LEAGUE_TEAMS.map(r => <option key={r} value={r}>{r}</option>)}
                     <option value="__custom__">Otro (escribir nombre)</option>
                     <option value="Por determinar">Por determinar</option>
                   </select>
