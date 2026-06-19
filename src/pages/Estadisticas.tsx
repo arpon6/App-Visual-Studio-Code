@@ -375,7 +375,10 @@ function Estadisticas() {
   };
 
   const handleGuardar = async () => {
-    if (!form.fecha || !form.rival) return;
+    if (!form.fecha || !form.rival) {
+      setSaveError('Rellena la Fecha y el Rival antes de guardar.');
+      return;
+    }
     setSaving(true);
     setSaveError('');
 
@@ -456,43 +459,7 @@ function Estadisticas() {
         </div>
       )}
 
-      {/* ── Formulario nuevo partido (datos cabecera + extracción automática) ── */}
-      {showForm && !isReadOnly && (
-        <div className="card" style={{ padding: '24px', display: 'grid', gap: '20px' }}>
-          <h2 style={{ margin: 0 }}>Datos del partido</h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-            {([['Fecha', 'fecha', 'date'], ['Rival', 'rival', 'text'], ['Resultado', 'resultado', 'text'], ['Competición', 'competicion', 'text']] as const).map(([label, field, type]) => (
-              <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
-                {label}
-                <input type={type} value={(form as any)[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} style={inputStyle} />
-              </label>
-            ))}
-          </div>
-
-          {/* Extracción automática */}
-          <div style={{ borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)', padding: '18px', display: 'grid', gap: '14px', background: 'rgba(10,18,30,0.6)' }}>
-            <p style={{ margin: 0, fontWeight: 700, color: '#fff' }}>Extracción automática <span style={{ fontWeight: 400, color: '#7f96bc', fontSize: '0.85rem' }}>(opcional)</span></p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
-                URL del acta o pega el texto directamente
-                <textarea value={urlActa} onChange={e => setUrlActa(e.target.value)} rows={2} placeholder="https://... o pega aquí el texto del acta" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-              </label>
-              <button onClick={handleUrl} disabled={parsing || !urlActa.trim()} style={{ padding: '10px 16px', borderRadius: '10px', background: '#2d68ff', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {parsing ? '...' : 'Extraer datos'}
-              </button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube un archivo (.txt, .html):</span>
-              <input ref={fileRef} type="file" accept=".txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
-              <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>
-                Seleccionar archivo
-              </button>
-            </div>
-            {parseMsg && <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>}
-          </div>
-        </div>
-      )}
 
       {/* ── TABLA 1: Estadísticas último partido ── */}
       {players.length > 0 && (
@@ -507,22 +474,51 @@ function Estadisticas() {
                   {ultimaActa.competicion ? ` · ${ultimaActa.competicion}` : ''}
                 </small>
               )}
-              {showForm && <small style={{ color: '#16d67a' }}>Introduce los datos del nuevo partido</small>}
               {!ultimaActa && !showForm && <small style={{ color: '#7f96bc' }}>Aún no hay partidos registrados esta temporada.</small>}
             </div>
-            {showForm && !isReadOnly && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                <button
-                  onClick={handleGuardar}
-                  disabled={saving || !form.fecha || !form.rival}
-                  style={{ padding: '10px 24px', borderRadius: '12px', background: saving ? '#555' : '#16d67a', color: '#071119', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}
-                >
-                  {saving ? 'Guardando...' : 'Guardar partido'}
-                </button>
-                {saveError && <p style={{ margin: 0, fontSize: '0.82rem', color: '#f44242', maxWidth: '280px', textAlign: 'right' }}>{saveError}</p>}
-              </div>
-            )}
           </div>
+
+          {/* Formulario de datos del partido — dentro de la misma tarjeta */}
+          {showForm && !isReadOnly && (
+            <div style={{ display: 'grid', gap: '16px', marginBottom: '24px', padding: '18px', borderRadius: '14px', border: '1px solid rgba(22,214,122,0.25)', background: 'rgba(22,214,122,0.05)' }}>
+              <p style={{ margin: 0, fontWeight: 700, color: '#16d67a', fontSize: '0.9rem' }}>Datos del partido <span style={{ color: '#f44242' }}>*</span><span style={{ color: '#7f96bc', fontWeight: 400 }}> — Fecha y Rival son obligatorios</span></p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+                {([['Fecha *', 'fecha', 'date'], ['Rival *', 'rival', 'text'], ['Resultado', 'resultado', 'text'], ['Competición', 'competicion', 'text']] as const).map(([label, field, type]) => (
+                  <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
+                    {label}
+                    <input
+                      type={type}
+                      value={(form as any)[field]}
+                      onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
+                      style={{ ...inputStyle, borderColor: (field === 'fecha' || field === 'rival') && !(form as any)[field] ? 'rgba(244,66,66,0.5)' : 'rgba(255,255,255,0.12)' }}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              {/* Extracción automática */}
+              <details>
+                <summary style={{ cursor: 'pointer', color: '#7f96bc', fontSize: '0.85rem', userSelect: 'none' }}>Extracción automática desde acta (opcional)</summary>
+                <div style={{ marginTop: '12px', display: 'grid', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
+                      URL del acta o pega el texto directamente
+                      <textarea value={urlActa} onChange={e => setUrlActa(e.target.value)} rows={2} placeholder="https://... o pega aquí el texto del acta" style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+                    </label>
+                    <button onClick={handleUrl} disabled={parsing || !urlActa.trim()} style={{ padding: '10px 16px', borderRadius: '10px', background: '#2d68ff', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {parsing ? '...' : 'Extraer datos'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube un archivo (.txt, .html):</span>
+                    <input ref={fileRef} type="file" accept=".txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
+                    <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>Seleccionar archivo</button>
+                  </div>
+                  {parseMsg && <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>}
+                </div>
+              </details>
+            </div>
+          )}
 
           <table className="list-table" style={{ minWidth: '660px' }}>
             <thead>
@@ -578,6 +574,28 @@ function Estadisticas() {
                   ))}
             </tbody>
           </table>
+
+          {/* Botón guardar — al final de la tabla, siempre visible cuando el form está abierto */}
+          {showForm && !isReadOnly && (
+            <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleGuardar}
+                disabled={saving}
+                style={{
+                  padding: '12px 28px', borderRadius: '12px', fontWeight: 700, border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
+                  background: saving ? '#555' : '#16d67a', color: '#071119', fontSize: '1rem',
+                }}
+              >
+                {saving ? 'Guardando...' : 'Guardar partido'}
+              </button>
+              {(!form.fecha || !form.rival) && (
+                <span style={{ color: '#f4c842', fontSize: '0.85rem' }}>
+                  Rellena <strong>Fecha</strong> y <strong>Rival</strong> antes de guardar
+                </span>
+              )}
+              {saveError && <span style={{ color: '#f44242', fontSize: '0.85rem' }}>{saveError}</span>}
+            </div>
+          )}
         </div>
       )}
 
