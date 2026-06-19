@@ -12,10 +12,9 @@ function Sidebar({ activeSection, onSelect, sections, userEmail, onSignOut }: Si
   return (
     <aside className="sidebar-shell card">
       <div className="sidebar-brand">
-        <div className="brand-mark">FC</div>
+        <div className="brand-mark">SDO</div>
         <div>
-          <h2>Mi Club</h2>
-          <small>VERSIÓN 2.4.0 • PRO</small>
+          <h2>SD Oyonesa</h2>
         </div>
       </div>
 

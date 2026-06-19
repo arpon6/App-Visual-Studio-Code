@@ -17,7 +17,7 @@ function Configuracion() {
           <h2>Perfil</h2>
         </div>
         <div className="widget-box">
-          <p>Nombre del club: Mi Club</p>
+          <p>Nombre del club: SD Oyonesa</p>
           <p>Entrenador: Javier Sagrario</p>
           <p>Modalidad: Fútbol base</p>
         </div>

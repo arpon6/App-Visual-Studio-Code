@@ -148,8 +148,8 @@ function Inicio() {
 
       <div>
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div className="section-header">
-            <div>
+              <div className="badge">TEMPORADA 26-27</div>
+              <h1>SD Oyonesa</h1>
               <small>Panel principal</small>
               <h2>Bienvenido, entrenador</h2>
             </div>
@@ -158,9 +158,9 @@ function Inicio() {
           <div className="widget-box" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
             <div className="access-ring" style={{ position: 'relative', width: 520, height: 520 }}>
               <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
-                {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
+                  <h2>Bienvenido, {user?.email?.split('@')[0] || 'entrenador'}</h2>
               </div>
-              {['Inicio','Plantilla','Calendario','Plan de Partido','Desarrollo grupal','Editor de vídeo propio','Editor de vídeo rival','Estadísticas'].map((s, i) => {
+                <span className="badge"></span>
                 const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
                 const radius = 210;
                 const x = 260 + Math.cos(angle) * radius;

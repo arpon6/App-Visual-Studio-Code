@@ -20,7 +20,7 @@ function Login() {
       background: 'var(--bg, #0f1117)', color: 'var(--text, #f4f7ff)'
     }}>
       <div style={{ textAlign: 'center' }}>
-        <h1 style={{ margin: 0 }}>Mi Club App</h1>
+        <h1 style={{ margin: 0 }}>SD Oyonesa</h1>
         <p style={{ opacity: 0.6, marginTop: '8px' }}>Introduce tus credenciales</p>
       </div>
       
