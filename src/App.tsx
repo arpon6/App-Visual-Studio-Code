@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
@@ -56,6 +56,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
+  const mainRef = useRef<HTMLElement | null>(null);
   
   // LOG DE DEPURACIÓN
   useEffect(() => {
@@ -66,6 +67,11 @@ function AppShell() {
     () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
   );
   const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 1080px)').matches) return;
+    mainRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
+  }, [activeSection]);
 
   useEffect(() => {
     const handler = (e: Event) => setFocusMode((e as CustomEvent).detail);
@@ -118,7 +124,20 @@ function AppShell() {
         userEmail={user.username}
         onSignOut={signOut}
       />
-      <main className="app-main">
+      <main ref={mainRef} className="app-main">
+        {currentSection !== 'Inicio' && (
+          <button
+            type="button"
+            className="back-to-home-btn"
+            onClick={() => handleSelect('Inicio')}
+            aria-label="Volver a Inicio"
+            title="Volver a Inicio"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 3.5 3 11h2v9.5h5.5V15h3v5.5H19V11h2L12 3.5Z" />
+            </svg>
+          </button>
+        )}
         {ALL_SECTIONS.map(key => (
           <div key={key} style={{ display: currentSection === key ? 'contents' : 'none' }}>
             {PAGE_COMPONENTS[key]}
