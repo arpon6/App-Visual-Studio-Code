@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Player, PlayerSelectorModal } from './TacticalBoard';
+import bloqueoIcon from '../../bloqueo.png';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,12 +270,12 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
   const usedIds = new Set(board.players.map(p => p.player?.id).filter((id): id is number => id !== undefined));
   const embedUrl = getYoutubeEmbedUrl(board.videoUrl);
 
-  const tools: { key: Tool; label: string; title: string }[] = [
+  const tools: { key: Tool; label: string; title: string; iconSrc?: string }[] = [
     { key: 'move',         label: '↖',  title: 'Mover jugador' },
     { key: 'focus',        label: '◎',  title: 'Foco (zona destino)' },
     { key: 'arrow-player', label: '⤳',  title: 'Flecha jugador' },
     { key: 'arrow-ball',   label: '→',  title: 'Flecha balón' },
-    { key: 'block',        label: '▣',  title: 'Bloqueo' },
+    { key: 'block',        label: 'Bloq.', title: 'Bloqueo', iconSrc: bloqueoIcon },
   ];
 
   return (
@@ -307,7 +308,12 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
               className={`abp-tool-btn${tool === t.key ? ' active' : ''}`}
               onClick={() => setTool(t.key)}
             >
-              {t.label} <span className="abp-tool-label">{t.title}</span>
+              {t.iconSrc ? (
+                <img src={t.iconSrc} alt={t.title} className="abp-tool-icon" />
+              ) : (
+                t.label
+              )}
+              <span className="abp-tool-label">{t.title}</span>
             </button>
           ))}
           <button
@@ -341,8 +347,14 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
 
           {/* Bloqueos */}
           {board.blocks.map(b => (
-            <rect key={b.id} x={b.x - 3} y={b.y - 3} width="6" height="6"
-              fill="rgba(255,100,100,0.2)" stroke="#ff6464" strokeWidth="0.8" rx="0.5"
+            <image
+              key={b.id}
+              href={bloqueoIcon}
+              x={b.x - 3.5}
+              y={b.y - 3.5}
+              width="7"
+              height="7"
+              preserveAspectRatio="xMidYMid meet"
             />
           ))}
 

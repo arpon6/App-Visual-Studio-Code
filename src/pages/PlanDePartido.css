@@ -780,6 +780,13 @@
   white-space: nowrap;
 }
 
+.abp-tool-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  display: inline-block;
+}
+
 .abp-tool-btn:hover {
   background: rgba(36, 56, 86, 0.9);
   color: #cdd4f1;
