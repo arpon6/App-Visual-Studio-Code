@@ -2,7 +2,7 @@ export const LEAGUE_TEAMS = [
   'Agoncillo',
   'Alfaro',
   'Anguiano',
-  'Arnedo',
+  'Cenicero',
   'Berceo',
   'Calahorra',
   'Calasancio',
@@ -19,5 +19,5 @@ export const LEAGUE_TEAMS = [
   'Yague',
 ];
 
-export const MY_TEAM_NAME = 'Arnedo';
+export const MY_TEAM_NAME = 'Cenicero';
 export const DEFAULT_MATCH_TYPE = 'Liga';
