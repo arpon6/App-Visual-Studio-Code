@@ -19,6 +19,25 @@ function Plantilla() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const playerPhotoStyle = {
+    width: '100%',
+    height: '320px',
+    objectFit: 'contain' as const,
+    objectPosition: 'center top' as const,
+    borderRadius: '8px',
+    background: 'rgba(255, 255, 255, 0.04)'
+  };
+
+  const selectedPlayerPhotoStyle = {
+    width: '240px',
+    height: '320px',
+    objectFit: 'contain' as const,
+    objectPosition: 'center top' as const,
+    borderRadius: '8px',
+    background: 'rgba(255, 255, 255, 0.04)',
+    flexShrink: 0 as const
+  };
+
   useEffect(() => {
     const fetchPlayers = async () => {
       const { data, error } = await supabase
@@ -82,7 +101,7 @@ function Plantilla() {
 
         <div className="card">
           <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-            <img src={selectedPlayer.photo} alt={selectedPlayer.name} style={{ width: '150px', height: '150px', borderRadius: '8px' }} />
+            <img src={selectedPlayer.photo} alt={selectedPlayer.name} style={selectedPlayerPhotoStyle} />
             <div>
               <h2>{selectedPlayer.name}</h2>
               <p><strong>Dorsal:</strong> {selectedPlayer.dorsal}</p>
@@ -114,7 +133,7 @@ function Plantilla() {
       <div className="grid-3">
         {players.map((player) => (
           <div key={`${player.name}-${player.dorsal}`} className="card" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelectedPlayer(player)}>
-            <img src={player.photo} alt={player.name} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px' }} />
+            <img src={player.photo} alt={player.name} style={playerPhotoStyle} />
             <h3>{player.name}</h3>
             <p>Dorsal: {player.dorsal}</p>
             <p>{player.position}</p>
