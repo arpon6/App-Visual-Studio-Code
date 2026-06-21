@@ -4,6 +4,15 @@ import { useAuth } from '../lib/AuthContext';
 
 function Inicio() {
   const { user } = useAuth();
+  const quickAccessSections = [
+    'Plantilla',
+    'Calendario',
+    'Plan de Partido',
+    'Desarrollo grupal',
+    'Editor de vídeo propio',
+    'Editor de vídeo rival',
+    'Estadísticas',
+  ] as const;
   const BADGE_URL_KEY = 'team_badge_url';
   const BADGE_STORAGE_KEY = 'team_badge_storage_path';
   const BADGE_STORAGE_PATH = 'team_badge.png';
@@ -159,8 +168,8 @@ function Inicio() {
               <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
                 {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
               </div>
-              {['Inicio','Plantilla','Calendario','Plan de Partido','Desarrollo grupal','Editor de video propio','Editor de video rival','Estadisticas'].map((s, i) => {
-                const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+              {quickAccessSections.map((s, i) => {
+                const angle = (i / quickAccessSections.length) * Math.PI * 2 - Math.PI / 2;
                 const radius = 210;
                 const x = 260 + Math.cos(angle) * radius;
                 const y = 260 + Math.sin(angle) * radius;

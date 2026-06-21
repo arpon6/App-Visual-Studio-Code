@@ -164,13 +164,7 @@ export default function TacticalBoard({
   const dragMoved = useRef(false);
 
   const changeFormation = (key: string) => {
-    const positions = FORMATIONS[key].positions;
-    const next: FieldPlayer[] = positions.map((pos, i) => ({
-      slotId: i, x: pos.x, y: pos.y,
-      player: fieldPlayers[i]?.player ?? null,
-    }));
     onFormationChange(key);
-    onFieldPlayersChange(next);
   };
 
   const handleSlotClick = (slotId: number) => {
