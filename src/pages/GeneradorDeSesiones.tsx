@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { useAuth } from '../lib/AuthContext';
 import './Calendario.css';
 import tareasMatrixCsv from '../../Copia de Tareas entrenamiento - Matriz.csv?raw';
@@ -154,6 +155,26 @@ function normalizeTarea(input: Tarea): Tarea {
   return next;
 }
 
+function extractDriveFileId(url: string): string | null {
+  const match = url.match(/\/file\/d\/([^/]+)/i);
+  return match?.[1] ?? null;
+}
+
+function toDrivePreviewUrl(url: string): string {
+  const id = extractDriveFileId(url);
+  return id ? `https://drive.google.com/file/d/${id}/preview` : url;
+}
+
+function toDriveThumbnailUrl(url: string): string {
+  const id = extractDriveFileId(url);
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : url;
+}
+
+function valueOrDash(value: string): string {
+  const clean = value.trim();
+  return clean || '-';
+}
+
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MOMENTOS_SEMANA = ['+1', '+2', '+3', '-3', '-2', '-1'];
 const HORAS: string[] = [];
@@ -258,6 +279,9 @@ function TareaRow({ tarea, index, onChange, onRemove }: {
   const cell: React.CSSProperties = { padding: '6px 4px', verticalAlign: 'top' };
   const input: React.CSSProperties = { width: '100%', padding: '6px 8px', background: 'rgba(24,36,58,0.8)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#cdd4f1', fontSize: '0.82rem', boxSizing: 'border-box' };
   const sel: React.CSSProperties = { ...input, cursor: 'pointer' };
+  const imagePreviewUrl = tarea.imagen ? tarea.imagen : (tarea.enlaceImagen ? toDriveThumbnailUrl(tarea.enlaceImagen) : '');
+  const imageLink = tarea.imagen || tarea.enlaceImagen;
+  const videoPreviewUrl = tarea.video ? toDrivePreviewUrl(tarea.video) : '';
 
   return (
     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -301,6 +325,48 @@ function TareaRow({ tarea, index, onChange, onRemove }: {
       <td style={{ ...cell, minWidth: '140px' }}>
         <input style={input} value={tarea.agrupacion} onChange={e => onChange(tarea.id, { agrupacion: e.target.value })} placeholder="Agrupación..." />
       </td>
+      <td style={{ ...cell, minWidth: '260px' }}>
+        {!tarea.nombre && <span style={{ color: '#7f96bc', fontSize: '0.8rem' }}>Selecciona una tarea para ver multimedia</span>}
+
+        {tarea.nombre && !imageLink && !tarea.video && (
+          <span style={{ color: '#7f96bc', fontSize: '0.8rem' }}>Esta tarea no tiene imagen ni vídeo en la matriz</span>
+        )}
+
+        {tarea.nombre && (imageLink || tarea.video) && (
+          <div style={{ display: 'grid', gap: '8px' }}>
+            {imageLink && (
+              <div style={{ display: 'grid', gap: '6px' }}>
+                {imagePreviewUrl && (
+                  <img
+                    src={imagePreviewUrl}
+                    alt={`Imagen de ${tarea.nombre}`}
+                    style={{ width: '100%', maxWidth: '220px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                )}
+                <a href={imageLink} target="_blank" rel="noreferrer" style={{ color: '#90f4ae', fontSize: '0.8rem' }}>
+                  Ver imagen
+                </a>
+              </div>
+            )}
+
+            {tarea.video && (
+              <div style={{ display: 'grid', gap: '6px' }}>
+                {videoPreviewUrl && (
+                  <iframe
+                    title={`Video de ${tarea.nombre}`}
+                    src={videoPreviewUrl}
+                    style={{ width: '100%', maxWidth: '220px', minHeight: '125px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}
+                    allow="autoplay"
+                  />
+                )}
+                <a href={tarea.video} target="_blank" rel="noreferrer" style={{ color: '#90f4ae', fontSize: '0.8rem' }}>
+                  Ver vídeo
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </td>
       <td style={{ ...cell, width: '36px', textAlign: 'center' }}>
         <button onClick={() => onRemove(tarea.id)} title="Eliminar tarea" style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '1.1rem', padding: '2px 4px' }}>×</button>
       </td>
@@ -318,9 +384,7 @@ function GeneradorDeSesiones() {
   const [campo, setCampo] = useState('');
   const [campoCustom, setCampoCustom] = useState('');
   const [microciclo, setMicrociclo] = useState('');
-  const [objConBalon, setObjConBalon] = useState('');
-  const [objSinBalon, setObjSinBalon] = useState('');
-  const [otrosObjetivos, setOtrosObjetivos] = useState('');
+  const [contenidosFoco, setContenidosFoco] = useState('');
   const [numJugadores, setNumJugadores] = useState('');
   const [jugadoresAusentes, setJugadoresAusentes] = useState('');
   const [tareas, setTareas] = useState<Tarea[]>([emptyTarea(1)]);
@@ -339,8 +403,72 @@ function GeneradorDeSesiones() {
     setTareas(prev => prev.map(t => t.id === id ? normalizeTarea({ ...t, ...patch }) : t));
   };
 
-  const handlePrint = () => {
-    window.setTimeout(() => window.print(), 100);
+  const handleExportPdf = () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const textWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    const ensureSpace = (spaceNeeded: number) => {
+      if (y + spaceNeeded > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+    };
+
+    const addWrappedText = (text: string, size = 10, lineGap = 14) => {
+      const lines = doc.splitTextToSize(text, textWidth);
+      doc.setFontSize(size);
+      lines.forEach((line: string) => {
+        ensureSpace(lineGap);
+        doc.text(line, margin, y);
+        y += lineGap;
+      });
+    };
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Sesion de entrenamiento', margin, y);
+    y += 24;
+
+    doc.setFont('helvetica', 'normal');
+    addWrappedText(`Mes: ${valueOrDash(mes)} | Momento semana: ${valueOrDash(momentoSemana)} | Hora: ${valueOrDash(hora)}`);
+    addWrappedText(`Campo: ${valueOrDash(campoFinal)} | Microciclo: ${valueOrDash(microciclo)}`);
+    addWrappedText(`Numero de jugadores: ${valueOrDash(numJugadores)} | Jugadores ausentes: ${valueOrDash(jugadoresAusentes)}`);
+    y += 6;
+
+    doc.setFont('helvetica', 'bold');
+    addWrappedText('Contenidos foco:', 11);
+    doc.setFont('helvetica', 'normal');
+    addWrappedText(valueOrDash(contenidosFoco), 10);
+    y += 8;
+
+    doc.setFont('helvetica', 'bold');
+    addWrappedText('Tareas de la sesion', 13);
+    doc.setFont('helvetica', 'normal');
+
+    if (tareas.length === 0) {
+      addWrappedText('No hay tareas registradas.');
+    }
+
+    tareas.forEach((tarea, index) => {
+      y += 4;
+      ensureSpace(18);
+      doc.setFont('helvetica', 'bold');
+      addWrappedText(`${index + 1}. ${valueOrDash(tarea.nombre)}`, 11);
+      doc.setFont('helvetica', 'normal');
+      addWrappedText(`Tiempo: ${valueOrDash(tarea.tiempo)} | Espacio: ${valueOrDash(tarea.espacio)} | Agrupacion: ${valueOrDash(tarea.agrupacion)}`);
+      addWrappedText(`Tipo de tarea: ${valueOrDash(tarea.tipoTarea)} | Intencion: ${valueOrDash(tarea.intencion)} | Socioestructura: ${valueOrDash(tarea.socioestructura)}`);
+      addWrappedText(`Descripcion: ${valueOrDash(tarea.descripcion)}`);
+      if (tarea.imagen || tarea.enlaceImagen) addWrappedText(`Imagen: ${tarea.imagen || tarea.enlaceImagen}`);
+      if (tarea.video) addWrappedText(`Video: ${tarea.video}`);
+      y += 4;
+    });
+
+    const fileName = `sesion-${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fileName);
   };
 
   const campoFinal = campo === 'otro' ? campoCustom : campo;
@@ -354,7 +482,7 @@ function GeneradorDeSesiones() {
           <small>Planificación del entrenamiento</small>
           <h1>Generador de sesiones</h1>
         </div>
-        <button className="nav-btn export-btn" onClick={handlePrint}>🖨️ Imprimir / PDF</button>
+        <button className="nav-btn export-btn" onClick={handleExportPdf}>📄 Exportar PDF</button>
       </div>
 
       {/* ── CABECERA DE LA FICHA ─────────────────────────────────── */}
@@ -428,20 +556,9 @@ function GeneradorDeSesiones() {
           </div>
         </div>
 
-        {/* Objetivos */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px', marginTop: '14px' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Objetivos momentos con balón</label>
-            <textarea rows={3} value={objConBalon} onChange={e => setObjConBalon(e.target.value)} placeholder="Describe los objetivos con balón..." />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Objetivos momentos sin balón</label>
-            <textarea rows={3} value={objSinBalon} onChange={e => setObjSinBalon(e.target.value)} placeholder="Describe los objetivos sin balón..." />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Otros objetivos</label>
-            <textarea rows={3} value={otrosObjetivos} onChange={e => setOtrosObjetivos(e.target.value)} placeholder="Físicos, actitudinales..." />
-          </div>
+        <div className="form-group" style={{ marginTop: '14px', marginBottom: 0 }}>
+          <label>Contenidos foco</label>
+          <textarea rows={4} value={contenidosFoco} onChange={e => setContenidosFoco(e.target.value)} placeholder="Escribe aquí los contenidos foco de la sesión..." />
         </div>
 
         {/* Resumen rápido */}
@@ -481,6 +598,7 @@ function GeneradorDeSesiones() {
                 <th style={headerStyle}>Descripción</th>
                 <th style={headerStyle}>Espacio</th>
                 <th style={headerStyle}>Agrupación</th>
+                <th style={headerStyle}>Multimedia</th>
                 <th style={{ ...headerStyle, width: '36px' }}></th>
               </tr>
             </thead>
@@ -504,7 +622,7 @@ function GeneradorDeSesiones() {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '10px' }}>
           <button className="nav-btn" onClick={handleAddTarea}>+ Añadir tarea</button>
-          <button className="btn-save" onClick={handlePrint}>🖨️ Imprimir / PDF</button>
+          <button className="btn-save" onClick={handleExportPdf}>📄 Exportar PDF</button>
         </div>
       </div>
 
