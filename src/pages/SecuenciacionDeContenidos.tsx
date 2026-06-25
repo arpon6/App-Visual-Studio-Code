@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import './Calendario.css';
+
+const TEMPORADA_INICIO = '2026-07-30';
+const TEMPORADA_FIN = '2027-06-01';
 
 const CONTENIDOS_PREDEFINIDOS = [
   'Finalizar / Evitar Finalizar',
@@ -41,6 +44,12 @@ interface SecuenciacionData {
   fecha: string;
   contenidos: string[];
   notas?: string;
+}
+
+interface ContenidoStats {
+  contenido: string;
+  mensual: number;
+  temporada: number;
 }
 
 function SecuenciacionDeContenidos() {
@@ -117,6 +126,63 @@ function SecuenciacionDeContenidos() {
   const monthDays = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
   const monthName = currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
+
+  const secuenciacionesTemporada = useMemo(
+    () => secuenciaciones.filter(sec => sec.fecha >= TEMPORADA_INICIO && sec.fecha <= TEMPORADA_FIN),
+    [secuenciaciones]
+  );
+
+  const secuenciacionesMes = useMemo(
+    () => secuenciacionesTemporada.filter(sec => {
+      const [year, month] = sec.fecha.split('-').map(Number);
+      return year === currentYear && month === currentMonth;
+    }),
+    [secuenciacionesTemporada, currentYear, currentMonth]
+  );
+
+  const contenidosStats = useMemo<ContenidoStats[]>(() => {
+    const mensualMap = new Map<string, number>();
+    const temporadaMap = new Map<string, number>();
+
+    secuenciacionesTemporada.forEach(sec => {
+      sec.contenidos.forEach(contenido => {
+        temporadaMap.set(contenido, (temporadaMap.get(contenido) || 0) + 1);
+      });
+    });
+
+    secuenciacionesMes.forEach(sec => {
+      sec.contenidos.forEach(contenido => {
+        mensualMap.set(contenido, (mensualMap.get(contenido) || 0) + 1);
+      });
+    });
+
+    const contenidosUnicos = new Set<string>([
+      ...temporadaMap.keys(),
+      ...mensualMap.keys(),
+    ]);
+
+    return Array.from(contenidosUnicos)
+      .map(contenido => ({
+        contenido,
+        mensual: mensualMap.get(contenido) || 0,
+        temporada: temporadaMap.get(contenido) || 0,
+      }))
+      .sort((a, b) => {
+        if (b.temporada !== a.temporada) return b.temporada - a.temporada;
+        if (b.mensual !== a.mensual) return b.mensual - a.mensual;
+        return a.contenido.localeCompare(b.contenido, 'es-ES');
+      });
+  }, [secuenciacionesTemporada, secuenciacionesMes]);
+
+  const totalMes = contenidosStats.reduce((acc, item) => acc + item.mensual, 0);
+  const totalTemporada = contenidosStats.reduce((acc, item) => acc + item.temporada, 0);
+  const maxMensual = Math.max(...contenidosStats.map(item => item.mensual), 1);
+  const maxTemporada = Math.max(...contenidosStats.map(item => item.temporada), 1);
+  const topMensual = contenidosStats.filter(item => item.mensual > 0).slice(0, 10);
+  const topTemporada = contenidosStats.filter(item => item.temporada > 0).slice(0, 10);
 
   const getEventForDay = (day: number | undefined) => {
     if (!day) return null;
@@ -348,6 +414,89 @@ function SecuenciacionDeContenidos() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="card secuenciacion-stats-card">
+        <div className="section-header">
+          <h2>Resumen de contenidos</h2>
+          <p className="stats-subtitle">
+            Vista mensual ({monthName}) y acumulada de temporada ({new Date(TEMPORADA_INICIO).toLocaleDateString('es-ES')} - {new Date(TEMPORADA_FIN).toLocaleDateString('es-ES')})
+          </p>
+        </div>
+
+        {contenidosStats.length === 0 ? (
+          <p className="no-events">Todavía no hay contenidos dentro del rango de temporada.</p>
+        ) : (
+          <>
+            <div className="stats-table-wrap">
+              <table className="stats-table">
+                <thead>
+                  <tr>
+                    <th>Contenido</th>
+                    <th>Mes actual</th>
+                    <th>Temporada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contenidosStats.map(item => (
+                    <tr key={item.contenido}>
+                      <td>{item.contenido}</td>
+                      <td>{item.mensual}</td>
+                      <td>{item.temporada}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Total</td>
+                    <td>{totalMes}</td>
+                    <td>{totalTemporada}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div className="stats-charts-grid">
+              <div className="stats-chart-card">
+                <h3>Top contenidos del mes</h3>
+                {topMensual.length === 0 ? (
+                  <p className="no-events">Sin contenidos en este mes.</p>
+                ) : (
+                  <div className="bars-list">
+                    {topMensual.map(item => (
+                      <div key={`mes-${item.contenido}`} className="bar-row">
+                        <span className="bar-label" title={item.contenido}>{item.contenido}</span>
+                        <div className="bar-track">
+                          <div className="bar-fill mensual" style={{ width: `${(item.mensual / maxMensual) * 100}%` }} />
+                        </div>
+                        <span className="bar-value">{item.mensual}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="stats-chart-card">
+                <h3>Top contenidos de temporada</h3>
+                {topTemporada.length === 0 ? (
+                  <p className="no-events">Sin contenidos en temporada.</p>
+                ) : (
+                  <div className="bars-list">
+                    {topTemporada.map(item => (
+                      <div key={`temporada-${item.contenido}`} className="bar-row">
+                        <span className="bar-label" title={item.contenido}>{item.contenido}</span>
+                        <div className="bar-track">
+                          <div className="bar-fill temporada" style={{ width: `${(item.temporada / maxTemporada) * 100}%` }} />
+                        </div>
+                        <span className="bar-value">{item.temporada}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {showModal && (
