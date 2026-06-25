@@ -370,6 +370,23 @@ function AnalisisDePartido() {
     setMainOpponentState('');
   };
 
+  const deleteArchivedMatch = (matchIndex: number) => {
+    const matchToDelete = matches[matchIndex];
+    if (!matchToDelete) return;
+
+    const confirmed = window.confirm(`¿Seguro que quieres eliminar el partido ${matchToDelete.opponent}?`);
+    if (!confirmed) return;
+
+    const nextMatches = matches.filter((_, index) => index !== matchIndex);
+    setMatches(nextMatches);
+    setSelectedMatchIndex((currentIndex) => {
+      if (nextMatches.length === 0) return 0;
+      if (currentIndex === matchIndex) return Math.min(matchIndex, nextMatches.length - 1);
+      if (currentIndex > matchIndex) return currentIndex - 1;
+      return Math.min(currentIndex, nextMatches.length - 1);
+    });
+  };
+
   const toEmbedUrl = (url: string) => {
     const match = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
     return match ? `https://www.youtube.com/embed/${match[1]}` : url;
@@ -782,6 +799,14 @@ function AnalisisDePartido() {
                       }}
                       style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.5rem' }}
                     />
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => deleteArchivedMatch(index)}
+                      style={{ width: '100%', marginBottom: '0.5rem', background: '#7f1d1d', borderColor: '#b91c1c', color: '#fff' }}
+                    >
+                      Eliminar partido
+                    </button>
                   </>
                 )}
                 {match.videoUrl && (() => {
