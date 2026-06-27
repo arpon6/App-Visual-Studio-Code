@@ -5,8 +5,9 @@ import { usePlantilla } from '../lib/usePlantilla';
 import './RegistroDeEventos.css';
 
 const MATCH_KEY_PREFIX = 'registro_eventos_match_v1::';
+const EVENTS_KEY = 'registro_eventos_custom_events_v1';
 
-const EVENT_OPTIONS = [
+const DEFAULT_EVENTS = [
   'Ocasión rival',
   'Ocasión propia',
   'Recuperación',
@@ -17,6 +18,8 @@ const EVENT_OPTIONS = [
   'Despeje',
   'Duelo ganado',
   'Duelo perdido',
+  'Gol a favor',
+  'Gol en contra',
 ] as const;
 
 const TIME_SLOTS = [
@@ -32,13 +35,11 @@ const TIME_SLOTS = [
   { id: '91-100', label: '91-100', min: 91, max: 100 },
 ] as const;
 
-type EventoTipo = typeof EVENT_OPTIONS[number];
-
 type RegistroEvento = {
   id: string;
   zoneId: number;
   zoneLabel: string;
-  eventType: EventoTipo;
+  eventType: string;
   minute: number;
   timeSlot: string;
   playerId: string;
@@ -158,9 +159,7 @@ function parseSnapshot(id: string, value: unknown, fallbackUpdatedAt: string): M
     updatedAt: metaCandidate.updatedAt || fallbackUpdatedAt,
   };
 
-  const records = Array.isArray(candidate.records)
-    ? (candidate.records as RegistroEvento[])
-    : [];
+  const records = Array.isArray(candidate.records) ? (candidate.records as RegistroEvento[]) : [];
 
   return {
     meta,
@@ -169,13 +168,13 @@ function parseSnapshot(id: string, value: unknown, fallbackUpdatedAt: string): M
   };
 }
 
-function buildStats(records: RegistroEvento[]) {
+function buildStats(records: RegistroEvento[], eventOptions: string[]) {
   const zoneCounts = new Map<number, number>();
   records.forEach((record) => {
     zoneCounts.set(record.zoneId, (zoneCounts.get(record.zoneId) ?? 0) + 1);
   });
 
-  const eventCounts = EVENT_OPTIONS.map((eventType) => ({
+  const eventCounts = eventOptions.map((eventType) => ({
     label: eventType,
     value: records.filter((record) => record.eventType === eventType).length,
   }));
@@ -194,10 +193,9 @@ function buildStats(records: RegistroEvento[]) {
     .map(([label, value]) => ({ label, value }))
     .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
 
-  const matrix = EVENT_OPTIONS.map((eventType) => {
+  const matrix = eventOptions.map((eventType) => {
     const cells = TIME_SLOTS.map((slot) => {
       const counts = new Map<string, number>();
-
       records
         .filter((record) => record.eventType === eventType && record.timeSlot === slot.label)
         .forEach((record) => {
@@ -217,10 +215,43 @@ function buildStats(records: RegistroEvento[]) {
     return { eventType, cells };
   });
 
+  const eventTimeMatrix = eventOptions.map((eventType) => {
+    const countsBySlot = TIME_SLOTS.map((slot) => records.filter(
+      (record) => record.eventType === eventType && record.timeSlot === slot.label
+    ).length);
+
+    return {
+      eventType,
+      countsBySlot,
+      total: countsBySlot.reduce((acc, current) => acc + current, 0),
+    };
+  });
+
+  const playerNames = [...new Set(records.map((record) => record.playerName))]
+    .sort((left, right) => {
+      const leftCount = records.filter((record) => record.playerName === left).length;
+      const rightCount = records.filter((record) => record.playerName === right).length;
+      return rightCount - leftCount || left.localeCompare(right);
+    });
+
+  const eventPlayerMatrix = eventOptions.map((eventType) => {
+    const countsByPlayer = playerNames.map(
+      (playerName) => records.filter((record) => record.eventType === eventType && record.playerName === playerName).length
+    );
+
+    return {
+      eventType,
+      countsByPlayer,
+      total: countsByPlayer.reduce((acc, current) => acc + current, 0),
+    };
+  });
+
   const maxZoneCount = Math.max(1, ...zoneCounts.values());
   const maxEventCount = Math.max(1, ...eventCounts.map((item) => item.value));
   const maxTimeSlotCount = Math.max(1, ...timeSlotCounts.map((item) => item.value));
   const maxPlayerCount = Math.max(1, ...playerCounts.map((item) => item.value));
+  const maxEventTimeCell = Math.max(1, ...eventTimeMatrix.flatMap((row) => row.countsBySlot));
+  const maxEventPlayerCell = Math.max(1, ...eventPlayerMatrix.flatMap((row) => row.countsByPlayer));
 
   return {
     zoneCounts,
@@ -228,10 +259,15 @@ function buildStats(records: RegistroEvento[]) {
     timeSlotCounts,
     playerCounts,
     matrix,
+    eventTimeMatrix,
+    eventPlayerMatrix,
+    playerNames,
     maxZoneCount,
     maxEventCount,
     maxTimeSlotCount,
     maxPlayerCount,
+    maxEventTimeCell,
+    maxEventPlayerCell,
   };
 }
 
@@ -274,11 +310,7 @@ function MatrixTable({ matrix }: { matrix: ReturnType<typeof buildStats>['matrix
   );
 }
 
-function ChartsPanel({
-  stats,
-}: {
-  stats: ReturnType<typeof buildStats>;
-}) {
+function ChartsPanel({ stats }: { stats: ReturnType<typeof buildStats> }) {
   return (
     <div className="registro-charts-grid">
       <section className="registro-chart-block">
@@ -350,6 +382,84 @@ function ChartsPanel({
   );
 }
 
+function SeasonEventTimeHeatmap({ stats }: { stats: ReturnType<typeof buildStats> }) {
+  return (
+    <div className="registro-table-wrapper">
+      <table className="registro-heatmap-table">
+        <thead>
+          <tr>
+            <th>Evento</th>
+            {TIME_SLOTS.map((slot) => (
+              <th key={`slot-${slot.id}`}>{slot.label}</th>
+            ))}
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.eventTimeMatrix.map((row) => (
+            <tr key={`evt-slot-${row.eventType}`}>
+              <th>{row.eventType}</th>
+              {row.countsBySlot.map((count, index) => (
+                <td
+                  key={`${row.eventType}-${TIME_SLOTS[index].id}`}
+                  style={{ background: `rgba(79, 195, 247, ${(count / stats.maxEventTimeCell) * 0.8})` }}
+                >
+                  {count}
+                </td>
+              ))}
+              <td><strong>{row.total}</strong></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SeasonEventPlayerHeatmap({ stats }: { stats: ReturnType<typeof buildStats> }) {
+  const visiblePlayers = stats.playerNames.slice(0, 12);
+
+  return (
+    <div className="registro-table-wrapper">
+      <table className="registro-heatmap-table">
+        <thead>
+          <tr>
+            <th>Evento</th>
+            {visiblePlayers.map((player) => (
+              <th key={`player-${player}`}>{player}</th>
+            ))}
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.eventPlayerMatrix.map((row) => (
+            <tr key={`evt-player-${row.eventType}`}>
+              <th>{row.eventType}</th>
+              {visiblePlayers.map((playerName, index) => {
+                const realIndex = stats.playerNames.indexOf(playerName);
+                const count = row.countsByPlayer[realIndex] ?? 0;
+
+                return (
+                  <td
+                    key={`${row.eventType}-${playerName}`}
+                    style={{ background: `rgba(144, 244, 174, ${(count / stats.maxEventPlayerCell) * 0.8})` }}
+                  >
+                    {count}
+                  </td>
+                );
+              })}
+              <td><strong>{row.total}</strong></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {stats.playerNames.length > visiblePlayers.length ? (
+        <p className="registro-info">Se muestran los 12 jugadores con más acciones acumuladas.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function RegistroDeEventos() {
   const jugadores = usePlantilla();
   const [loading, setLoading] = useState(true);
@@ -359,56 +469,84 @@ function RegistroDeEventos() {
   const [homeTeamInput, setHomeTeamInput] = useState(MY_TEAM_NAME);
   const [awayTeamInput, setAwayTeamInput] = useState(LEAGUE_TEAMS.find((team) => team !== MY_TEAM_NAME) || LEAGUE_TEAMS[0]);
   const [snapshots, setSnapshots] = useState<Record<string, MatchSnapshot>>({});
+  const [customEvents, setCustomEvents] = useState<string[]>([]);
+  const [newEventInput, setNewEventInput] = useState('');
   const [videoMode, setVideoMode] = useState<VideoMode>('youtube');
   const [localVideoUrl, setLocalVideoUrl] = useState('');
   const [localVideoName, setLocalVideoName] = useState('');
   const [activeZoneId, setActiveZoneId] = useState<number | null>(null);
-  const [selectedEvents, setSelectedEvents] = useState<EventoTipo[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [selectedMinute, setSelectedMinute] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [error, setError] = useState('');
 
+  const eventOptions = useMemo(
+    () => [...new Set([...DEFAULT_EVENTS, ...customEvents.map((item) => item.trim()).filter(Boolean)])],
+    [customEvents]
+  );
+
   useEffect(() => {
-    const loadSnapshots = async () => {
+    const loadState = async () => {
       setLoading(true);
 
-      const { data, error: loadError } = await supabase
-        .from('shared_state')
-        .select('key, value, updated_at')
-        .like('key', `${MATCH_KEY_PREFIX}%`);
+      const [matchesResult, eventsResult] = await Promise.all([
+        supabase
+          .from('shared_state')
+          .select('key, value, updated_at')
+          .like('key', `${MATCH_KEY_PREFIX}%`),
+        supabase
+          .from('shared_state')
+          .select('value')
+          .eq('key', EVENTS_KEY)
+          .maybeSingle(),
+      ]);
 
-      if (loadError) {
-        console.error('Error cargando partidos de registro de eventos:', loadError);
+      if (matchesResult.error) {
+        console.error('Error cargando partidos de registro de eventos:', matchesResult.error);
         setStatusMsg('No se pudieron cargar los partidos guardados.');
-        setLoading(false);
-        return;
+      } else {
+        const nextSnapshots: Record<string, MatchSnapshot> = {};
+        (matchesResult.data || []).forEach((row) => {
+          const key = String(row.key || '');
+          if (!key.startsWith(MATCH_KEY_PREFIX)) return;
+          const id = key.slice(MATCH_KEY_PREFIX.length);
+          const parsed = parseSnapshot(id, row.value, row.updated_at || new Date().toISOString());
+          if (parsed) nextSnapshots[id] = parsed;
+        });
+
+        setSnapshots(nextSnapshots);
+        const sorted = Object.values(nextSnapshots).sort(
+          (left, right) => new Date(right.meta.updatedAt).getTime() - new Date(left.meta.updatedAt).getTime()
+        );
+        if (sorted[0]) setSelectedMatchId(sorted[0].meta.id);
       }
 
-      const nextSnapshots: Record<string, MatchSnapshot> = {};
-      (data || []).forEach((row) => {
-        const key = String(row.key || '');
-        if (!key.startsWith(MATCH_KEY_PREFIX)) return;
-        const id = key.slice(MATCH_KEY_PREFIX.length);
-        const parsed = parseSnapshot(id, row.value, row.updated_at || new Date().toISOString());
-        if (parsed) {
-          nextSnapshots[id] = parsed;
-        }
-      });
-
-      setSnapshots(nextSnapshots);
-      const sorted = Object.values(nextSnapshots).sort(
-        (left, right) => new Date(right.meta.updatedAt).getTime() - new Date(left.meta.updatedAt).getTime()
-      );
-
-      if (sorted[0]) {
-        setSelectedMatchId(sorted[0].meta.id);
+      if (!eventsResult.error && eventsResult.data?.value && typeof eventsResult.data.value === 'object') {
+        const parsed = eventsResult.data.value as { items?: string[] };
+        setCustomEvents(Array.isArray(parsed.items) ? parsed.items.filter((item) => item && typeof item === 'string') : []);
       }
 
       setLoading(false);
     };
 
-    void loadSnapshots();
+    void loadState();
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void supabase
+        .from('shared_state')
+        .upsert(
+          { key: EVENTS_KEY, value: { items: customEvents }, updated_at: new Date().toISOString() },
+          { onConflict: 'key' }
+        )
+        .then(({ error: saveError }) => {
+          if (saveError) console.error('Error guardando eventos personalizados:', saveError);
+        });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [customEvents]);
 
   useEffect(() => {
     if (!selectedMatchId) return;
@@ -416,21 +554,13 @@ function RegistroDeEventos() {
     if (!snapshot) return;
 
     const timer = setTimeout(() => {
-      const payload = {
-        ...snapshot,
-        meta: {
-          ...snapshot.meta,
-          updatedAt: snapshot.meta.updatedAt || new Date().toISOString(),
-        },
-      };
-
       void supabase
         .from('shared_state')
         .upsert(
           {
             key: `${MATCH_KEY_PREFIX}${selectedMatchId}`,
-            value: payload,
-            updated_at: payload.meta.updatedAt,
+            value: snapshot,
+            updated_at: snapshot.meta.updatedAt,
           },
           { onConflict: 'key' }
         )
@@ -444,6 +574,10 @@ function RegistroDeEventos() {
 
     return () => clearTimeout(timer);
   }, [selectedMatchId, snapshots]);
+
+  useEffect(() => {
+    setSelectedEvents((current) => current.filter((eventName) => eventOptions.includes(eventName)));
+  }, [eventOptions]);
 
   const matches = useMemo(
     () => Object.values(snapshots).sort(
@@ -461,8 +595,8 @@ function RegistroDeEventos() {
     [snapshots]
   );
 
-  const currentStats = useMemo(() => buildStats(records), [records]);
-  const seasonStats = useMemo(() => buildStats(seasonRecords), [seasonRecords]);
+  const currentStats = useMemo(() => buildStats(records, eventOptions), [records, eventOptions]);
+  const seasonStats = useMemo(() => buildStats(seasonRecords, eventOptions), [seasonRecords, eventOptions]);
 
   const upsertCurrentSnapshot = (updater: (current: MatchSnapshot) => MatchSnapshot) => {
     if (!selectedMatchId) return;
@@ -503,9 +637,7 @@ function RegistroDeEventos() {
     const now = new Date().toISOString();
 
     setSnapshots((previous) => {
-      if (previous[matchId]) {
-        return previous;
-      }
+      if (previous[matchId]) return previous;
 
       return {
         ...previous,
@@ -522,6 +654,40 @@ function RegistroDeEventos() {
     setSelectedMatchId(matchId);
     setError('');
     setStatusMsg('Partido activo listo para registrar eventos.');
+  };
+
+  const handleDeleteCurrentMatch = async () => {
+    if (!selectedMatchId) {
+      setError('Selecciona un partido para eliminar.');
+      return;
+    }
+
+    const toDelete = snapshots[selectedMatchId];
+    if (!toDelete) return;
+
+    const accepted = window.confirm(`Se eliminará el partido ${toDelete.meta.title}. Esta acción no se puede deshacer.`);
+    if (!accepted) return;
+
+    const targetKey = `${MATCH_KEY_PREFIX}${selectedMatchId}`;
+    const nextSelectedId = matches.find((match) => match.meta.id !== selectedMatchId)?.meta.id || '';
+
+    setSnapshots((previous) => {
+      const next = { ...previous };
+      delete next[selectedMatchId];
+      return next;
+    });
+    setSelectedMatchId(nextSelectedId);
+    setActiveZoneId(null);
+    setSelectedEvents([]);
+
+    const { error: deleteError } = await supabase.from('shared_state').delete().eq('key', targetKey);
+    if (deleteError) {
+      console.error('Error eliminando partido guardado:', deleteError);
+      setStatusMsg('Se quitó en memoria, pero no se pudo borrar en base de datos.');
+      return;
+    }
+
+    setStatusMsg('Partido eliminado correctamente. Tablas y gráficos acumulados actualizados.');
   };
 
   const handleSelectStoredMatch = (matchId: string) => {
@@ -567,6 +733,27 @@ function RegistroDeEventos() {
     setStatusMsg('Datos del partido actualizados.');
   };
 
+  const handleAddCustomEvent = () => {
+    const nextEvent = newEventInput.trim();
+    if (!nextEvent) {
+      setError('Escribe un nombre de evento para añadirlo.');
+      return;
+    }
+
+    const exists = [...DEFAULT_EVENTS, ...customEvents].some(
+      (eventName) => eventName.toLowerCase() === nextEvent.toLowerCase()
+    );
+    if (exists) {
+      setError('Ese evento ya existe en la lista.');
+      return;
+    }
+
+    setCustomEvents((current) => [...current, nextEvent]);
+    setNewEventInput('');
+    setError('');
+    setStatusMsg(`Evento "${nextEvent}" añadido.`);
+  };
+
   useEffect(() => {
     if (!selectedPlayerId && jugadores[0]?.id) {
       setSelectedPlayerId(String(jugadores[0].id));
@@ -610,12 +797,11 @@ function RegistroDeEventos() {
     });
   };
 
-  const toggleEvent = (eventType: EventoTipo) => {
+  const toggleEvent = (eventType: string) => {
     setSelectedEvents((current) => {
       if (current.includes(eventType)) {
         return current.filter((value) => value !== eventType);
       }
-
       return [...current, eventType];
     });
   };
@@ -651,7 +837,7 @@ function RegistroDeEventos() {
       eventType,
       minute: selectedMinute,
       timeSlot,
-      playerId: player.id,
+      playerId: String(player.id),
       playerName: player.nombre,
       createdAt,
     } satisfies RegistroEvento));
@@ -660,6 +846,7 @@ function RegistroDeEventos() {
       ...current,
       records: [...nextRecords, ...current.records],
     }));
+
     setSelectedEvents([]);
     setError('');
     setActiveZoneId(null);
@@ -730,6 +917,9 @@ function RegistroDeEventos() {
           </button>
           <button type="button" className="registro-secondary-btn" onClick={updateMatchMetadata}>
             Actualizar datos del partido activo
+          </button>
+          <button type="button" className="registro-danger-btn" onClick={handleDeleteCurrentMatch}>
+            Eliminar partido activo
           </button>
         </div>
 
@@ -890,8 +1080,21 @@ function RegistroDeEventos() {
               </p>
             </div>
 
+            <div className="registro-custom-event-row">
+              <input
+                type="text"
+                value={newEventInput}
+                onChange={(event) => setNewEventInput(event.target.value)}
+                placeholder="Añadir nuevo evento personalizado"
+                style={inputStyle}
+              />
+              <button type="button" className="registro-secondary-btn" onClick={handleAddCustomEvent}>
+                Añadir evento
+              </button>
+            </div>
+
             <div className="registro-events-grid">
-              {EVENT_OPTIONS.map((eventType) => {
+              {eventOptions.map((eventType) => {
                 const checked = selectedEvents.includes(eventType);
 
                 return (
@@ -953,7 +1156,6 @@ function RegistroDeEventos() {
             <small>Evento por tramo temporal, con jugadores implicados en cada celda del partido seleccionado</small>
           </div>
         </div>
-
         <MatrixTable matrix={currentStats.matrix} />
       </article>
 
@@ -964,7 +1166,6 @@ function RegistroDeEventos() {
             <small>Lectura rápida por evento, tramo, jugador y zona del partido activo</small>
           </div>
         </div>
-
         <ChartsPanel stats={currentStats} />
       </article>
 
@@ -976,7 +1177,6 @@ function RegistroDeEventos() {
           </div>
           <span className="badge">{seasonRecords.length} eventos acumulados</span>
         </div>
-
         <MatrixTable matrix={seasonStats.matrix} />
       </article>
 
@@ -987,15 +1187,34 @@ function RegistroDeEventos() {
             <small>Resumen global por evento, tramo temporal, jugador y zonas</small>
           </div>
         </div>
-
         <ChartsPanel stats={seasonStats} />
       </article>
 
       <article className="card registro-card">
         <div className="section-header">
           <div>
+            <h2>Acumulado temporada: evento por franja de tiempo</h2>
+            <small>Mapa de intensidad con el total de cada acción en cada tramo de 10 minutos</small>
+          </div>
+        </div>
+        <SeasonEventTimeHeatmap stats={seasonStats} />
+      </article>
+
+      <article className="card registro-card">
+        <div className="section-header">
+          <div>
+            <h2>Acumulado temporada: evento por jugador</h2>
+            <small>Mapa de intensidad del total de cada evento por jugador</small>
+          </div>
+        </div>
+        <SeasonEventPlayerHeatmap stats={seasonStats} />
+      </article>
+
+      <article className="card registro-card">
+        <div className="section-header">
+          <div>
             <h2>Detalle de registros</h2>
-            <small>Vista cronológica de todas las acciones guardadas</small>
+            <small>Vista cronológica de todas las acciones del partido activo</small>
           </div>
         </div>
 

@@ -59,7 +59,8 @@
 .registro-source-btn,
 .registro-clear-btn,
 .registro-primary-btn,
-.registro-secondary-btn {
+.registro-secondary-btn,
+.registro-danger-btn {
   border: none;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
@@ -148,7 +149,8 @@
 
 .registro-clear-btn,
 .registro-primary-btn,
-.registro-secondary-btn {
+.registro-secondary-btn,
+.registro-danger-btn {
   padding: 0.85rem 1.15rem;
   border-radius: 14px;
   font-weight: 700;
@@ -171,9 +173,16 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.registro-danger-btn {
+  background: rgba(255, 102, 102, 0.14);
+  color: #ffd7d7;
+  border: 1px solid rgba(255, 102, 102, 0.35);
+}
+
 .registro-clear-btn:hover,
 .registro-primary-btn:hover,
 .registro-secondary-btn:hover,
+.registro-danger-btn:hover,
 .registro-source-btn:hover {
   transform: translateY(-1px);
 }
@@ -324,6 +333,13 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.registro-custom-event-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .registro-event-chip {
@@ -499,6 +515,35 @@
   white-space: nowrap;
 }
 
+.registro-heatmap-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 980px;
+}
+
+.registro-heatmap-table th,
+.registro-heatmap-table td {
+  padding: 10px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.registro-heatmap-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(11, 19, 31, 0.98);
+  color: #90f4ae;
+  z-index: 1;
+}
+
+.registro-heatmap-table tbody th {
+  text-align: left;
+  background: rgba(8, 16, 29, 0.94);
+  color: #dfe8fa;
+}
+
 @media (max-width: 1280px) {
   .registro-eventos-layout,
   .registro-charts-grid {
@@ -509,19 +554,34 @@
 @media (max-width: 860px) {
   .registro-match-grid,
   .registro-events-grid,
-  .registro-form-grid,
-  .registro-pitch-grid,
-  .registro-mini-pitch {
+  .registro-form-grid {
     grid-template-columns: 1fr;
   }
 
-  .registro-pitch-grid,
-  .registro-mini-pitch {
-    grid-template-rows: none;
+  .registro-custom-event-row {
+    grid-template-columns: 1fr;
   }
 
   .registro-bar-row {
     grid-template-columns: 1fr;
+  }
+
+  .registro-pitch-grid,
+  .registro-mini-pitch {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(6, minmax(54px, 1fr));
+    gap: 8px;
+  }
+
+  .registro-zone {
+    min-height: 70px;
+    padding: 9px;
+    font-size: 0.8rem;
+  }
+
+  .registro-zone strong,
+  .registro-mini-zone strong {
+    font-size: 0.95rem;
   }
 
   .registro-card {
