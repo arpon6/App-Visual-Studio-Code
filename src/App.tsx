@@ -23,9 +23,8 @@ import './App.css';
 
 const ALL_SECTIONS = [
   'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Generador de sesiones', 'Plan de Partido', 'Desarrollo grupal',
-  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
+  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Registro de Eventos', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
-  'Registro de Eventos',
   'Gestión de usuarios',
 ] as const;
 
@@ -105,9 +104,11 @@ function AppShell() {
 
   if (!user) return <Login />;
 
-  // staffSections incluye a cuerpo_tecnico y SUPER_ADMIN
-  const staffSections = [...ALL_SECTIONS] as string[];
-  const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : staffSections;
+  const nonPlayerSections = user.role === 'cuerpo_tecnico'
+    ? [...ALL_SECTIONS]
+    : ALL_SECTIONS.filter((section) => section !== 'Registro de Eventos');
+
+  const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : nonPlayerSections;
 
   const currentSection = visibleSections.includes(activeSection as PageKey)
     ? activeSection

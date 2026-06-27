@@ -20,6 +20,27 @@
   padding: 22px;
 }
 
+.registro-match-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.registro-field-wide {
+  grid-column: 1 / -1;
+}
+
+.registro-stored-match-row {
+  margin-top: 12px;
+}
+
+.registro-info {
+  margin: 10px 0 0;
+  color: #9cb2d7;
+  font-size: 0.9rem;
+}
+
 .registro-video-card,
 .registro-pitch-card {
   min-height: 100%;
@@ -486,6 +507,7 @@
 }
 
 @media (max-width: 860px) {
+  .registro-match-grid,
   .registro-events-grid,
   .registro-form-grid,
   .registro-pitch-grid,

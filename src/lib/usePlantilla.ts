@@ -16,7 +16,7 @@ export function usePlantilla() {
       .then(({ data }) => {
         if (data) {
           setJugadores(data.map(p => ({
-            id: p.id,
+            id: String(p.id),
             nombre: [p.first_name, p.last_name1].filter(Boolean).join(' '),
           })));
         }
