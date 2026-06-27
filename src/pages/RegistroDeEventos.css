@@ -1,0 +1,508 @@
+.registro-eventos-page {
+  gap: 22px;
+}
+
+.registro-eventos-intro {
+  margin: 8px 0 0;
+  color: #9fb0cf;
+  max-width: 860px;
+  line-height: 1.55;
+}
+
+.registro-eventos-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  align-items: start;
+}
+
+.registro-card {
+  padding: 22px;
+}
+
+.registro-video-card,
+.registro-pitch-card {
+  min-height: 100%;
+}
+
+.registro-source-toggle {
+  display: inline-flex;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(8, 16, 29, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 20px 0 16px;
+}
+
+.registro-source-btn,
+.registro-clear-btn,
+.registro-primary-btn,
+.registro-secondary-btn {
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.registro-source-btn {
+  padding: 0.8rem 1.1rem;
+  border-radius: 14px;
+  background: transparent;
+  color: #bfc9e2;
+  font-weight: 700;
+}
+
+.registro-source-btn.active {
+  background: linear-gradient(135deg, rgba(144, 244, 174, 0.22), rgba(85, 200, 255, 0.28));
+  color: #f8fcff;
+}
+
+.registro-controls-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.registro-field-label {
+  display: grid;
+  gap: 8px;
+}
+
+.registro-field-label span {
+  color: #dce5ff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.registro-local-upload {
+  display: grid;
+  gap: 8px;
+}
+
+.registro-local-upload small,
+.registro-editor-panel p {
+  color: #8ea3c9;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.registro-video-stage {
+  margin-top: 18px;
+  aspect-ratio: 16 / 9;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(85, 200, 255, 0.18), transparent 35%),
+    linear-gradient(180deg, rgba(10, 18, 30, 0.96), rgba(4, 9, 18, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.registro-video-stage iframe,
+.registro-video-stage video {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.registro-video-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  gap: 10px;
+}
+
+.registro-video-placeholder strong {
+  font-size: 1.1rem;
+  color: #ffffff;
+}
+
+.registro-video-placeholder p {
+  max-width: 420px;
+  margin: 0;
+  color: #9aacd2;
+}
+
+.registro-clear-btn,
+.registro-primary-btn,
+.registro-secondary-btn {
+  padding: 0.85rem 1.15rem;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.registro-clear-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe7f8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.registro-primary-btn {
+  background: linear-gradient(135deg, #90f4ae, #55c8ff);
+  color: #07111d;
+}
+
+.registro-secondary-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: #dfe7f8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.registro-clear-btn:hover,
+.registro-primary-btn:hover,
+.registro-secondary-btn:hover,
+.registro-source-btn:hover {
+  transform: translateY(-1px);
+}
+
+.registro-pitch-wrapper {
+  position: relative;
+  margin-top: 18px;
+  border-radius: 28px;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(16, 63, 35, 0.95), rgba(7, 33, 19, 0.98)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 8%, transparent 8% 16%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.registro-pitch-markings {
+  position: absolute;
+  inset: 18px;
+  pointer-events: none;
+}
+
+.pitch-midline,
+.pitch-center-circle,
+.pitch-box {
+  position: absolute;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.pitch-midline {
+  top: 50%;
+  left: 0;
+  right: 0;
+  border-top: 2px solid rgba(255, 255, 255, 0.32);
+  transform: translateY(-50%);
+}
+
+.pitch-center-circle {
+  top: 50%;
+  left: 50%;
+  width: 18%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.pitch-box {
+  left: 24%;
+  right: 24%;
+  height: 11%;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+}
+
+.pitch-box-top {
+  top: 0;
+  border-top: 0;
+}
+
+.pitch-box-bottom {
+  bottom: 0;
+  border-bottom: 0;
+}
+
+.registro-pitch-grid,
+.registro-mini-pitch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(58px, 1fr));
+  gap: 10px;
+}
+
+.registro-zone,
+.registro-mini-zone {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.registro-zone {
+  position: relative;
+  z-index: 1;
+  min-height: 92px;
+  text-align: left;
+  padding: 14px;
+  display: grid;
+  align-content: space-between;
+  color: #f6fffa;
+}
+
+.registro-zone span,
+.registro-mini-zone span {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.registro-zone small {
+  color: rgba(233, 242, 255, 0.72);
+}
+
+.registro-zone strong,
+.registro-mini-zone strong {
+  justify-self: end;
+  font-size: 1.15rem;
+}
+
+.registro-zone.active {
+  outline: 2px solid rgba(144, 244, 174, 0.82);
+  transform: translateY(-1px);
+}
+
+.registro-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.registro-legend-pill,
+.registro-cell-item {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.registro-legend-pill {
+  padding: 0.55rem 0.9rem;
+  color: #d7e0f4;
+  font-size: 0.85rem;
+}
+
+.registro-editor-panel {
+  margin-top: 18px;
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(8, 16, 29, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.registro-editor-panel h3,
+.registro-chart-block h3 {
+  margin: 0 0 6px;
+  color: #ffffff;
+}
+
+.registro-events-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.registro-event-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d7e0f4;
+  cursor: pointer;
+}
+
+.registro-event-chip input {
+  margin: 0;
+}
+
+.registro-event-chip.active {
+  background: linear-gradient(135deg, rgba(144, 244, 174, 0.18), rgba(85, 200, 255, 0.16));
+  border-color: rgba(144, 244, 174, 0.28);
+}
+
+.registro-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.registro-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-weight: 700;
+}
+
+.registro-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.registro-table-wrapper {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.registro-matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 1020px;
+}
+
+.registro-matrix-table th,
+.registro-matrix-table td {
+  padding: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+}
+
+.registro-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(11, 19, 31, 0.98);
+  color: #90f4ae;
+  z-index: 1;
+}
+
+.registro-matrix-table tbody th {
+  background: rgba(8, 16, 29, 0.94);
+  color: #dfe8fa;
+  text-align: left;
+  min-width: 170px;
+}
+
+.registro-matrix-table td {
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 150px;
+}
+
+.registro-cell-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.registro-cell-item {
+  display: inline-flex;
+  padding: 0.35rem 0.65rem;
+  color: #dbe5f7;
+  font-size: 0.83rem;
+}
+
+.registro-empty-cell,
+.registro-empty-row {
+  color: #8699bf;
+}
+
+.registro-charts-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.registro-chart-block {
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(16, 28, 44, 0.95), rgba(7, 14, 24, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.registro-bar-list {
+  display: grid;
+  gap: 12px;
+}
+
+.registro-bar-list.compact {
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.registro-bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr 36px;
+  gap: 12px;
+  align-items: center;
+}
+
+.registro-bar-row span,
+.registro-bar-row strong {
+  color: #dce6fb;
+  font-size: 0.88rem;
+}
+
+.registro-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.registro-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #90f4ae, #4dd0e1);
+}
+
+.registro-bar-fill.time {
+  background: linear-gradient(90deg, #ffd166, #ef476f);
+}
+
+.registro-bar-fill.player {
+  background: linear-gradient(90deg, #8ec5ff, #8f8cff);
+}
+
+.registro-mini-pitch {
+  margin-top: 8px;
+}
+
+.registro-mini-zone {
+  min-height: 66px;
+  padding: 10px;
+  display: grid;
+  align-content: space-between;
+  color: #052012;
+}
+
+.registro-detail-table td,
+.registro-detail-table th {
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .registro-eventos-layout,
+  .registro-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .registro-events-grid,
+  .registro-form-grid,
+  .registro-pitch-grid,
+  .registro-mini-pitch {
+    grid-template-columns: 1fr;
+  }
+
+  .registro-pitch-grid,
+  .registro-mini-pitch {
+    grid-template-rows: none;
+  }
+
+  .registro-bar-row {
+    grid-template-columns: 1fr;
+  }
+
+  .registro-card {
+    padding: 18px;
+  }
+}

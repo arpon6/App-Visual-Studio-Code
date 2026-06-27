@@ -18,12 +18,14 @@ import RepositorioABP from './pages/RepositorioABP';
 import OtrasInformaciones from './pages/OtrasInformaciones';
 import GestionUsuarios from './pages/GestionUsuarios';
 import Wellness from './pages/Wellness';
+import RegistroDeEventos from './pages/RegistroDeEventos';
 import './App.css';
 
 const ALL_SECTIONS = [
   'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Generador de sesiones', 'Plan de Partido', 'Desarrollo grupal',
   'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
   'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
+  'Registro de Eventos',
   'Gestión de usuarios',
 ] as const;
 
@@ -51,6 +53,7 @@ const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
   'Editor de vídeo propio': <CortadorDeVideo />,
   'Editor de vídeo rival': <CortadorDeVideoRival />,
   'Otras Informaciones': <OtrasInformaciones />,
+  'Registro de Eventos': <RegistroDeEventos />,
   'Gestión de usuarios': <GestionUsuarios />,
 };
 
