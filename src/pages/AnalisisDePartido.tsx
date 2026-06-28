@@ -109,6 +109,7 @@ function AnalisisDePartido() {
     return user?.username || `Jugador ${playerId}`;
   };
   const [users, setUsers] = useState<AppUserInfo[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
   const [analysisCutsRaw] = useSharedState<AnalysisCut[] | Record<string, AnalysisCut[]>>('analisis_cuts', []);
@@ -136,12 +137,18 @@ function AnalisisDePartido() {
   const setMainOpponent = (val: string) => setMainOpponentState(val);
 
   useEffect(() => {
-    supabase
-      .from('app_users')
-      .select('id, email, username, role, player_id')
-      .then(({ data }) => {
+    const loadUsers = async () => {
+      try {
+        const { data } = await supabase
+          .from('app_users')
+          .select('id, email, username, role, player_id');
         if (data) setUsers(data as AppUserInfo[]);
-      });
+      } finally {
+        setUsersLoaded(true);
+      }
+    };
+
+    loadUsers();
   }, []);
 
   const allCuts = useMemo<AnalysisCut[]>(() => {
@@ -229,6 +236,18 @@ function AnalisisDePartido() {
     setSelectedPlayerRecipients([]);
   };
 
+  const canDeleteMessage = (message: ChatMessage) => {
+    if (!user) return false;
+    if (user.role === 'cuerpo_tecnico' || user.role === 'SUPER_ADMIN') return true;
+    return message.senderId === user.id;
+  };
+
+  const deleteMessage = (messageId: string) => {
+    const confirmed = window.confirm('¿Seguro que quieres eliminar este mensaje?');
+    if (!confirmed) return;
+    setChatMessages((prev) => prev.filter((message) => message.id !== messageId));
+  };
+
     const sendCutMessageFor = (cutId: string, cutPlayerIds?: string[] | null) => {
       const text = cutMessageText.trim();
       if (!text || !user) return;
@@ -289,6 +308,8 @@ function AnalisisDePartido() {
   };
 
   useEffect(() => {
+    if (!usersLoaded) return;
+
     const processUnsentMessages = async () => {
       const unsent = chatMessages.filter((m) => !m.sent && !sendingMessageIdsRef.current.has(m.id));
       if (unsent.length === 0) return;
@@ -308,7 +329,7 @@ function AnalisisDePartido() {
 
     processUnsentMessages();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMessages, users, staffAdmins]);
+  }, [chatMessages, users, staffAdmins, usersLoaded]);
 
   // moved getPlayerName earlier to avoid temporal-dead-zone at runtime
 
@@ -726,7 +747,19 @@ function AnalisisDePartido() {
                                 cutMessages.map((m) => (
                                   <div key={m.id} style={{ padding: '0.4rem', borderRadius: '6px', background: '#071025' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <strong style={{ color: '#f8fafc' }}>{m.senderName}</strong>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <strong style={{ color: '#f8fafc' }}>{m.senderName}</strong>
+                                        {canDeleteMessage(m) && (
+                                          <button
+                                            type="button"
+                                            className="secondary-button"
+                                            onClick={() => deleteMessage(m.id)}
+                                            style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', background: '#7f1d1d', borderColor: '#b91c1c', color: '#fff' }}
+                                          >
+                                            Eliminar
+                                          </button>
+                                        )}
+                                      </div>
                                       <small style={{ color: '#9ca3af' }}>{new Date(m.createdAt).toLocaleString()}</small>
                                     </div>
                                     <div style={{ color: '#d1d5db', marginTop: 6 }}>{m.text}</div>

@@ -114,6 +114,7 @@ function DesarrolloIndividual() {
   }, [visibleCortes]);
 
   const [users, setUsers] = useState<AppUserInfo[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -125,6 +126,8 @@ function DesarrolloIndividual() {
         if (data) setUsers(data as AppUserInfo[]);
       } catch (err) {
         console.warn('Error loading app_users:', err);
+      } finally {
+        setUsersLoaded(true);
       }
     };
     loadUsers();
@@ -313,6 +316,18 @@ function DesarrolloIndividual() {
     setCutMessageText('');
   };
 
+  const canDeleteMessage = (message: ChatMessage) => {
+    if (!user) return false;
+    if (user.role === 'cuerpo_tecnico' || user.role === 'SUPER_ADMIN') return true;
+    return message.senderId === user.id;
+  };
+
+  const deleteMessage = (messageId: string) => {
+    const confirmed = window.confirm('¿Seguro que quieres eliminar este mensaje?');
+    if (!confirmed) return;
+    setAnalysisChat((prev) => prev.filter((message) => message.id !== messageId));
+  };
+
   const getMessageRecipientsEmails = (message: ChatMessage) => {
     const recipients = new Set<string>();
 
@@ -391,6 +406,8 @@ function DesarrolloIndividual() {
   };
 
   useEffect(() => {
+    if (!usersLoaded) return;
+
     const processUnsentMessages = async () => {
       const unsent = analysisChat.filter((m) => !m.sent && !sendingMessageIdsRef.current.has(m.id));
       if (unsent.length === 0) return;
@@ -410,7 +427,7 @@ function DesarrolloIndividual() {
 
     processUnsentMessages();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisChat, users, staffAdmins]);
+  }, [analysisChat, users, staffAdmins, usersLoaded]);
 
   const cortesCount = visibleCortes.length;
 
@@ -521,7 +538,19 @@ function DesarrolloIndividual() {
                                 <div style={{ display: 'grid', gap: 8 }}>
                                   {messages.map((message) => (
                                     <div key={message.id} style={{ background: '#0f172a', borderRadius: 10, padding: '0.8rem', display: 'grid', gap: 4 }}>
-                                      <div style={{ fontSize: '0.85rem', color: '#e2e8f0' }}><strong>{message.senderName}</strong></div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ fontSize: '0.85rem', color: '#e2e8f0' }}><strong>{message.senderName}</strong></div>
+                                        {canDeleteMessage(message) && (
+                                          <button
+                                            type="button"
+                                            className="secondary-button"
+                                            onClick={() => deleteMessage(message.id)}
+                                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', background: '#7f1d1d', borderColor: '#b91c1c', color: '#fff' }}
+                                          >
+                                            Eliminar
+                                          </button>
+                                        )}
+                                      </div>
                                       <div style={{ color: '#cbd5e1' }}>{message.text}</div>
                                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{new Date(message.createdAt).toLocaleString()}</div>
                                     </div>
