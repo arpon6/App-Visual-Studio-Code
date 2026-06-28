@@ -299,6 +299,16 @@ function CortadorDeVideoRival() {
     return (t != null && !Number.isNaN(t)) ? t : lastKnownTimeRef.current;
   };
 
+  const seekBy = (delta: number) => {
+    const cur = getCurrentTime();
+    const newTime = Math.max(0, cur + delta);
+    if (videoMode === 'file' && localVideoRef.current) {
+      localVideoRef.current.currentTime = newTime;
+    } else if (ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(newTime, true);
+    }
+  };
+
   const createCutForCategory = (categoryId: string) => {
     const category = categoriesRef.current.find((c) => c.id === categoryId);
     if (!category) return;
@@ -607,9 +617,17 @@ function CortadorDeVideoRival() {
               <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%', display: 'block' }} />
             )}
             {(videoId || localVideoSrc) && (
-              <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
-                {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}
-              </button>
+              <>
+                <div className="seek-controls">
+                  <button type="button" className="seek-btn" onClick={() => seekBy(-20)} title="Retroceder 20s">⏪ −20s</button>
+                  <button type="button" className="seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10s">◀ −10s</button>
+                  <button type="button" className="seek-btn" onClick={() => seekBy(10)} title="Avanzar 10s">+10s ▶</button>
+                  <button type="button" className="seek-btn" onClick={() => seekBy(20)} title="Avanzar 20s">+20s ⏩</button>
+                </div>
+                <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
+                  {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}
+                </button>
+              </>
             )}
             {isFullscreen && (
               <div className="fullscreen-overlay">
