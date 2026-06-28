@@ -374,7 +374,14 @@ function DesarrolloIndividual() {
 
   const sendBrevoEmailForMessage = async (message: ChatMessage): Promise<boolean> => {
     const recs = getMessageRecipientsEmails(message);
-    if (recs.length === 0) return true;
+    if (recs.length === 0) {
+      console.warn('No hay destinatarios con email para enviar este mensaje', {
+        messageId: message.id,
+        recipients: message.recipients,
+        relatedCutId: message.relatedCutId,
+      });
+      return false;
+    }
 
     try {
       const subject = message.relatedCutId

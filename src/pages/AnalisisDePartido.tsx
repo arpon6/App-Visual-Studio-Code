@@ -276,7 +276,13 @@ function AnalisisDePartido() {
   const sendBrevoEmailForMessage = async (m: ChatMessage): Promise<boolean> => {
     const recs = getMessageRecipientsEmails(m);
     if (recs.length === 0) {
-      return true;
+      setBrevoStatus('No hay destinatarios con email para este mensaje.');
+      console.warn('No hay destinatarios con email para enviar este mensaje', {
+        messageId: m.id,
+        recipients: m.recipients,
+        relatedCutId: m.relatedCutId,
+      });
+      return false;
     }
 
     try {
