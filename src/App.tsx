@@ -1,60 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
-import Inicio from './pages/Inicio';
-import Plantilla from './pages/Plantilla';
-import Calendario from './pages/Calendario';
-import SecuenciacionDeContenidos from './pages/SecuenciacionDeContenidos';
-import GeneradorDeSesiones from './pages/GeneradorDeSesiones';
-import PlanDePartido from './pages/PlanDePartido';
-import AnalisisDePartido from './pages/AnalisisDePartido';
-import CortadorDeVideo from './pages/CortadorDeVideo';
-import CortadorDeVideoRival from './pages/CortadorDeVideoRival';
-import DesarrolloIndividual from './pages/DesarrolloIndividual';
-import Estadisticas from './pages/Estadisticas';
-import ResultadosYClasif from './pages/ResultadosYClasif';
-import RepositorioABP from './pages/RepositorioABP';
-import OtrasInformaciones from './pages/OtrasInformaciones';
-import GestionUsuarios from './pages/GestionUsuarios';
-import Wellness from './pages/Wellness';
-import RegistroDeEventos from './pages/RegistroDeEventos';
+import { APP_PAGE_KEYS, APP_PAGES, getHomeShortcutKeys, getVisiblePageKeys, isPageKey, type PageKey } from './lib/appPages';
 import './App.css';
-
-const ALL_SECTIONS = [
-  'Inicio', 'Plantilla', 'Calendario', 'Secuenciación de contenidos', 'Generador de sesiones', 'Plan de Partido', 'Desarrollo grupal',
-  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Registro de Eventos', 'Resultados y Clasif.', 'Repositorio ABP',
-  'Editor de vídeo propio', 'Editor de vídeo rival', 'Otras Informaciones',
-  'Gestión de usuarios',
-] as const;
-
-type PageKey = typeof ALL_SECTIONS[number];
-
-const PLAYER_SECTIONS: PageKey[] = [
-  'Inicio', 'Calendario', 'Desarrollo grupal',
-  'Desarrollo Individual', 'Wellness', 'Estadísticas', 'Resultados y Clasif.', 'Repositorio ABP',
-  'Otras Informaciones',
-];
-
-const PAGE_COMPONENTS: Record<PageKey, React.ReactNode> = {
-  'Inicio': <Inicio />,
-  'Plantilla': <Plantilla />,
-  'Calendario': <Calendario />,
-  'Secuenciación de contenidos': <SecuenciacionDeContenidos />,
-  'Generador de sesiones': <GeneradorDeSesiones />,
-  'Plan de Partido': <PlanDePartido />,
-  'Desarrollo grupal': <AnalisisDePartido />,
-  'Desarrollo Individual': <DesarrolloIndividual />,
-  'Wellness': <Wellness />,
-  'Estadísticas': <Estadisticas />,
-  'Resultados y Clasif.': <ResultadosYClasif />,
-  'Repositorio ABP': <RepositorioABP />,
-  'Editor de vídeo propio': <CortadorDeVideo />,
-  'Editor de vídeo rival': <CortadorDeVideoRival />,
-  'Otras Informaciones': <OtrasInformaciones />,
-  'Registro de Eventos': <RegistroDeEventos />,
-  'Gestión de usuarios': <GestionUsuarios />,
-};
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
@@ -66,7 +15,10 @@ function AppShell() {
   }, [user]);
 
   const [activeSection, setActiveSection] = useState<PageKey>(
-    () => (localStorage.getItem('app_active_section') as PageKey) || 'Inicio'
+    () => {
+      const savedSection = localStorage.getItem('app_active_section');
+      return savedSection && isPageKey(savedSection) ? savedSection : 'Inicio';
+    }
   );
   const [focusMode, setFocusMode] = useState(false);
 
@@ -85,9 +37,9 @@ function AppShell() {
   useEffect(() => {
     const nav = (e: Event) => {
       const detail = (e as CustomEvent).detail as string | undefined;
-      if (detail) {
+      if (detail && isPageKey(detail)) {
         localStorage.setItem('app_active_section', detail);
-        setActiveSection(detail as PageKey);
+        setActiveSection(detail);
       }
     };
     window.addEventListener('app-navigate', nav as EventListener);
@@ -104,13 +56,10 @@ function AppShell() {
 
   if (!user) return <Login />;
 
-  const nonPlayerSections = user.role === 'cuerpo_tecnico'
-    ? [...ALL_SECTIONS]
-    : ALL_SECTIONS.filter((section) => section !== 'Registro de Eventos');
+  const visibleSections = getVisiblePageKeys(user.role);
+  const homeShortcutSections = getHomeShortcutKeys(user.role);
 
-  const visibleSections = user.role === 'jugador' ? PLAYER_SECTIONS : nonPlayerSections;
-
-  const currentSection = visibleSections.includes(activeSection as PageKey)
+  const currentSection = visibleSections.includes(activeSection)
     ? activeSection
     : 'Inicio';
 
@@ -124,7 +73,7 @@ function AppShell() {
       <Sidebar
         activeSection={currentSection}
         onSelect={handleSelect}
-        sections={visibleSections as unknown as string[]}
+        sections={visibleSections}
         userEmail={user.username}
         onSignOut={signOut}
       />
@@ -142,11 +91,17 @@ function AppShell() {
             </svg>
           </button>
         )}
-        {ALL_SECTIONS.map(key => (
-          <div key={key} style={{ display: currentSection === key ? 'contents' : 'none' }}>
-            {PAGE_COMPONENTS[key]}
-          </div>
-        ))}
+        {APP_PAGES.map((page) => {
+          const PageComponent = page.component as ComponentType<{ quickAccessSections?: PageKey[] }>;
+
+          return (
+            <div key={page.key} style={{ display: currentSection === page.key ? 'contents' : 'none' }}>
+              {page.key === 'Inicio'
+                ? <PageComponent quickAccessSections={homeShortcutSections} />
+                : <PageComponent />}
+            </div>
+          );
+        })}
       </main>
     </div>
   );

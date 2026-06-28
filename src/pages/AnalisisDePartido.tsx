@@ -129,6 +129,7 @@ function AnalisisDePartido() {
   const [playingCut, setPlayingCut] = useState<AnalysisCut | null>(null);
   const [playingEmbedUrl, setPlayingEmbedUrl] = useState<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
@@ -289,13 +290,18 @@ function AnalisisDePartido() {
 
   useEffect(() => {
     const processUnsentMessages = async () => {
-      const unsent = chatMessages.filter((m) => !m.sent);
+      const unsent = chatMessages.filter((m) => !m.sent && !sendingMessageIdsRef.current.has(m.id));
       if (unsent.length === 0) return;
 
       for (const m of unsent) {
-        const sent = await sendBrevoEmailForMessage(m);
-        if (sent) {
-          setChatMessages((prev) => prev.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm));
+        sendingMessageIdsRef.current.add(m.id);
+        try {
+          const sent = await sendBrevoEmailForMessage(m);
+          if (sent) {
+            setChatMessages((prev) => prev.map((cm) => cm.id === m.id ? { ...cm, sent: true } : cm));
+          }
+        } finally {
+          sendingMessageIdsRef.current.delete(m.id);
         }
       }
     };
@@ -567,6 +573,9 @@ function AnalisisDePartido() {
       const u = users.find((x) => String(x.player_id) === String(pid));
       if (u?.email) recipients.add(u.email);
     });
+
+    const senderEmail = users.find((u) => u.id === message.senderId)?.email;
+    if (senderEmail) recipients.delete(senderEmail);
 
     return Array.from(recipients);
   };

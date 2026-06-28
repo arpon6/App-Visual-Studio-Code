@@ -1,24 +1,26 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import type { PageKey } from '../lib/appPages';
 
-function Inicio() {
+type InicioProps = {
+  quickAccessSections: PageKey[];
+};
+
+function Inicio({ quickAccessSections }: InicioProps) {
   const { user } = useAuth();
-  const quickAccessSections = [
-    'Plantilla',
-    'Calendario',
-    'Plan de Partido',
-    'Desarrollo grupal',
-    'Editor de vídeo propio',
-    'Editor de vídeo rival',
-    'Estadísticas',
-  ] as const;
   const BADGE_URL_KEY = 'team_badge_url';
   const BADGE_STORAGE_KEY = 'team_badge_storage_path';
   const BADGE_STORAGE_PATH = 'team_badge.png';
   const SIGNED_URL_EXPIRY = 60 * 60 * 24 * 30; // 30 days
   const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const visibleQuickAccessSections = quickAccessSections.filter((section) => section !== 'Inicio');
+
+  const ringSize = Math.min(760, Math.max(440, 300 + visibleQuickAccessSections.length * 26));
+  const buttonWidth = Math.max(88, Math.min(132, 144 - visibleQuickAccessSections.length * 2));
+  const centerSize = Math.max(110, Math.min(160, ringSize * 0.3));
+  const radius = ringSize / 2 - Math.max(72, buttonWidth * 0.75);
 
   useEffect(() => {
     if (!user) return;
@@ -164,21 +166,21 @@ function Inicio() {
             </div>
           </div>
           <div className="widget-box" style={{ minHeight: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
-            <div className="access-ring" style={{ position: 'relative', width: 520, height: 520 }}>
-              <div className="access-ring-center" style={{ position: 'absolute', inset: 'calc(50% - 120px)' }}>
+            <div className="access-ring" style={{ position: 'relative', width: ringSize, height: ringSize }}>
+              <div className="access-ring-center" style={{ position: 'absolute', inset: `calc(50% - ${centerSize / 2}px)` }}>
                 {badgeUrl ? <img src={badgeUrl} alt="Escudo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : <div style={{ color: '#7f96bc', fontSize: 18 }}>Escudo</div>}
               </div>
-              {quickAccessSections.map((s, i) => {
-                const angle = (i / quickAccessSections.length) * Math.PI * 2 - Math.PI / 2;
-                const radius = 210;
-                const x = 260 + Math.cos(angle) * radius;
-                const y = 260 + Math.sin(angle) * radius;
+              {visibleQuickAccessSections.map((s, i) => {
+                const angle = (i / visibleQuickAccessSections.length) * Math.PI * 2 - Math.PI / 2;
+                const center = ringSize / 2;
+                const x = center + Math.cos(angle) * radius;
+                const y = center + Math.sin(angle) * radius;
                 return (
                   <button
                     key={s}
                     type="button"
                     className="secondary-button access-ring-button"
-                    style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)', minWidth: 120, padding: '10px 12px' }}
+                    style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)', minWidth: buttonWidth, maxWidth: buttonWidth + 16, padding: '10px 12px', whiteSpace: 'normal', lineHeight: 1.1 }}
                     onClick={() => { localStorage.setItem('app_active_section', s); window.dispatchEvent(new CustomEvent('app-navigate', { detail: s })); }}
                   >
                     {s}

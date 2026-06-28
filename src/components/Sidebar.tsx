@@ -1,9 +1,10 @@
 import './Sidebar.css';
+import type { PageKey } from '../lib/appPages';
 
 type SidebarProps = {
-  activeSection: string;
-  onSelect: (section: string) => void;
-  sections: string[];
+  activeSection: PageKey;
+  onSelect: (section: PageKey) => void;
+  sections: PageKey[];
   userEmail?: string;
   onSignOut?: () => void;
 };

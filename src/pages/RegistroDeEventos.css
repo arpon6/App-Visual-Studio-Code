@@ -515,6 +515,42 @@
   white-space: nowrap;
 }
 
+.registro-table-select {
+  width: 100%;
+  min-width: 120px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(7, 16, 27, 0.88);
+  color: #f5f7fb;
+}
+
+.registro-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.registro-row-btn {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe7f8;
+  border-radius: 10px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.registro-row-btn.save {
+  background: rgba(144, 244, 174, 0.18);
+  border-color: rgba(144, 244, 174, 0.4);
+}
+
+.registro-row-btn.danger {
+  background: rgba(255, 102, 102, 0.14);
+  border-color: rgba(255, 102, 102, 0.35);
+  color: #ffd7d7;
+}
+
 .registro-heatmap-table {
   width: 100%;
   border-collapse: separate;
@@ -564,6 +600,10 @@
 
   .registro-bar-row {
     grid-template-columns: 1fr;
+  }
+
+  .registro-row-actions {
+    flex-direction: column;
   }
 
   .registro-pitch-grid,

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef, ChangeEvent } from 'react';
-import { useAuth } from '../lib/AuthContext';
+import { useAuth, UserRole } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
 import { usePlantilla } from '../lib/usePlantilla';
 import { supabase } from '../lib/supabaseClient';
@@ -18,11 +18,22 @@ interface VideoCorte {
 
 interface ChatMessage {
   id: string;
+  senderId?: string;
   senderName: string;
+  senderRole?: UserRole;
   text: string;
   recipients: string[];
   relatedCutId: string;
+  sent?: boolean;
   createdAt: string;
+}
+
+interface AppUserInfo {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  player_id: string | null;
 }
 
 const TACTICAL_CATEGORIES = [
@@ -102,7 +113,8 @@ function DesarrolloIndividual() {
     }, {});
   }, [visibleCortes]);
 
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<AppUserInfo[]>([]);
+  const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -110,7 +122,7 @@ function DesarrolloIndividual() {
         const { data } = await supabase
           .from('app_users')
           .select('id, email, username, role, player_id');
-        if (data) setUsers(data as any[]);
+        if (data) setUsers(data as AppUserInfo[]);
       } catch (err) {
         console.warn('Error loading app_users:', err);
       }
@@ -124,11 +136,15 @@ function DesarrolloIndividual() {
     return ids.map((id) => {
       const pj = jugadores.find((j) => j.id === id);
       if (pj) return pj.nombre;
-      const fromUsers = users.find((u: any) => String(u.player_id) === String(id));
+      const fromUsers = users.find((u) => String(u.player_id) === String(id));
       if (fromUsers) return fromUsers.username || `Jugador ${id}`;
       return `Jugador ${id}`;
     }).join(', ');
   };
+
+  const staffAdmins = useMemo(() => {
+    return users.filter((u) => u.role === 'cuerpo_tecnico' || u.role === 'SUPER_ADMIN');
+  }, [users]);
 
   const toEmbedUrl = (url: string) => {
     const match = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
@@ -284,15 +300,117 @@ function DesarrolloIndividual() {
       : ['staff_admin', 'all_players'];
     const newMessage: ChatMessage = {
       id: `${Date.now()}-${cutId}`,
+      senderId: user.id,
       senderName: user.username || 'Usuario',
+      senderRole: user.role,
       text: cutMessageText.trim(),
       recipients,
       relatedCutId: cutId,
+      sent: false,
       createdAt: new Date().toISOString(),
     };
     setAnalysisChat([newMessage, ...analysisChat]);
     setCutMessageText('');
   };
+
+  const getMessageRecipientsEmails = (message: ChatMessage) => {
+    const recipients = new Set<string>();
+
+    if (message.recipients.includes('staff_admin')) {
+      staffAdmins.forEach((u) => {
+        if (u.email) recipients.add(u.email);
+      });
+    }
+
+    if (message.recipients.includes('all_players')) {
+      let playerIds: string[] | null = null;
+      if (message.relatedCutId) {
+        const relatedCut = allCortes.find((c) => c.id === message.relatedCutId);
+        if (relatedCut) playerIds = getCutPlayerIds(relatedCut);
+      }
+
+      if (playerIds && playerIds.length > 0) {
+        playerIds.forEach((playerId) => {
+          const target = users.find((u) => String(u.player_id) === String(playerId));
+          if (target?.email) recipients.add(target.email);
+        });
+      } else {
+        users
+          .filter((u) => u.role === 'jugador' && u.email)
+          .forEach((u) => recipients.add(u.email));
+      }
+    }
+
+    message.recipients
+      .filter((r) => r.startsWith('player:'))
+      .forEach((recipient) => {
+        const playerId = recipient.replace('player:', '');
+        const target = users.find((u) => String(u.player_id) === String(playerId));
+        if (target?.email) recipients.add(target.email);
+      });
+
+    if (message.senderId) {
+      const senderEmail = users.find((u) => u.id === message.senderId)?.email;
+      if (senderEmail) recipients.delete(senderEmail);
+    }
+
+    return Array.from(recipients);
+  };
+
+  const sendBrevoEmailForMessage = async (message: ChatMessage): Promise<boolean> => {
+    const recs = getMessageRecipientsEmails(message);
+    if (recs.length === 0) return true;
+
+    try {
+      const subject = message.relatedCutId
+        ? `Nuevo mensaje en corte de ${message.senderName}`
+        : `Nuevo mensaje interno de ${message.senderName}`;
+
+      const response = await fetch('/api/send-brevo-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: recs,
+          subject,
+          htmlContent: `<p>${message.text.replace(/\n/g, '<br/>')}</p><p>Revisa la app para ver el mensaje completo.</p>`,
+          textContent: message.text,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        console.error('Error enviando email Brevo:', response.status, body);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error enviando Brevo', error);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    const processUnsentMessages = async () => {
+      const unsent = analysisChat.filter((m) => !m.sent && !sendingMessageIdsRef.current.has(m.id));
+      if (unsent.length === 0) return;
+
+      for (const message of unsent) {
+        sendingMessageIdsRef.current.add(message.id);
+        try {
+          const sent = await sendBrevoEmailForMessage(message);
+          if (sent) {
+            setAnalysisChat((prev) => prev.map((m) => (m.id === message.id ? { ...m, sent: true } : m)));
+          }
+        } finally {
+          sendingMessageIdsRef.current.delete(message.id);
+        }
+      }
+    };
+
+    processUnsentMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisChat, users, staffAdmins]);
 
   const cortesCount = visibleCortes.length;
 

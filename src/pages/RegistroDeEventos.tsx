@@ -61,6 +61,13 @@ type MatchSnapshot = {
   records: RegistroEvento[];
 };
 
+type EditRecordState = {
+  id: string;
+  eventType: string;
+  minute: number;
+  playerId: string;
+};
+
 type VideoMode = 'youtube' | 'local';
 
 const ZONES = Array.from({ length: 18 }, (_, index) => {
@@ -186,7 +193,8 @@ function buildStats(records: RegistroEvento[], eventOptions: string[]) {
 
   const playerCountsMap = new Map<string, number>();
   records.forEach((record) => {
-    playerCountsMap.set(record.playerName, (playerCountsMap.get(record.playerName) ?? 0) + 1);
+    const label = record.playerName?.trim() || 'Sin jugador';
+    playerCountsMap.set(label, (playerCountsMap.get(label) ?? 0) + 1);
   });
 
   const playerCounts = [...playerCountsMap.entries()]
@@ -199,7 +207,8 @@ function buildStats(records: RegistroEvento[], eventOptions: string[]) {
       records
         .filter((record) => record.eventType === eventType && record.timeSlot === slot.label)
         .forEach((record) => {
-          counts.set(record.playerName, (counts.get(record.playerName) ?? 0) + 1);
+          const label = record.playerName?.trim() || 'Sin jugador';
+          counts.set(label, (counts.get(label) ?? 0) + 1);
         });
 
       const players = [...counts.entries()]
@@ -227,16 +236,16 @@ function buildStats(records: RegistroEvento[], eventOptions: string[]) {
     };
   });
 
-  const playerNames = [...new Set(records.map((record) => record.playerName))]
+  const playerNames = [...new Set(records.map((record) => record.playerName?.trim() || 'Sin jugador'))]
     .sort((left, right) => {
-      const leftCount = records.filter((record) => record.playerName === left).length;
-      const rightCount = records.filter((record) => record.playerName === right).length;
+      const leftCount = records.filter((record) => (record.playerName?.trim() || 'Sin jugador') === left).length;
+      const rightCount = records.filter((record) => (record.playerName?.trim() || 'Sin jugador') === right).length;
       return rightCount - leftCount || left.localeCompare(right);
     });
 
   const eventPlayerMatrix = eventOptions.map((eventType) => {
     const countsByPlayer = playerNames.map(
-      (playerName) => records.filter((record) => record.eventType === eventType && record.playerName === playerName).length
+      (playerName) => records.filter((record) => record.eventType === eventType && (record.playerName?.trim() || 'Sin jugador') === playerName).length
     );
 
     return {
@@ -478,6 +487,7 @@ function RegistroDeEventos() {
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [selectedMinute, setSelectedMinute] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [editingRecord, setEditingRecord] = useState<EditRecordState | null>(null);
   const [error, setError] = useState('');
 
   const eventOptions = useMemo(
@@ -755,16 +765,9 @@ function RegistroDeEventos() {
   };
 
   useEffect(() => {
-    if (!selectedPlayerId && jugadores[0]?.id) {
-      setSelectedPlayerId(String(jugadores[0].id));
-    }
-  }, [jugadores, selectedPlayerId]);
-
-  useEffect(() => {
+    if (!selectedPlayerId) return;
     if (!selectedPlayerId || jugadores.some((jugador) => String(jugador.id) === selectedPlayerId)) return;
-    if (jugadores[0]?.id) {
-      setSelectedPlayerId(String(jugadores[0].id));
-    }
+    setSelectedPlayerId('');
   }, [jugadores, selectedPlayerId]);
 
   useEffect(() => {
@@ -822,8 +825,11 @@ function RegistroDeEventos() {
       return;
     }
 
-    const player = jugadores.find((item) => String(item.id) === selectedPlayerId);
-    if (!player) {
+    const player = selectedPlayerId
+      ? jugadores.find((item) => String(item.id) === selectedPlayerId)
+      : null;
+
+    if (selectedPlayerId && !player) {
       setError('Selecciona un jugador válido.');
       return;
     }
@@ -837,8 +843,8 @@ function RegistroDeEventos() {
       eventType,
       minute: selectedMinute,
       timeSlot,
-      playerId: String(player.id),
-      playerName: player.nombre,
+      playerId: player ? String(player.id) : '',
+      playerName: player?.nombre || '',
       createdAt,
     } satisfies RegistroEvento));
 
@@ -858,6 +864,77 @@ function RegistroDeEventos() {
     upsertCurrentSnapshot((current) => ({ ...current, records: [] }));
     setError('');
     setStatusMsg('Se han limpiado los registros del partido activo.');
+  };
+
+  const handleDeleteRecord = (recordId: string) => {
+    if (!selectedMatchId) return;
+
+    upsertCurrentSnapshot((current) => ({
+      ...current,
+      records: current.records.filter((record) => record.id !== recordId),
+    }));
+    if (editingRecord?.id === recordId) {
+      setEditingRecord(null);
+    }
+    setStatusMsg('Evento eliminado del partido activo.');
+  };
+
+  const handleStartEditRecord = (record: RegistroEvento) => {
+    setEditingRecord({
+      id: record.id,
+      eventType: record.eventType,
+      minute: record.minute,
+      playerId: String(record.playerId),
+    });
+    setError('');
+  };
+
+  const handleSaveEditRecord = () => {
+    if (!editingRecord || !selectedMatchId) return;
+
+    const player = editingRecord.playerId
+      ? jugadores.find((item) => String(item.id) === String(editingRecord.playerId))
+      : null;
+
+    if (editingRecord.playerId && !player) {
+      setError('Selecciona un jugador válido para la edición.');
+      return;
+    }
+
+    if (!eventOptions.includes(editingRecord.eventType)) {
+      setError('Selecciona un evento válido para la edición.');
+      return;
+    }
+
+    if (editingRecord.minute < 1 || editingRecord.minute > 100) {
+      setError('El minuto debe estar entre 1 y 100.');
+      return;
+    }
+
+    upsertCurrentSnapshot((current) => ({
+      ...current,
+      records: current.records.map((record) => {
+        if (record.id !== editingRecord.id) return record;
+
+        return {
+          ...record,
+          eventType: editingRecord.eventType,
+          minute: editingRecord.minute,
+          timeSlot: getTimeSlot(editingRecord.minute),
+          playerId: player ? String(player.id) : '',
+          playerName: player?.nombre || '',
+        };
+      }),
+    }));
+
+    setEditingRecord(null);
+    setError('');
+    setStatusMsg('Evento editado correctamente.');
+  };
+
+  const handleCancelEditRecord = () => {
+    setEditingRecord(null);
+    setError('');
   };
 
   return (
@@ -1125,6 +1202,7 @@ function RegistroDeEventos() {
               <label className="registro-field-label">
                 <span>Jugador</span>
                 <select value={selectedPlayerId} onChange={(event) => setSelectedPlayerId(event.target.value)} style={inputStyle}>
+                  <option value="">Sin jugador</option>
                   {jugadores.length === 0 ? <option value="">Sin plantilla cargada</option> : null}
                   {jugadores.map((jugador) => (
                     <option key={jugador.id} value={String(jugador.id)}>
@@ -1227,22 +1305,83 @@ function RegistroDeEventos() {
                 <th>Tramo</th>
                 <th>Jugador</th>
                 <th>Zona</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {records.length > 0 ? (
                 records.map((record) => (
                   <tr key={record.id}>
-                    <td>{record.eventType}</td>
-                    <td>{record.minute}</td>
-                    <td>{record.timeSlot}</td>
-                    <td>{record.playerName}</td>
+                    <td>
+                      {editingRecord?.id === record.id ? (
+                        <select
+                          value={editingRecord.eventType}
+                          onChange={(event) => setEditingRecord((current) => current ? { ...current, eventType: event.target.value } : null)}
+                          className="registro-table-select"
+                        >
+                          {eventOptions.map((eventType) => (
+                            <option key={`edit-event-${eventType}`} value={eventType}>{eventType}</option>
+                          ))}
+                        </select>
+                      ) : record.eventType}
+                    </td>
+                    <td>
+                      {editingRecord?.id === record.id ? (
+                        <select
+                          value={editingRecord.minute}
+                          onChange={(event) => setEditingRecord((current) => current ? { ...current, minute: Number(event.target.value) } : null)}
+                          className="registro-table-select"
+                        >
+                          {MINUTES.map((minute) => (
+                            <option key={`edit-minute-${minute}`} value={minute}>{minute}</option>
+                          ))}
+                        </select>
+                      ) : record.minute}
+                    </td>
+                    <td>{editingRecord?.id === record.id ? getTimeSlot(editingRecord.minute) : record.timeSlot}</td>
+                    <td>
+                      {editingRecord?.id === record.id ? (
+                        <select
+                          value={editingRecord.playerId}
+                          onChange={(event) => setEditingRecord((current) => current ? { ...current, playerId: event.target.value } : null)}
+                          className="registro-table-select"
+                        >
+                          <option value="">Sin jugador</option>
+                          {jugadores.map((jugador) => (
+                            <option key={`edit-player-${jugador.id}`} value={String(jugador.id)}>{jugador.nombre}</option>
+                          ))}
+                        </select>
+                      ) : (record.playerName || 'Sin jugador')}
+                    </td>
                     <td>{record.zoneLabel}</td>
+                    <td>
+                      <div className="registro-row-actions">
+                        {editingRecord?.id === record.id ? (
+                          <>
+                            <button type="button" className="registro-row-btn save" onClick={handleSaveEditRecord}>
+                              Guardar
+                            </button>
+                            <button type="button" className="registro-row-btn" onClick={handleCancelEditRecord}>
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className="registro-row-btn" onClick={() => handleStartEditRecord(record)}>
+                              Editar
+                            </button>
+                            <button type="button" className="registro-row-btn danger" onClick={() => handleDeleteRecord(record.id)}>
+                              Borrar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="registro-empty-row">
+                  <td colSpan={6} className="registro-empty-row">
                     Todavía no hay acciones registradas.
                   </td>
                 </tr>
