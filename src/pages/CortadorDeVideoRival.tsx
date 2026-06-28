@@ -268,6 +268,24 @@ function CortadorDeVideoRival() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.altKey) return;
+      // Atajos de navegación: Ctrl+Alt+/  −20s | Ctrl+Alt+-  −10s | Ctrl+Alt++  +10s | Ctrl+Alt+*  +20s
+      if (e.ctrlKey && e.altKey) {
+        const seekDeltas: Record<string, number> = { '/': -20, '-': -10, '+': 10, '*': 20 };
+        const delta = seekDeltas[e.key];
+        if (delta !== undefined) {
+          e.preventDefault();
+          const cur = localVideoRef.current
+            ? localVideoRef.current.currentTime
+            : (ytPlayerRef.current?.getCurrentTime?.() ?? lastKnownTimeRef.current ?? 0);
+          const newTime = Math.max(0, (cur || 0) + delta);
+          if (localVideoRef.current) {
+            localVideoRef.current.currentTime = newTime;
+          } else if (ytPlayerRef.current) {
+            ytPlayerRef.current.seekTo(newTime, true);
+          }
+          return;
+        }
+      }
       const combo = normalizeKey(e);
       if (!combo) return;
       const category = categoriesRef.current.find((c) => c.shortcut === combo);
