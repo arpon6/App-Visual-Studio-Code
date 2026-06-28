@@ -11,7 +11,7 @@ export default async function handler(req: any, res: any) {
   console.log('send-brevo-email called', {
     hasApiKey: Boolean(apiKey),
     senderEmail: Boolean(senderEmail),
-    senderName,
+    hasSenderName: Boolean(senderName),
   });
 
   if (!apiKey || !senderEmail) {
@@ -28,7 +28,7 @@ export default async function handler(req: any, res: any) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'api-key': apiKey,
       },
       body: JSON.stringify({
         sender: { email: senderEmail, name: senderName },
