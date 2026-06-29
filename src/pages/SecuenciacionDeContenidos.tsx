@@ -79,6 +79,7 @@ function SecuenciacionDeContenidos() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [customInput, setCustomInput] = useState('');
+  const [contenidoSearchTerm, setContenidoSearchTerm] = useState('');
 
   useEffect(() => {
     loadData();
@@ -207,6 +208,12 @@ function SecuenciacionDeContenidos() {
     return Array.from(unicos.values()).sort((a, b) => a.localeCompare(b, 'es-ES'));
   }, [secuenciaciones, selectedContenidos]);
 
+  const contenidosFiltrados = useMemo(() => {
+    const term = contenidoSearchTerm.trim().toLocaleLowerCase('es-ES');
+    if (!term) return contenidosDisponibles;
+    return contenidosDisponibles.filter(c => c.toLocaleLowerCase('es-ES').includes(term));
+  }, [contenidosDisponibles, contenidoSearchTerm]);
+
   const getEventForDay = (day: number | undefined) => {
     if (!day) return null;
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
@@ -231,6 +238,7 @@ function SecuenciacionDeContenidos() {
     setNotas(existing?.notas || '');
     setEditingId(existing?.id || null);
     setCustomInput('');
+    setContenidoSearchTerm('');
     setShowModal(true);
   };
 
@@ -254,6 +262,15 @@ function SecuenciacionDeContenidos() {
 
   const handleRemoveContenido = (index: number) => {
     setSelectedContenidos(selectedContenidos.filter((_, i) => i !== index));
+  };
+
+  const handleMoveContenido = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= selectedContenidos.length) return;
+
+    const updated = [...selectedContenidos];
+    [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
+    setSelectedContenidos(updated);
   };
 
   const handleSaveSecuenciacion = async () => {
@@ -303,6 +320,7 @@ function SecuenciacionDeContenidos() {
     setNotas('');
     setEditingId(null);
     setCustomInput('');
+    setContenidoSearchTerm('');
   };
 
   const calendarDays = Array.from({ length: firstDay }).concat(
@@ -429,6 +447,7 @@ function SecuenciacionDeContenidos() {
                         setNotas(sec.notas || '');
                         setEditingId(sec.id);
                         setCustomInput('');
+                        setContenidoSearchTerm('');
                         setShowModal(true);
                       }}>✏️</button>
                     </div>
@@ -536,12 +555,23 @@ function SecuenciacionDeContenidos() {
             {/* Selector predefinido */}
             <div className="form-group">
               <label htmlFor="contenido-select">Añadir contenido de la lista</label>
+              <input
+                type="text"
+                value={contenidoSearchTerm}
+                onChange={e => setContenidoSearchTerm(e.target.value)}
+                placeholder="Escribe para filtrar contenidos..."
+              />
               <select id="contenido-select" onChange={handleSelectContenido} defaultValue="">
                 <option value="" disabled>Selecciona un contenido...</option>
-                {contenidosDisponibles.map(c => (
+                {contenidosFiltrados.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+              {contenidoSearchTerm.trim() && (
+                <small className="contenido-filter-count">
+                  {contenidosFiltrados.length} resultado{contenidosFiltrados.length === 1 ? '' : 's'}
+                </small>
+              )}
             </div>
 
             {/* Contenido personalizado */}
@@ -567,28 +597,42 @@ function SecuenciacionDeContenidos() {
             {selectedContenidos.length > 0 && (
               <div className="form-group">
                 <label>Contenidos seleccionados ({selectedContenidos.length})</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                <div className="selected-contenidos-list">
                   {selectedContenidos.map((c, idx) => (
                     <div
                       key={idx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        backgroundColor: 'var(--accent, #0ea5e9)',
-                        color: 'white',
-                        padding: '6px 12px',
-                        borderRadius: '4px',
-                        fontSize: '0.9rem'
-                      }}
+                      className="selected-contenido-item"
                     >
-                      <span>{c}</span>
+                      <span className="selected-contenido-order">{idx + 1}.</span>
+                      <span className="selected-contenido-text">{c}</span>
+                      <div className="selected-contenido-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveContenido(idx, 'up')}
+                          disabled={idx === 0}
+                          className="selected-contenido-btn"
+                          title="Subir"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveContenido(idx, 'down')}
+                          disabled={idx === selectedContenidos.length - 1}
+                          className="selected-contenido-btn"
+                          title="Bajar"
+                        >
+                          ↓
+                        </button>
                       <button
+                        type="button"
                         onClick={() => handleRemoveContenido(idx)}
-                        style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1rem', padding: 0 }}
+                        className="selected-contenido-btn remove"
+                        title="Eliminar"
                       >
                         ×
                       </button>
+                      </div>
                     </div>
                   ))}
                 </div>
