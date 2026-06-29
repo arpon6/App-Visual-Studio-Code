@@ -7,9 +7,12 @@ const TEMPORADA_INICIO = '2026-07-30';
 const TEMPORADA_FIN = '2027-06-01';
 
 const CONTENIDOS_PREDEFINIDOS = [
-  'Finalizar / Evitar Finalizar',
-  'Progresar / Evitar Progresar',
-  'Mantener / Evitar Mantener',
+  'Finalizar',
+  'Evitar finalizar',
+  'Progresar',
+  'Evitar progresar',
+  'Mantener',
+  'Evitar mantener',
   'Reinicio y Construcción Z 1-2',
   'Progresión juego interior Z 2-3',
   'Progresión juego exterior Z 2-3',
@@ -183,6 +186,26 @@ function SecuenciacionDeContenidos() {
   const maxTemporada = Math.max(...contenidosStats.map(item => item.temporada), 1);
   const topMensual = contenidosStats.filter(item => item.mensual > 0).slice(0, 10);
   const topTemporada = contenidosStats.filter(item => item.temporada > 0).slice(0, 10);
+
+  const contenidosDisponibles = useMemo(() => {
+    const todos = [
+      ...CONTENIDOS_PREDEFINIDOS,
+      ...secuenciaciones.flatMap(sec => sec.contenidos || []),
+      ...selectedContenidos,
+    ];
+
+    const unicos = new Map<string, string>();
+    todos.forEach(contenido => {
+      const limpio = (contenido || '').trim();
+      if (!limpio) return;
+      const key = limpio.toLocaleLowerCase('es-ES');
+      if (!unicos.has(key)) {
+        unicos.set(key, limpio);
+      }
+    });
+
+    return Array.from(unicos.values()).sort((a, b) => a.localeCompare(b, 'es-ES'));
+  }, [secuenciaciones, selectedContenidos]);
 
   const getEventForDay = (day: number | undefined) => {
     if (!day) return null;
@@ -515,7 +538,7 @@ function SecuenciacionDeContenidos() {
               <label htmlFor="contenido-select">Añadir contenido de la lista</label>
               <select id="contenido-select" onChange={handleSelectContenido} defaultValue="">
                 <option value="" disabled>Selecciona un contenido...</option>
-                {CONTENIDOS_PREDEFINIDOS.map(c => (
+                {contenidosDisponibles.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
