@@ -179,8 +179,8 @@ function Inicio({ quickAccessSections }: InicioProps) {
   // ── Tablón ────────────────────────────────────────────────────────────────
   const [tablonMessages, setTablonMessages] = useSharedState<TablonMessage[]>('tablon_messages', []);
   const [msgText, setMsgText] = useState('');
-  const [recipientType, setRecipientType] = useState<'all' | 'players_all' | 'staff' | 'select'>('all');
-  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [recipientType, setRecipientType] = useState<'all' | 'players_all' | 'staff' | 'users_select'>('all');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [appUsers, setAppUsers] = useState<AppUserInfo[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const sendingIdsRef = useRef<Set<string>>(new Set());
@@ -205,7 +205,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
     if (recipientType === 'all') return ['all_players', 'staff_admin'];
     if (recipientType === 'players_all') return ['all_players'];
     if (recipientType === 'staff') return ['staff_admin'];
-    if (recipientType === 'select') return selectedPlayers.map((id) => `player:${id}`);
+    if (recipientType === 'users_select') return selectedUsers.map((id) => `user:${id}`);
     return [];
   };
 
@@ -220,6 +220,11 @@ function Inicio({ quickAccessSections }: InicioProps) {
     msg.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
       const pid = r.replace('player:', '');
       const u = appUsers.find((x) => String(x.player_id) === String(pid));
+      if (u?.email) emails.add(u.email);
+    });
+    msg.recipients.filter((r) => r.startsWith('user:')).forEach((r) => {
+      const uid = r.replace('user:', '');
+      const u = appUsers.find((x) => x.id === uid);
       if (u?.email) emails.add(u.email);
     });
     const senderEmail = appUsers.find((u) => u.id === msg.senderId)?.email;
@@ -270,7 +275,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
 
   const handleSendTablon = () => {
     if (!msgText.trim() || !user) return;
-    if (recipientType === 'select' && selectedPlayers.length === 0) return;
+    if (recipientType === 'users_select' && selectedUsers.length === 0) return;
     const recs = buildRecipients();
     const msg: TablonMessage = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -284,7 +289,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
     };
     setTablonMessages((prev) => [msg, ...prev]);
     setMsgText('');
-    setSelectedPlayers([]);
+    setSelectedUsers([]);
     setRecipientType('all');
   };
 
@@ -308,6 +313,11 @@ function Inicio({ quickAccessSections }: InicioProps) {
         const j = jugadores.find((x) => String(x.id) === String(pid));
         return j ? j.nombre : `Jugador ${pid}`;
       });
+      parts.push(names.join(', '));
+    }
+    const userIds = recs.filter((r) => r.startsWith('user:')).map((r) => r.replace('user:', ''));
+    if (userIds.length > 0) {
+      const names = userIds.map((uid) => appUsers.find((u) => u.id === uid)?.username || uid);
       parts.push(names.join(', '));
     }
     return parts.join(' · ') || 'Sin destinatarios';
@@ -413,34 +423,34 @@ function Inicio({ quickAccessSections }: InicioProps) {
               <label style={{ color: '#7f96bc', fontSize: 13 }}>Destinatarios</label>
               <select
                 value={recipientType}
-                onChange={(e) => { setRecipientType(e.target.value as typeof recipientType); setSelectedPlayers([]); }}
+                onChange={(e) => { setRecipientType(e.target.value as typeof recipientType); setSelectedUsers([]); }}
                 style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 14 }}
               >
-                <option value="all">Toda la plantilla y cuerpo técnico</option>
-                <option value="players_all">Todos los jugadores</option>
+                <option value="all">Todos los usuarios</option>
+                <option value="players_all">Jugadores</option>
                 <option value="staff">Cuerpo técnico</option>
-                <option value="select">Jugadores específicos...</option>
+                <option value="users_select">Usuarios individuales...</option>
               </select>
             </div>
 
-            {recipientType === 'select' && (
+            {recipientType === 'users_select' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 260px' }}>
-                <label style={{ color: '#7f96bc', fontSize: 13 }}>Selecciona jugadores</label>
+                <label style={{ color: '#7f96bc', fontSize: 13 }}>Selecciona usuarios</label>
                 <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 10px', maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {jugadores.map((j) => (
-                    <label key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#d1dbe8' }}>
+                  {appUsers.map((u) => (
+                    <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#d1dbe8' }}>
                       <input
                         type="checkbox"
-                        checked={selectedPlayers.includes(String(j.id))}
+                        checked={selectedUsers.includes(u.id)}
                         onChange={(e) => {
-                          const id = String(j.id);
-                          setSelectedPlayers((prev) => e.target.checked ? [...prev, id] : prev.filter((x) => x !== id));
+                          setSelectedUsers((prev) => e.target.checked ? [...prev, u.id] : prev.filter((x) => x !== u.id));
                         }}
                       />
-                      {j.nombre}
+                      <span>{u.username}</span>
+                      <span style={{ fontSize: 11, color: '#7f96bc', marginLeft: 2 }}>{u.role === 'jugador' ? 'Jugador' : 'Técnico'}</span>
                     </label>
                   ))}
-                  {jugadores.length === 0 && <span style={{ color: '#7f96bc', fontSize: 13 }}>Cargando jugadores...</span>}
+                  {appUsers.length === 0 && <span style={{ color: '#7f96bc', fontSize: 13 }}>Cargando usuarios...</span>}
                 </div>
               </div>
             )}
@@ -450,7 +460,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
             <button
               type="button"
               className="primary-button"
-              disabled={!msgText.trim() || (recipientType === 'select' && selectedPlayers.length === 0)}
+              disabled={!msgText.trim() || (recipientType === 'users_select' && selectedUsers.length === 0)}
               onClick={handleSendTablon}
               style={{ minWidth: 140 }}
             >
