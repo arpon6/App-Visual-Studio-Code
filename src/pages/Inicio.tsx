@@ -1,7 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import { useSharedState } from '../lib/useSharedState';
+import { usePlantilla } from '../lib/usePlantilla';
 import type { PageKey } from '../lib/appPages';
+import type { UserRole } from '../lib/AuthContext';
+
+type TablonMessage = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: UserRole;
+  text: string;
+  recipients: string[];
+  sent?: boolean;
+  createdAt: string;
+};
+
+type AppUserInfo = {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  player_id: string | null;
+};
 
 type InicioProps = {
   quickAccessSections: PageKey[];
@@ -9,12 +31,16 @@ type InicioProps = {
 
 function Inicio({ quickAccessSections }: InicioProps) {
   const { user } = useAuth();
+  const jugadores = usePlantilla();
+
+  // ── Badge ─────────────────────────────────────────────────────────────────
   const BADGE_URL_KEY = 'team_badge_url';
   const BADGE_STORAGE_KEY = 'team_badge_storage_path';
   const BADGE_STORAGE_PATH = 'team_badge.png';
   const SIGNED_URL_EXPIRY = 60 * 60 * 24 * 30; // 30 days
   const [badgeUrl, setBadgeUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const visibleQuickAccessSections = quickAccessSections.filter((section) => section !== 'Inicio');
 
   const ringSize = Math.min(760, Math.max(440, 300 + visibleQuickAccessSections.length * 26));
@@ -146,6 +172,145 @@ function Inicio({ quickAccessSections }: InicioProps) {
   const handleUseUrl = async () => {
     if (!badgeUrlInput) return;
     await saveBadgeUrl(badgeUrlInput);
+    setBadgeUrlInput('');
+    setShowUrlInput(false);
+  };
+
+  // ── Tablón ────────────────────────────────────────────────────────────────
+  const [tablonMessages, setTablonMessages] = useSharedState<TablonMessage[]>('tablon_messages', []);
+  const [msgText, setMsgText] = useState('');
+  const [recipientType, setRecipientType] = useState<'all' | 'players_all' | 'staff' | 'select'>('all');
+  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [appUsers, setAppUsers] = useState<AppUserInfo[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const sendingIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    supabase
+      .from('app_users')
+      .select('id, email, username, role, player_id')
+      .then(({ data }) => {
+        if (data) {
+          setAppUsers(
+            data.map((u: any) => ({ ...u, player_id: u.player_id ? String(u.player_id) : null }))
+          );
+        }
+        setUsersLoaded(true);
+      });
+  }, []);
+
+  const staffUsers = appUsers.filter((u) => u.role !== 'jugador');
+
+  const buildRecipients = (): string[] => {
+    if (recipientType === 'all') return ['all_players', 'staff_admin'];
+    if (recipientType === 'players_all') return ['all_players'];
+    if (recipientType === 'staff') return ['staff_admin'];
+    if (recipientType === 'select') return selectedPlayers.map((id) => `player:${id}`);
+    return [];
+  };
+
+  const getEmailsForMessage = (msg: TablonMessage): string[] => {
+    const emails = new Set<string>();
+    if (msg.recipients.includes('staff_admin')) {
+      staffUsers.forEach((u) => { if (u.email) emails.add(u.email); });
+    }
+    if (msg.recipients.includes('all_players')) {
+      appUsers.filter((u) => u.role === 'jugador' && u.email).forEach((u) => emails.add(u.email));
+    }
+    msg.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
+      const pid = r.replace('player:', '');
+      const u = appUsers.find((x) => String(x.player_id) === String(pid));
+      if (u?.email) emails.add(u.email);
+    });
+    const senderEmail = appUsers.find((u) => u.id === msg.senderId)?.email;
+    if (senderEmail) emails.delete(senderEmail);
+    return Array.from(emails);
+  };
+
+  const sendTablonEmail = async (msg: TablonMessage): Promise<boolean> => {
+    const emails = getEmailsForMessage(msg);
+    if (emails.length === 0) return false;
+    try {
+      const resp = await fetch('/api/send-brevo-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emails,
+          subject: `Nuevo mensaje en el Tablón de ${msg.senderName}`,
+          htmlContent: `<p><strong>${msg.senderName}</strong> ha publicado en el Tablón:</p><p>${msg.text.replace(/\n/g, '<br/>')}</p><p>Revisa la app para ver el mensaje completo.</p>`,
+          textContent: `${msg.senderName} ha publicado en el Tablón:\n\n${msg.text}\n\nRevisa la app para ver el mensaje completo.`,
+        }),
+      });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!usersLoaded) return;
+    const unsent = tablonMessages.filter((m) => !m.sent && !sendingIdsRef.current.has(m.id));
+    if (unsent.length === 0) return;
+    const process = async () => {
+      for (const m of unsent) {
+        sendingIdsRef.current.add(m.id);
+        try {
+          const sent = await sendTablonEmail(m);
+          if (sent) {
+            setTablonMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, sent: true } : x));
+          }
+        } finally {
+          sendingIdsRef.current.delete(m.id);
+        }
+      }
+    };
+    process();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablonMessages, usersLoaded]);
+
+  const handleSendTablon = () => {
+    if (!msgText.trim() || !user) return;
+    if (recipientType === 'select' && selectedPlayers.length === 0) return;
+    const recs = buildRecipients();
+    const msg: TablonMessage = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      senderId: user.id,
+      senderName: user.username,
+      senderRole: user.role,
+      text: msgText.trim(),
+      recipients: recs,
+      sent: false,
+      createdAt: new Date().toISOString(),
+    };
+    setTablonMessages((prev) => [msg, ...prev]);
+    setMsgText('');
+    setSelectedPlayers([]);
+    setRecipientType('all');
+  };
+
+  const handleDeleteTablon = (id: string) => {
+    if (!window.confirm('¿Eliminar este mensaje del tablón?')) return;
+    setTablonMessages((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const sortedMessages = [...tablonMessages].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const formatRecipients = (recs: string[]): string => {
+    const parts: string[] = [];
+    if (recs.includes('all_players') && recs.includes('staff_admin')) return 'Toda la plantilla y cuerpo técnico';
+    if (recs.includes('all_players')) parts.push('Todos los jugadores');
+    if (recs.includes('staff_admin')) parts.push('Cuerpo técnico');
+    const playerIds = recs.filter((r) => r.startsWith('player:')).map((r) => r.replace('player:', ''));
+    if (playerIds.length > 0) {
+      const names = playerIds.map((pid) => {
+        const j = jugadores.find((x) => String(x.id) === String(pid));
+        return j ? j.nombre : `Jugador ${pid}`;
+      });
+      parts.push(names.join(', '));
+    }
+    return parts.join(' · ') || 'Sin destinatarios';
   };
 
   return (
@@ -197,20 +362,138 @@ function Inicio({ quickAccessSections }: InicioProps) {
                     <input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
                   </label>
                   {uploading && <div style={{ color: '#7f96bc', alignSelf: 'center' }}>Subiendo...</div>}
+                  <button
+                    type="button"
+                    title="Cargar imagen desde URL"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7f96bc', fontSize: 18, padding: '8px', borderRadius: 8, lineHeight: 1 }}
+                    onClick={() => setShowUrlInput((v) => !v)}
+                  >
+                    🔗
+                  </button>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
-                  <input
-                    placeholder="Pegar URL pública del escudo"
-                    style={{ width: 320, minWidth: 220, padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
-                    value={badgeUrlInput}
-                    onChange={(e) => setBadgeUrlInput(e.target.value)}
-                  />
-                  <button type="button" className="secondary-button" onClick={handleUseUrl}>Usar URL</button>
-                </div>
+                {showUrlInput && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+                    <input
+                      placeholder="Pegar URL pública del escudo"
+                      style={{ width: 320, minWidth: 220, padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
+                      value={badgeUrlInput}
+                      onChange={(e) => setBadgeUrlInput(e.target.value)}
+                    />
+                    <button type="button" className="secondary-button" onClick={handleUseUrl}>Usar URL</button>
+                  </div>
+                )}
               </div>
             )}
             <div style={{ color: '#7f96bc' }}>Haz clic en un apartado para acceder rápidamente.</div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Tablón ─────────────────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div className="section-header">
+          <div>
+            <small>Comunicaciones del equipo</small>
+            <h2>Tablón</h2>
+          </div>
+        </div>
+
+        {/* Formulario de nuevo mensaje */}
+        <div style={{ padding: '0 0 1.2rem 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <textarea
+            placeholder="Escribe un mensaje para el equipo..."
+            rows={3}
+            value={msgText}
+            onChange={(e) => setMsgText(e.target.value)}
+            style={{ width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#fff', resize: 'vertical', fontFamily: 'inherit', fontSize: 14, boxSizing: 'border-box' }}
+          />
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 220px' }}>
+              <label style={{ color: '#7f96bc', fontSize: 13 }}>Destinatarios</label>
+              <select
+                value={recipientType}
+                onChange={(e) => { setRecipientType(e.target.value as typeof recipientType); setSelectedPlayers([]); }}
+                style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 14 }}
+              >
+                <option value="all">Toda la plantilla y cuerpo técnico</option>
+                <option value="players_all">Todos los jugadores</option>
+                <option value="staff">Cuerpo técnico</option>
+                <option value="select">Jugadores específicos...</option>
+              </select>
+            </div>
+
+            {recipientType === 'select' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 260px' }}>
+                <label style={{ color: '#7f96bc', fontSize: 13 }}>Selecciona jugadores</label>
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 10px', maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {jugadores.map((j) => (
+                    <label key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#d1dbe8' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedPlayers.includes(String(j.id))}
+                        onChange={(e) => {
+                          const id = String(j.id);
+                          setSelectedPlayers((prev) => e.target.checked ? [...prev, id] : prev.filter((x) => x !== id));
+                        }}
+                      />
+                      {j.nombre}
+                    </label>
+                  ))}
+                  {jugadores.length === 0 && <span style={{ color: '#7f96bc', fontSize: 13 }}>Cargando jugadores...</span>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!msgText.trim() || (recipientType === 'select' && selectedPlayers.length === 0)}
+              onClick={handleSendTablon}
+              style={{ minWidth: 140 }}
+            >
+              Publicar mensaje
+            </button>
+          </div>
+        </div>
+
+        {/* Lista de mensajes */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sortedMessages.length === 0 && (
+            <div style={{ color: '#7f96bc', fontSize: 14, textAlign: 'center', padding: '1.5rem 0' }}>No hay mensajes publicados aún.</div>
+          )}
+          {sortedMessages.map((msg) => (
+            <div key={msg.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '14px 16px', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontWeight: 600, color: '#d1dbe8', fontSize: 14 }}>
+                    {msg.senderName}
+                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: '#7f96bc', background: 'rgba(127,150,188,0.12)', padding: '2px 7px', borderRadius: 6 }}>
+                      {msg.senderRole === 'jugador' ? 'Jugador' : 'Cuerpo técnico'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12, color: '#7f96bc' }}>
+                    {new Date(msg.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {' · '}
+                    <span style={{ fontStyle: 'italic' }}>{formatRecipients(msg.recipients)}</span>
+                  </span>
+                </div>
+                {(user?.role !== 'jugador' || user?.id === msg.senderId) && (
+                  <button
+                    type="button"
+                    title="Eliminar mensaje"
+                    onClick={() => handleDeleteTablon(msg.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7f96bc', fontSize: 16, padding: '2px 6px', borderRadius: 6, flexShrink: 0, lineHeight: 1 }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: 0, color: '#d1dbe8', fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{msg.text}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>
