@@ -3,6 +3,7 @@ import type { UserRole } from './AuthContext';
 import Inicio from '../pages/Inicio';
 import Plantilla from '../pages/Plantilla';
 import Calendario from '../pages/Calendario';
+import PeriodoAdaptativo from '../pages/PeriodoAdaptativo';
 import SecuenciacionDeContenidos from '../pages/SecuenciacionDeContenidos';
 import GeneradorDeSesiones from '../pages/GeneradorDeSesiones';
 import PlanDePartido from '../pages/PlanDePartido';
@@ -29,6 +30,7 @@ export const APP_PAGES = [
   { key: 'Inicio', component: Inicio, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const, showOnHome: false },
   { key: 'Plantilla', component: Plantilla, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Calendario', component: Calendario, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
+  { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Generador de sesiones', component: GeneradorDeSesiones, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Plan de Partido', component: PlanDePartido, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },

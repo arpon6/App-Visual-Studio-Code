@@ -1,0 +1,103 @@
+.periodo-adaptativo-page {
+  gap: 20px;
+}
+
+.periodo-card,
+.periodo-video-card {
+  padding: 20px;
+}
+
+.pdf-upload-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.periodo-error {
+  color: #ff8a8a;
+  margin: 4px 0 10px;
+}
+
+.periodo-empty {
+  color: #a1b0d6;
+  margin: 8px 0;
+}
+
+.pdf-viewer-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.pdf-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: #d7def7;
+  flex-wrap: wrap;
+}
+
+.pdf-actions-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.periodo-pdf-frame {
+  width: 100%;
+  min-height: 720px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #0b1322;
+}
+
+.video-fields {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.video-fields input {
+  background: rgba(7, 13, 24, 0.95);
+  color: #e7edff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.video-title {
+  margin: 6px 0 12px;
+  font-size: 1.15rem;
+}
+
+.periodo-video-frame-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.periodo-video-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.periodo-video-placeholder {
+  min-height: 220px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  color: #9fb0de;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 18px;
+}
+
+@media (max-width: 900px) {
+  .periodo-pdf-frame {
+    min-height: 520px;
+  }
+}
