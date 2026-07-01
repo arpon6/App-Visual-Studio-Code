@@ -399,7 +399,7 @@ function WellnessDashboard() {
   const buildChartDataByPlayer = (rows: WellnessResponse[]) => {
     return jugadores
       .map(j => {
-        const rs = rows.filter(r => r.player_id === j.id);
+        const rs = rows.filter(r => String(r.player_id) === String(j.id));
         if (!rs.length) return null;
         return {
           label: j.nombre.split(' ')[0],
@@ -416,14 +416,14 @@ function WellnessDashboard() {
   const monthChartData = useMemo(() => buildChartDataByPlayer(monthResponses), [monthResponses, jugadores]);
 
   const comentarios = useMemo(() => {
-    const playersById = new Map(jugadores.map(j => [j.id, j.nombre]));
+    const playersById = new Map(jugadores.map(j => [String(j.id), j.nombre]));
     return monthResponses
       .filter(r => Boolean(r.molestias && r.molestias.trim()))
       .sort((a, b) => b.event_date.localeCompare(a.event_date))
       .map(r => ({
         id: r.id,
         fecha: r.event_date,
-        jugador: playersById.get(r.player_id) || r.player_id,
+        jugador: playersById.get(String(r.player_id)) || String(r.player_id),
         texto: r.molestias?.trim() || '',
       }));
   }, [jugadores, monthResponses]);
@@ -529,8 +529,8 @@ function WellnessDashboard() {
                     <td>{isoToDisplay(c.fecha)}</td>
                     <td>
                       <div className="player-cell">
-                        <div className="wellness-avatar">{c.jugador.charAt(0)}</div>
-                        {c.jugador}
+                        <div className="wellness-avatar">{String(c.jugador).charAt(0)}</div>
+                        {String(c.jugador)}
                       </div>
                     </td>
                     <td><span className="wellness-molestia">{c.texto}</span></td>
