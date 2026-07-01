@@ -175,10 +175,16 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   // Comprobar si ya respondió hoy
   useEffect(() => {
     if (!todayEvent) return;
-    setLoadingExisting(true);
-    supabase.from('wellness_responses')
-      .select('*').eq('player_id', playerId).eq('event_date', today).maybeSingle()
-      .then(({ data }) => {
+    const loadExisting = async () => {
+      setLoadingExisting(true);
+      try {
+        const { data } = await supabase
+          .from('wellness_responses')
+          .select('*')
+          .eq('player_id', playerId)
+          .eq('event_date', today)
+          .maybeSingle();
+
         if (data) {
           const existing = data as WellnessResponse;
           setRpe(existing.rpe);
@@ -189,8 +195,12 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         } else {
           setAlreadySent(false);
         }
-      })
-      .finally(() => setLoadingExisting(false));
+      } finally {
+        setLoadingExisting(false);
+      }
+    };
+
+    void loadExisting();
   }, [playerId, today, todayEvent]);
 
   const handleSubmit = async () => {
