@@ -15,6 +15,13 @@ interface WellnessResponse {
   molestias: string | null;
 }
 
+interface WellnessPoint {
+  label: string;
+  rpe: number;
+  animo: number;
+  fisico: number;
+}
+
 interface CalendarEvent {
   id: string;
   date: string; // DD/MM/YYYY
@@ -74,7 +81,7 @@ function WellnessSlider({ value, onChange, min = 1, max = 10, colorClass, labelM
 }
 
 // ── Gráfico de barras SVG ──────────────────────────────────────────────────
-function BarChart({ data }: { data: { label: string; rpe: number; animo: number; fisico: number }[] }) {
+function GroupedWellnessChart({ data }: { data: WellnessPoint[] }) {
   const W = 600; const H = 200; const PAD = { top: 20, bottom: 40, left: 30, right: 10 };
   const barW = 14; const groupGap = 40;
   const chartW = Math.max(W, data.length * (barW * 3 + groupGap + 10));
@@ -115,6 +122,27 @@ function BarChart({ data }: { data: { label: string; rpe: number; animo: number;
   );
 }
 
+function CategoryAveragesChart({ data }: { data: { label: string; value: number; colorClass: string }[] }) {
+  return (
+    <div className="wellness-category-chart">
+      {data.map(item => {
+        const widthPct = `${Math.max(0, Math.min(100, (item.value / 10) * 100))}%`;
+        return (
+          <div className="wellness-category-row" key={item.label}>
+            <div className="wellness-category-row-top">
+              <span>{item.label}</span>
+              <strong>{item.value > 0 ? item.value.toFixed(1) : '—'}</strong>
+            </div>
+            <div className="wellness-category-track">
+              <div className={`wellness-category-fill ${item.colorClass}`} style={{ width: widthPct }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // VISTA JUGADOR
 // ══════════════════════════════════════════════════════════════════════════
@@ -128,6 +156,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const [saving, setSaving] = useState(false);
   const [alreadySent, setAlreadySent] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [loadingExisting, setLoadingExisting] = useState(false);
 
   // Cargar eventos del calendario desde localStorage
   useEffect(() => {
@@ -146,9 +175,22 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   // Comprobar si ya respondió hoy
   useEffect(() => {
     if (!todayEvent) return;
+    setLoadingExisting(true);
     supabase.from('wellness_responses')
-      .select('id').eq('player_id', playerId).eq('event_date', today).maybeSingle()
-      .then(({ data }) => { if (data) setAlreadySent(true); });
+      .select('*').eq('player_id', playerId).eq('event_date', today).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const existing = data as WellnessResponse;
+          setRpe(existing.rpe);
+          setAnimo(existing.animo);
+          setFisico(existing.fisico);
+          setMolestias(existing.molestias || '');
+          setAlreadySent(true);
+        } else {
+          setAlreadySent(false);
+        }
+      })
+      .finally(() => setLoadingExisting(false));
   }, [playerId, today, todayEvent]);
 
   const handleSubmit = async () => {
@@ -167,6 +209,29 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setStatusMsg('');
   };
 
+  const handleDelete = async () => {
+    if (!todayEvent) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('wellness_responses')
+      .delete()
+      .eq('player_id', playerId)
+      .eq('event_date', today);
+    setSaving(false);
+
+    if (error) {
+      setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+      return;
+    }
+
+    setAlreadySent(false);
+    setRpe(5);
+    setAnimo(5);
+    setFisico(5);
+    setMolestias('');
+    setStatusMsg('Respuesta eliminada. Puedes volver a enviarla.');
+  };
+
   const dayName = new Date(today + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
   if (!todayEvent) {
@@ -177,18 +242,6 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         </svg>
         <p>No hay entrenamiento ni partido programado para hoy.</p>
         <small>El cuestionario estará disponible los días con evento en el calendario.</small>
-      </div>
-    );
-  }
-
-  if (alreadySent) {
-    return (
-      <div className="wellness-already card">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" /><polyline points="9 12 11 14 15 10" />
-        </svg>
-        <strong>¡Cuestionario enviado!</strong>
-        <p>Ya has completado el wellness de hoy. Gracias.</p>
       </div>
     );
   }
@@ -207,6 +260,11 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           </div>
         </div>
         <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+        {loadingExisting ? (
+          <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p>
+        ) : alreadySent ? (
+          <p className="wellness-response-hint success">Ya has enviado hoy. Puedes editar y guardar cambios o eliminar tu respuesta.</p>
+        ) : null}
 
         {/* RPE */}
         <div className="wellness-slider-group">
@@ -254,10 +312,17 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
         {statusMsg && <p style={{ color: '#ff5252', fontSize: 13, marginBottom: 8 }}>{statusMsg}</p>}
 
-        <button className="wellness-submit" onClick={handleSubmit} disabled={saving}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-          {saving ? 'ENVIANDO...' : 'ENVIAR CUESTIONARIO'}
-        </button>
+        <div className="wellness-actions">
+          <button className="wellness-submit" onClick={handleSubmit} disabled={saving || loadingExisting}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+            {saving ? 'GUARDANDO...' : alreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR CUESTIONARIO'}
+          </button>
+          {alreadySent && (
+            <button className="wellness-delete" onClick={handleDelete} disabled={saving || loadingExisting}>
+              ELIMINAR RESPUESTA
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="wellness-info-card">
@@ -288,6 +353,7 @@ function WellnessDashboard() {
   const [period, setPeriod] = useState<Period>('dia');
   const [refDate, setRefDate] = useState(todayISO());
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
+  const [historyResponses, setHistoryResponses] = useState<WellnessResponse[]>([]);
 
   // Rango de fechas según período
   const { dateFrom, dateTo, label } = useMemo(() => {
@@ -310,6 +376,16 @@ function WellnessDashboard() {
       .then(({ data }) => { if (data) setResponses(data as WellnessResponse[]); });
   }, [dateFrom, dateTo]);
 
+  // Historial para tendencias temporalizadas (día/semana/mes)
+  useEffect(() => {
+    const from = addDays(refDate, -365);
+    supabase.from('wellness_responses')
+      .select('*')
+      .gte('event_date', from)
+      .lte('event_date', refDate)
+      .then(({ data }) => { if (data) setHistoryResponses(data as WellnessResponse[]); });
+  }, [refDate]);
+
   const navigate = (dir: 1 | -1) => {
     if (period === 'dia') setRefDate(d => addDays(d, dir));
     else if (period === 'semana') setRefDate(d => addWeeks(d, dir));
@@ -322,21 +398,58 @@ function WellnessDashboard() {
   const avgAnimo = avg(responses.map(r => r.animo));
   const avgFisico = avg(responses.map(r => r.fisico));
 
-  // Datos para gráfico agrupados por jugador
-  const chartData = useMemo(() => {
-    return jugadores
-      .map(j => {
-        const rs = responses.filter(r => r.player_id === j.id);
-        if (!rs.length) return null;
-        return {
-          label: j.nombre.split(' ')[0],
-          rpe: avg(rs.map(r => r.rpe)),
-          animo: avg(rs.map(r => r.animo)),
-          fisico: avg(rs.map(r => r.fisico)),
-        };
-      })
-      .filter(Boolean) as { label: string; rpe: number; animo: number; fisico: number }[];
-  }, [jugadores, responses]);
+  const categoryAverages = useMemo(() => ([
+    { label: 'ESFUERZO (RPE)', value: avgRpe, colorClass: 'rpe' },
+    { label: 'ESTADO ANÍMICO', value: avgAnimo, colorClass: 'animo' },
+    { label: 'ESTADO FÍSICO', value: avgFisico, colorClass: 'fisico' },
+  ]), [avgAnimo, avgFisico, avgRpe]);
+
+  const formatMonthLabel = (iso: string) => {
+    return new Date(iso + 'T12:00:00').toLocaleDateString('es-ES', { month: 'short' }).replace('.', '').toUpperCase();
+  };
+
+  const dailyTrend = useMemo(() => {
+    return Array.from({ length: 7 }, (_, idx) => {
+      const dayIso = addDays(refDate, -(6 - idx));
+      const rs = historyResponses.filter(r => r.event_date === dayIso);
+      return {
+        label: isoToDisplay(dayIso).slice(0, 5),
+        rpe: avg(rs.map(r => r.rpe)),
+        animo: avg(rs.map(r => r.animo)),
+        fisico: avg(rs.map(r => r.fisico)),
+      };
+    });
+  }, [historyResponses, refDate]);
+
+  const weeklyTrend = useMemo(() => {
+    const currentWeekStart = weekStart(refDate);
+    return Array.from({ length: 8 }, (_, idx) => {
+      const start = addWeeks(currentWeekStart, -(7 - idx));
+      const end = addDays(start, 6);
+      const rs = historyResponses.filter(r => r.event_date >= start && r.event_date <= end);
+      return {
+        label: `${isoToDisplay(start).slice(0, 5)}`,
+        rpe: avg(rs.map(r => r.rpe)),
+        animo: avg(rs.map(r => r.animo)),
+        fisico: avg(rs.map(r => r.fisico)),
+      };
+    });
+  }, [historyResponses, refDate]);
+
+  const monthlyTrend = useMemo(() => {
+    const currentMonth = monthStart(refDate);
+    return Array.from({ length: 6 }, (_, idx) => {
+      const start = monthStart(addMonths(currentMonth, -(5 - idx)));
+      const end = addDays(addMonths(start, 1), -1);
+      const rs = historyResponses.filter(r => r.event_date >= start && r.event_date <= end);
+      return {
+        label: formatMonthLabel(start),
+        rpe: avg(rs.map(r => r.rpe)),
+        animo: avg(rs.map(r => r.animo)),
+        fisico: avg(rs.map(r => r.fisico)),
+      };
+    });
+  }, [historyResponses, refDate]);
 
   // Tabla detalle: última respuesta por jugador en el rango
   const tableRows = useMemo(() => {
@@ -403,18 +516,40 @@ function WellnessDashboard() {
         </div>
       </div>
 
-      {/* Gráfico */}
-      {chartData.length > 0 && (
-        <div className="card">
-          <div className="section-header">
-            <div>
-              <small>Visualización comparativa</small>
-              <h2>Resultados por jugador</h2>
-            </div>
+      {/* Medias por categoría */}
+      <div className="card">
+        <div className="section-header">
+          <div>
+            <small>Promedios del período seleccionado</small>
+            <h2>Media por categoría</h2>
           </div>
-          <BarChart data={chartData} />
         </div>
-      )}
+        <CategoryAveragesChart data={categoryAverages} />
+      </div>
+
+      {/* Tendencias temporales */}
+      <div className="card">
+        <div className="section-header">
+          <div>
+            <small>Evolución histórica</small>
+            <h2>Gráficos por día, semana y mes</h2>
+          </div>
+        </div>
+        <div className="wellness-trends-grid">
+          <div className="wellness-trend-card">
+            <h3>Últimos 7 días</h3>
+            <GroupedWellnessChart data={dailyTrend} />
+          </div>
+          <div className="wellness-trend-card">
+            <h3>Últimas 8 semanas</h3>
+            <GroupedWellnessChart data={weeklyTrend} />
+          </div>
+          <div className="wellness-trend-card">
+            <h3>Últimos 6 meses</h3>
+            <GroupedWellnessChart data={monthlyTrend} />
+          </div>
+        </div>
+      </div>
 
       {/* Tabla detalle */}
       <div className="card">
