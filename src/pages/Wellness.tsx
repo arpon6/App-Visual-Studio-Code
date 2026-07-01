@@ -359,115 +359,74 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 // ══════════════════════════════════════════════════════════════════════════
 function WellnessDashboard() {
   const jugadores = usePlantilla();
-  type Period = 'dia' | 'semana' | 'mes';
-  const [period, setPeriod] = useState<Period>('dia');
   const [refDate, setRefDate] = useState(todayISO());
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
-  const [historyResponses, setHistoryResponses] = useState<WellnessResponse[]>([]);
 
-  // Rango de fechas según período
-  const { dateFrom, dateTo, label } = useMemo(() => {
-    if (period === 'dia') return { dateFrom: refDate, dateTo: refDate, label: isoToDisplay(refDate) };
-    if (period === 'semana') {
-      const from = weekStart(refDate);
-      const to = addDays(from, 6);
-      return { dateFrom: from, dateTo: to, label: `${isoToDisplay(from)} – ${isoToDisplay(to)}` };
-    }
-    const from = monthStart(refDate);
-    const to = addDays(addMonths(from, 1), -1);
-    return { dateFrom: from, dateTo: to, label: new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) };
-  }, [period, refDate]);
+  const dayFrom = refDate;
+  const dayTo = refDate;
+  const weekFrom = weekStart(refDate);
+  const weekTo = addDays(weekFrom, 6);
+  const monthFrom = monthStart(refDate);
+  const monthTo = addDays(addMonths(monthFrom, 1), -1);
+
+  const weekLabel = `${isoToDisplay(weekFrom)} – ${isoToDisplay(weekTo)}`;
+  const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   useEffect(() => {
     supabase.from('wellness_responses')
       .select('*')
-      .gte('event_date', dateFrom)
-      .lte('event_date', dateTo)
+      .gte('event_date', monthFrom)
+      .lte('event_date', monthTo)
       .then(({ data }) => { if (data) setResponses(data as WellnessResponse[]); });
-  }, [dateFrom, dateTo]);
+  }, [monthFrom, monthTo]);
 
-  // Historial para tendencias temporalizadas (día/semana/mes)
-  useEffect(() => {
-    const from = addDays(refDate, -365);
-    supabase.from('wellness_responses')
-      .select('*')
-      .gte('event_date', from)
-      .lte('event_date', refDate)
-      .then(({ data }) => { if (data) setHistoryResponses(data as WellnessResponse[]); });
-  }, [refDate]);
-
-  const navigate = (dir: 1 | -1) => {
-    if (period === 'dia') setRefDate(d => addDays(d, dir));
-    else if (period === 'semana') setRefDate(d => addWeeks(d, dir));
-    else setRefDate(d => addMonths(d, dir));
-  };
+  const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
 
   const avg = (arr: number[]) => arr.length ? +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
 
-  const avgRpe = avg(responses.map(r => r.rpe));
-  const avgAnimo = avg(responses.map(r => r.animo));
-  const avgFisico = avg(responses.map(r => r.fisico));
+  const dayResponses = useMemo(
+    () => responses.filter(r => r.event_date >= dayFrom && r.event_date <= dayTo),
+    [responses, dayFrom, dayTo],
+  );
 
-  const categoryAverages = useMemo(() => ([
-    { label: 'ESFUERZO (RPE)', value: avgRpe, colorClass: 'rpe' },
-    { label: 'ESTADO ANÍMICO', value: avgAnimo, colorClass: 'animo' },
-    { label: 'ESTADO FÍSICO', value: avgFisico, colorClass: 'fisico' },
-  ]), [avgAnimo, avgFisico, avgRpe]);
+  const weekResponses = useMemo(
+    () => responses.filter(r => r.event_date >= weekFrom && r.event_date <= weekTo),
+    [responses, weekFrom, weekTo],
+  );
 
-  const formatMonthLabel = (iso: string) => {
-    return new Date(iso + 'T12:00:00').toLocaleDateString('es-ES', { month: 'short' }).replace('.', '').toUpperCase();
+  const monthResponses = responses;
+
+  const buildChartDataByPlayer = (rows: WellnessResponse[]) => {
+    return jugadores
+      .map(j => {
+        const rs = rows.filter(r => r.player_id === j.id);
+        if (!rs.length) return null;
+        return {
+          label: j.nombre.split(' ')[0],
+          rpe: avg(rs.map(r => r.rpe)),
+          animo: avg(rs.map(r => r.animo)),
+          fisico: avg(rs.map(r => r.fisico)),
+        };
+      })
+      .filter(Boolean) as WellnessPoint[];
   };
 
-  const dailyTrend = useMemo(() => {
-    return Array.from({ length: 7 }, (_, idx) => {
-      const dayIso = addDays(refDate, -(6 - idx));
-      const rs = historyResponses.filter(r => r.event_date === dayIso);
-      return {
-        label: isoToDisplay(dayIso).slice(0, 5),
-        rpe: avg(rs.map(r => r.rpe)),
-        animo: avg(rs.map(r => r.animo)),
-        fisico: avg(rs.map(r => r.fisico)),
-      };
-    });
-  }, [historyResponses, refDate]);
+  const dayChartData = useMemo(() => buildChartDataByPlayer(dayResponses), [dayResponses, jugadores]);
+  const weekChartData = useMemo(() => buildChartDataByPlayer(weekResponses), [weekResponses, jugadores]);
+  const monthChartData = useMemo(() => buildChartDataByPlayer(monthResponses), [monthResponses, jugadores]);
 
-  const weeklyTrend = useMemo(() => {
-    const currentWeekStart = weekStart(refDate);
-    return Array.from({ length: 8 }, (_, idx) => {
-      const start = addWeeks(currentWeekStart, -(7 - idx));
-      const end = addDays(start, 6);
-      const rs = historyResponses.filter(r => r.event_date >= start && r.event_date <= end);
-      return {
-        label: `${isoToDisplay(start).slice(0, 5)}`,
-        rpe: avg(rs.map(r => r.rpe)),
-        animo: avg(rs.map(r => r.animo)),
-        fisico: avg(rs.map(r => r.fisico)),
-      };
-    });
-  }, [historyResponses, refDate]);
-
-  const monthlyTrend = useMemo(() => {
-    const currentMonth = monthStart(refDate);
-    return Array.from({ length: 6 }, (_, idx) => {
-      const start = monthStart(addMonths(currentMonth, -(5 - idx)));
-      const end = addDays(addMonths(start, 1), -1);
-      const rs = historyResponses.filter(r => r.event_date >= start && r.event_date <= end);
-      return {
-        label: formatMonthLabel(start),
-        rpe: avg(rs.map(r => r.rpe)),
-        animo: avg(rs.map(r => r.animo)),
-        fisico: avg(rs.map(r => r.fisico)),
-      };
-    });
-  }, [historyResponses, refDate]);
-
-  // Tabla detalle: última respuesta por jugador en el rango
-  const tableRows = useMemo(() => {
-    return jugadores.map(j => {
-      const rs = responses.filter(r => r.player_id === j.id).sort((a, b) => b.event_date.localeCompare(a.event_date));
-      return rs.length ? { jugador: j, r: rs[0] } : null;
-    }).filter(Boolean) as { jugador: { id: string; nombre: string }; r: WellnessResponse }[];
-  }, [jugadores, responses]);
+  const comentarios = useMemo(() => {
+    const playersById = new Map(jugadores.map(j => [j.id, j.nombre]));
+    return monthResponses
+      .filter(r => Boolean(r.molestias && r.molestias.trim()))
+      .sort((a, b) => b.event_date.localeCompare(a.event_date))
+      .map(r => ({
+        id: r.id,
+        fecha: r.event_date,
+        jugador: playersById.get(r.player_id) || r.player_id,
+        texto: r.molestias?.trim() || '',
+      }));
+  }, [jugadores, monthResponses]);
 
   return (
     <div className="wellness-page">
@@ -479,16 +438,9 @@ function WellnessDashboard() {
           <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div className="wellness-period-tabs">
-            {(['dia', 'semana', 'mes'] as Period[]).map(p => (
-              <button key={p} className={period === p ? 'active' : ''} onClick={() => { setPeriod(p); setRefDate(todayISO()); }}>
-                {p === 'dia' ? 'DÍA' : p === 'semana' ? 'SEMANA' : 'MES'}
-              </button>
-            ))}
-          </div>
           <div className="wellness-date-nav">
             <button onClick={() => navigate(-1)}>‹</button>
-            <span>{label}</span>
+            <span>{isoToDisplay(refDate)}</span>
             <button onClick={() => navigate(1)}>›</button>
           </div>
         </div>
@@ -499,104 +451,89 @@ function WellnessDashboard() {
         <div className="wellness-kpi">
           <div className="wellness-kpi-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-            ESFUERZO MEDIO
+            RESPUESTAS DEL DÍA
           </div>
-          <div className="wellness-kpi-value" style={{ color: '#f5c518' }}>{avgRpe || '—'}</div>
+          <div className="wellness-kpi-value" style={{ color: '#f5c518' }}>{dayResponses.length}</div>
         </div>
         <div className="wellness-kpi">
           <div className="wellness-kpi-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg>
-            ÁNIMO MEDIO
+            RESPUESTAS DE LA SEMANA
           </div>
-          <div className="wellness-kpi-value" style={{ color: '#4fc3f7' }}>{avgAnimo || '—'}</div>
+          <div className="wellness-kpi-value" style={{ color: '#4fc3f7' }}>{weekResponses.length}</div>
         </div>
         <div className="wellness-kpi">
           <div className="wellness-kpi-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-            FÍSICO MEDIO
+            RESPUESTAS DEL MES
           </div>
-          <div className="wellness-kpi-value" style={{ color: '#00e676' }}>{avgFisico || '—'}</div>
+          <div className="wellness-kpi-value" style={{ color: '#00e676' }}>{monthResponses.length}</div>
         </div>
         <div className="wellness-kpi">
           <div className="wellness-kpi-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b8fa8" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-            RESPUESTAS
+            COMENTARIOS ESCRITOS
           </div>
-          <div className="wellness-kpi-value">{responses.length}</div>
+          <div className="wellness-kpi-value">{comentarios.length}</div>
         </div>
-      </div>
-
-      {/* Medias por categoría */}
-      <div className="card">
-        <div className="section-header">
-          <div>
-            <small>Promedios del período seleccionado</small>
-            <h2>Media por categoría</h2>
-          </div>
-        </div>
-        <CategoryAveragesChart data={categoryAverages} />
       </div>
 
       {/* Tendencias temporales */}
       <div className="card">
         <div className="section-header">
           <div>
-            <small>Evolución histórica</small>
+            <small>Promedios por jugador</small>
             <h2>Gráficos por día, semana y mes</h2>
           </div>
         </div>
         <div className="wellness-trends-grid">
           <div className="wellness-trend-card">
-            <h3>Últimos 7 días</h3>
-            <GroupedWellnessChart data={dailyTrend} />
+            <h3>Día {isoToDisplay(refDate)}</h3>
+            {dayChartData.length ? <GroupedWellnessChart data={dayChartData} /> : <p className="wellness-empty-chart">No hay respuestas en este día.</p>}
           </div>
           <div className="wellness-trend-card">
-            <h3>Últimas 8 semanas</h3>
-            <GroupedWellnessChart data={weeklyTrend} />
+            <h3>Semana {weekLabel}</h3>
+            {weekChartData.length ? <GroupedWellnessChart data={weekChartData} /> : <p className="wellness-empty-chart">No hay respuestas en esta semana.</p>}
           </div>
           <div className="wellness-trend-card">
-            <h3>Últimos 6 meses</h3>
-            <GroupedWellnessChart data={monthlyTrend} />
+            <h3>Mes {monthLabel}</h3>
+            {monthChartData.length ? <GroupedWellnessChart data={monthChartData} /> : <p className="wellness-empty-chart">No hay respuestas en este mes.</p>}
           </div>
         </div>
       </div>
 
-      {/* Tabla detalle */}
+      {/* Comentarios escritos */}
       <div className="card">
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <small>Detalle de respuestas</small>
-            <h2>Por jugador</h2>
+            <small>Texto aportado por los jugadores</small>
+            <h2>Comentarios y molestias del mes</h2>
           </div>
-          <span className="wellness-responses-count">{tableRows.length} de {jugadores.length} jugadores</span>
+          <span className="wellness-responses-count">{comentarios.length} comentarios</span>
         </div>
-        {tableRows.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay respuestas en este período.</p>
+        {comentarios.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay comentarios escritos en este mes.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="wellness-table">
               <thead>
                 <tr>
+                  <th>FECHA</th>
                   <th>JUGADOR</th>
-                  <th>ESFUERZO</th>
-                  <th>ÁNIMO</th>
-                  <th>FÍSICO</th>
-                  <th>MOLESTIAS / COMENTARIOS</th>
+                  <th>COMENTARIO / MOLESTIA</th>
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map(({ jugador, r }) => (
-                  <tr key={jugador.id}>
+                {comentarios.map(c => (
+                  <tr key={c.id}>
+                    <td>{isoToDisplay(c.fecha)}</td>
                     <td>
                       <div className="player-cell">
-                        <div className="wellness-avatar">{jugador.nombre.charAt(0)}</div>
-                        {jugador.nombre}
+                        <div className="wellness-avatar">{c.jugador.charAt(0)}</div>
+                        {c.jugador}
                       </div>
                     </td>
-                    <td><span className="wellness-dot dot-rpe">{r.rpe}</span></td>
-                    <td><span className="wellness-dot dot-animo">{r.animo}</span></td>
-                    <td><span className="wellness-dot dot-fisico">{r.fisico}</span></td>
-                    <td><span className="wellness-molestia">{r.molestias || '—'}</span></td>
+                    <td><span className="wellness-molestia">{c.texto}</span></td>
                   </tr>
                 ))}
               </tbody>
