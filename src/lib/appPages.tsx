@@ -28,7 +28,7 @@ type AppPageDefinition = {
 
 export const APP_PAGES = [
   { key: 'Inicio', component: Inicio, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const, showOnHome: false },
-  { key: 'Plantilla', component: Plantilla, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
+  { key: 'Plantilla', component: Plantilla, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Calendario', component: Calendario, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
   { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },

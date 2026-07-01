@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthContext';
 
 interface Player {
   name: string;
@@ -14,10 +15,33 @@ interface Player {
 }
 
 function Plantilla() {
+  const { user } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const normalizeValue = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  const canSeeProtectedPlayer = normalizeValue(user?.username ?? '') === 'arpon';
+
+  const visiblePlayers = players.filter((player) => {
+    const isProtectedPlayer = normalizeValue(player.name) === 'jugador prueba';
+    return !isProtectedPlayer || canSeeProtectedPlayer;
+  });
+
+  useEffect(() => {
+    if (!selectedPlayer) return;
+    const selectedPlayerIsProtected = normalizeValue(selectedPlayer.name) === 'jugador prueba';
+    if (selectedPlayerIsProtected && !canSeeProtectedPlayer) {
+      setSelectedPlayer(null);
+    }
+  }, [selectedPlayer, canSeeProtectedPlayer]);
 
   const playerPhotoStyle = {
     width: '100%',
@@ -131,7 +155,7 @@ function Plantilla() {
       {fetchError && <p>{fetchError}</p>}
 
       <div className="grid-3">
-        {players.map((player) => (
+        {visiblePlayers.map((player) => (
           <div key={`${player.name}-${player.dorsal}`} className="card" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelectedPlayer(player)}>
             <img src={player.photo} alt={player.name} style={playerPhotoStyle} />
             <h3>{player.name}</h3>
