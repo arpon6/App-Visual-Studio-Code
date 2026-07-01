@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 
 interface Player {
+  id: string;
   name: string;
   position: string;
   age: number | string;
@@ -15,6 +16,7 @@ interface Player {
 }
 
 function Plantilla() {
+  const PROTECTED_PLAYER_ID = '454';
   const { user } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -31,13 +33,13 @@ function Plantilla() {
   const canSeeProtectedPlayer = normalizeValue(user?.username ?? '') === 'arpon';
 
   const visiblePlayers = players.filter((player) => {
-    const isProtectedPlayer = normalizeValue(player.name) === 'jugador prueba';
+    const isProtectedPlayer = String(player.id) === PROTECTED_PLAYER_ID;
     return !isProtectedPlayer || canSeeProtectedPlayer;
   });
 
   useEffect(() => {
     if (!selectedPlayer) return;
-    const selectedPlayerIsProtected = normalizeValue(selectedPlayer.name) === 'jugador prueba';
+    const selectedPlayerIsProtected = String(selectedPlayer.id) === PROTECTED_PLAYER_ID;
     if (selectedPlayerIsProtected && !canSeeProtectedPlayer) {
       setSelectedPlayer(null);
     }
@@ -81,6 +83,7 @@ function Plantilla() {
       }
 
       const mappedPlayers: Player[] = (data as any[]).map(player => ({
+        id: String(player.id ?? ''),
         name: [player.first_name, player.last_name1, player.last_name2].filter(Boolean).join(' '),
         position: player.position || 'Sin posición',
         age: calculateAge(player.birth_date),
