@@ -30,6 +30,11 @@
   background: rgba(36, 56, 86, 0.95);
 }
 
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #3dffba, #3d99ff);
   color: #08111d;

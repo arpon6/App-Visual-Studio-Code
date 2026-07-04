@@ -11,7 +11,7 @@ interface AppUserRow {
   id: string;
   email: string;
   username: string;
-  role: 'jugador' | 'cuerpo_tecnico' | 'SUPER_ADMIN';
+  role: 'jugador' | 'entrenador' | 'preparador_fisico' | 'directivo' | 'SUPER_ADMIN';
   player_id: string | null;
   password?: string | null;
 }
@@ -24,6 +24,7 @@ interface PlantillaPlayer {
 
 function GestionUsuarios() {
   const { user } = useAuth();
+  const canManageUsers = user?.role !== 'jugador';
   const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [appUsers, setAppUsers] = useState<AppUserRow[]>([]);
   const [players, setPlayers] = useState<PlantillaPlayer[]>([]);
@@ -34,12 +35,12 @@ function GestionUsuarios() {
 
   useEffect(() => {
     console.log("Usuario actual:", user);
-    if (user?.role !== 'cuerpo_tecnico' && user?.role !== 'SUPER_ADMIN') {
-      console.log("Acceso denegado: El rol no es cuerpo_tecnico ni SUPER_ADMIN");
+    if (!canManageUsers) {
+      console.log('Acceso denegado: solo los perfiles de staff pueden acceder a gestión de usuarios');
       return;
     }
     fetchData();
-  }, [user]);
+  }, [user, canManageUsers]);
 
   async function fetchData() {
     console.log("Iniciando fetchData...");
@@ -53,7 +54,14 @@ function GestionUsuarios() {
     
     console.log("Usuarios cargados:", users);
     if (emails) setAllowedEmails(emails);
-    if (users) setAppUsers(users);
+    if (users) {
+      // Compatibilidad con datos antiguos: cuerpo_tecnico ahora es entrenador.
+      const normalizedUsers = users.map((u) => ({
+        ...u,
+        role: u.role === 'cuerpo_tecnico' ? 'entrenador' : u.role,
+      }));
+      setAppUsers(normalizedUsers as AppUserRow[]);
+    }
     if (plantilla) setPlayers(plantilla);
   }
 
@@ -83,8 +91,8 @@ function GestionUsuarios() {
     }
   }
 
-  // Permitimos cuerpo_tecnico O SUPER_ADMIN
-  if (user?.role !== 'cuerpo_tecnico' && user?.role !== 'SUPER_ADMIN') {
+  // Permitimos cualquier rol de staff.
+  if (!canManageUsers) {
     return <div style={{ padding: '20px' }}>No tienes permisos para ver esta sección. Tu rol es: {user?.role}</div>;
   }
 
@@ -107,7 +115,9 @@ function GestionUsuarios() {
                 <td>
                   <select value={u.role} onChange={e => updateUser(u.id, 'role', e.target.value as any)}>
                     <option value="jugador">Jugador</option>
-                    <option value="cuerpo_tecnico">Cuerpo técnico</option>
+                    <option value="entrenador">Entrenador</option>
+                    <option value="preparador_fisico">Preparador físico</option>
+                    <option value="directivo">Directivo</option>
                     <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                   </select>
                 </td>

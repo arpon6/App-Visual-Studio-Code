@@ -15,7 +15,7 @@ create table if not exists app_users (
   email text not null,
   username text,
   password text,
-  role text not null check (role in ('jugador', 'cuerpo_tecnico', 'SUPER_ADMIN')),
+  role text not null check (role in ('jugador', 'entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN')),
   -- Si role = 'jugador', se vincula a un registro de la tabla plantilla
   player_id bigint references plantilla(id) on delete set null,
   created_at timestamptz default now()
@@ -51,7 +51,7 @@ create policy "allow_select_for_everyone" on app_users
 drop policy if exists "allow_update_for_admin" on app_users;
 create policy "allow_update_for_admin" on app_users
   for update using (
-    (select role from app_users where id = auth.uid()) in ('cuerpo_tecnico', 'SUPER_ADMIN')
+    (select role from app_users where id = auth.uid()) in ('entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN')
   );
 
 -- Solo service_role puede insertar/actualizar app_users (el admin lo hace desde el dashboard)

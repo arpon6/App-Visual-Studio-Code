@@ -58,6 +58,8 @@ const TACTICAL_CATEGORIES = [
   { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1' },
 ];
 
+const STAFF_MESSAGE_ROLES: UserRole[] = ['entrenador', 'SUPER_ADMIN'];
+
 const formatDuration = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
   const hrs = Math.floor(total / 3600);
@@ -146,8 +148,14 @@ function DesarrolloIndividual() {
   };
 
   const staffAdmins = useMemo(() => {
-    return users.filter((u) => u.role === 'cuerpo_tecnico' || u.role === 'SUPER_ADMIN');
+    return users.filter((u) => STAFF_MESSAGE_ROLES.includes(u.role));
   }, [users]);
+
+  const canUseDevelopmentMessaging = useMemo(() => {
+    if (!user) return false;
+    if (user.role === 'jugador') return true;
+    return STAFF_MESSAGE_ROLES.includes(user.role);
+  }, [user]);
 
   const toEmbedUrl = (url: string) => {
     const match = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
@@ -287,6 +295,7 @@ function DesarrolloIndividual() {
 
   const visibleChatMessages = useMemo(() => {
     if (!user) return [];
+    if (!canUseDevelopmentMessaging) return [];
     if (user.role === 'jugador' && user.player_id) {
       return analysisChat.filter((message) => {
         if (message.recipients.includes('all_players')) return true;
@@ -294,10 +303,10 @@ function DesarrolloIndividual() {
       });
     }
     return analysisChat;
-  }, [analysisChat, user]);
+  }, [analysisChat, canUseDevelopmentMessaging, user]);
 
   const sendCutMessageFor = (cutId: string, cut: VideoCorte) => {
-    if (!user || !cutMessageText.trim()) return;
+    if (!user || !canUseDevelopmentMessaging || !cutMessageText.trim()) return;
     const recipients = getCutPlayerIds(cut)?.length
       ? ['staff_admin', ...getCutPlayerIds(cut)!.map((id) => `player:${id}`)]
       : ['staff_admin', 'all_players'];
@@ -318,7 +327,7 @@ function DesarrolloIndividual() {
 
   const canDeleteMessage = (message: ChatMessage) => {
     if (!user) return false;
-    if (user.role === 'cuerpo_tecnico' || user.role === 'SUPER_ADMIN') return true;
+    if (STAFF_MESSAGE_ROLES.includes(user.role)) return true;
     return message.senderId === user.id;
   };
 
@@ -539,7 +548,9 @@ function DesarrolloIndividual() {
                           <div style={{ display: 'grid', gap: 10 }}>
                             <div style={{ display: 'grid', gap: 6 }}>
                               <label style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Mensajes del corte</label>
-                              {messages.length === 0 ? (
+                              {!canUseDevelopmentMessaging ? (
+                                <div style={{ color: '#94a3b8' }}>Este rol no recibe mensajes en Desarrollo Individual.</div>
+                              ) : messages.length === 0 ? (
                                 <div style={{ color: '#94a3b8' }}>No hay mensajes todavía.</div>
                               ) : (
                                 <div style={{ display: 'grid', gap: 8 }}>
@@ -566,23 +577,25 @@ function DesarrolloIndividual() {
                               )}
                             </div>
 
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              <textarea
-                                value={cutMessageText}
-                                onChange={(e) => setCutMessageText(e.target.value)}
-                                placeholder="Escribe un mensaje sobre este corte..."
-                                rows={3}
-                                style={{ width: '100%', minHeight: 90, background: '#020617', border: '1px solid #334155', borderRadius: 10, color: '#fff', padding: '0.9rem' }}
-                              />
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => sendCutMessageFor(corte.id, corte)}
-                                disabled={!cutMessageText.trim()}
-                              >
-                                Enviar mensaje
-                              </button>
-                            </div>
+                            {canUseDevelopmentMessaging && (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <textarea
+                                  value={cutMessageText}
+                                  onChange={(e) => setCutMessageText(e.target.value)}
+                                  placeholder="Escribe un mensaje sobre este corte..."
+                                  rows={3}
+                                  style={{ width: '100%', minHeight: 90, background: '#020617', border: '1px solid #334155', borderRadius: 10, color: '#fff', padding: '0.9rem' }}
+                                />
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => sendCutMessageFor(corte.id, corte)}
+                                  disabled={!cutMessageText.trim()}
+                                >
+                                  Enviar mensaje
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

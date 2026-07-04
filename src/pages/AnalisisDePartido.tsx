@@ -79,6 +79,8 @@ const TACTICAL_CATEGORIES: { id: string; label: string }[] = [
   { id: 'defender-porteria-z1', label: 'PRIORIZAR DEFENDER PORTERÍA TRAS PÉRDIDA Z 1' },
 ];
 
+const STAFF_MESSAGE_ROLES: UserRole[] = ['entrenador', 'SUPER_ADMIN'];
+
 const previousMatches: PreviousMatch[] = [
   {
     opponent: 'VS UD LOGROÑÉS B',
@@ -192,11 +194,18 @@ function AnalisisDePartido() {
   }, [involvedPlayerIds, jugadores, users]);
 
   const staffAdmins = useMemo(() => {
-    return users.filter((u) => u.role === 'cuerpo_tecnico' || u.role === 'SUPER_ADMIN');
+    return users.filter((u) => STAFF_MESSAGE_ROLES.includes(u.role));
   }, [users]);
 
+  const canUseDevelopmentMessaging = useMemo(() => {
+    if (!user) return false;
+    if (user.role === 'jugador') return true;
+    return STAFF_MESSAGE_ROLES.includes(user.role);
+  }, [user]);
+
   const visibleChatMessages = useMemo(() => {
-    if (user?.role === 'cuerpo_tecnico' || user?.role === 'SUPER_ADMIN') {
+    if (!canUseDevelopmentMessaging) return [];
+    if (user?.role === 'entrenador' || user?.role === 'SUPER_ADMIN') {
       return chatMessages;
     }
     if (user?.role === 'jugador' && user.player_id) {
@@ -205,11 +214,11 @@ function AnalisisDePartido() {
       );
     }
     return [];
-  }, [chatMessages, user]);
+  }, [canUseDevelopmentMessaging, chatMessages, user]);
 
   const sendChatMessage = (relatedCutId?: string | null) => {
     const text = messageText.trim();
-    if (!text || !user) return;
+    if (!text || !user || !canUseDevelopmentMessaging) return;
 
     const recipientIds = selectedPlayerRecipients.length > 0
       ? selectedPlayerRecipients
@@ -238,7 +247,7 @@ function AnalisisDePartido() {
 
   const canDeleteMessage = (message: ChatMessage) => {
     if (!user) return false;
-    if (user.role === 'cuerpo_tecnico' || user.role === 'SUPER_ADMIN') return true;
+    if (STAFF_MESSAGE_ROLES.includes(user.role)) return true;
     return message.senderId === user.id;
   };
 
@@ -250,7 +259,7 @@ function AnalisisDePartido() {
 
     const sendCutMessageFor = (cutId: string, cutPlayerIds?: string[] | null) => {
       const text = cutMessageText.trim();
-      if (!text || !user) return;
+      if (!text || !user || !canUseDevelopmentMessaging) return;
 
       const recipients = cutPlayerIds && cutPlayerIds.length > 0
         ? ['staff_admin', ...cutPlayerIds.map((id) => `player:${id}`)]
@@ -775,15 +784,21 @@ function AnalisisDePartido() {
                             </div>
 
                             <div style={{ marginTop: '0.75rem' }}>
-                              <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
-                              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, getCutPlayerIds(cut))}>
-                                  Enviar a destinatarios
-                                </button>
-                                <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); }}>
-                                  Limpiar
-                                </button>
-                              </div>
+                              {canUseDevelopmentMessaging ? (
+                                <>
+                                  <textarea value={cutMessageText} onChange={(e) => setCutMessageText(e.target.value)} placeholder="Escribe un mensaje para este corte..." rows={3} style={{ width: '100%', borderRadius: 8, padding: '0.5rem', background: '#081025', color: '#fff', border: '1px solid #1f2937' }} />
+                                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                    <button type="button" className="primary-button" onClick={() => sendCutMessageFor(cut.id, getCutPlayerIds(cut))}>
+                                      Enviar a destinatarios
+                                    </button>
+                                    <button type="button" className="secondary-button" onClick={() => { setCutMessageText(''); }}>
+                                      Limpiar
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <small style={{ color: '#9ca3af' }}>Este rol no recibe mensajes en Desarrollo grupal.</small>
+                              )}
                             </div>
                           </div>
                         </div>

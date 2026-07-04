@@ -1,7 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 
-export type UserRole = 'jugador' | 'cuerpo_tecnico' | 'SUPER_ADMIN';
+export type UserRole = 'jugador' | 'entrenador' | 'preparador_fisico' | 'directivo' | 'SUPER_ADMIN';
+
+const VALID_ROLES: UserRole[] = ['jugador', 'entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'];
+
+function normalizeUserRole(role: string | null | undefined): UserRole {
+  if (role === 'cuerpo_tecnico') return 'entrenador';
+  if (role && VALID_ROLES.includes(role as UserRole)) return role as UserRole;
+  return 'jugador';
+}
 
 interface AppUser {
   id: string;
@@ -27,7 +35,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedUser = localStorage.getItem('app_user');
     if (savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsedUser = JSON.parse(savedUser);
+        const normalizedUser = {
+          ...parsedUser,
+          role: normalizeUserRole(parsedUser?.role),
+        };
+        setUser(normalizedUser);
+        localStorage.setItem('app_user', JSON.stringify(normalizedUser));
       } catch (e) {
         console.error("Error parsing user from localStorage:", e);
         localStorage.removeItem('app_user');
@@ -65,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const userDataToSave = {
       id: data.id,
       username: data.username,
-      role: data.role,
+      role: normalizeUserRole(data.role),
       player_id: data.player_id != null ? String(data.player_id) : null,
     };
 

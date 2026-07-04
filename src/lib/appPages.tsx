@@ -26,25 +26,28 @@ type AppPageDefinition = {
   showOnHome?: boolean;
 };
 
+const STAFF_ROLES = ['entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'] as const;
+const SHARED_ROLES = ['jugador', ...STAFF_ROLES] as const;
+
 export const APP_PAGES = [
-  { key: 'Inicio', component: Inicio, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const, showOnHome: false },
-  { key: 'Plantilla', component: Plantilla, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Calendario', component: Calendario, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Generador de sesiones', component: GeneradorDeSesiones, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Plan de Partido', component: PlanDePartido, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Desarrollo grupal', component: AnalisisDePartido, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Desarrollo Individual', component: DesarrolloIndividual, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Wellness', component: Wellness, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Estadísticas', component: Estadisticas, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Resultados y Clasif.', component: ResultadosYClasif, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Repositorio ABP', component: RepositorioABP, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Editor de vídeo propio', component: CortadorDeVideo, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Editor de vídeo rival', component: CortadorDeVideoRival, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Otras Informaciones', component: OtrasInformaciones, visibleTo: ['jugador', 'cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Registro de Eventos', component: RegistroDeEventos, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
-  { key: 'Gestión de usuarios', component: GestionUsuarios, visibleTo: ['cuerpo_tecnico', 'SUPER_ADMIN'] as const },
+  { key: 'Inicio', component: Inicio, visibleTo: SHARED_ROLES, showOnHome: false },
+  { key: 'Plantilla', component: Plantilla, visibleTo: SHARED_ROLES },
+  { key: 'Calendario', component: Calendario, visibleTo: SHARED_ROLES },
+  { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: SHARED_ROLES },
+  { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: STAFF_ROLES },
+  { key: 'Generador de sesiones', component: GeneradorDeSesiones, visibleTo: STAFF_ROLES },
+  { key: 'Plan de Partido', component: PlanDePartido, visibleTo: STAFF_ROLES },
+  { key: 'Desarrollo grupal', component: AnalisisDePartido, visibleTo: SHARED_ROLES },
+  { key: 'Desarrollo Individual', component: DesarrolloIndividual, visibleTo: SHARED_ROLES },
+  { key: 'Wellness', component: Wellness, visibleTo: SHARED_ROLES },
+  { key: 'Estadísticas', component: Estadisticas, visibleTo: SHARED_ROLES },
+  { key: 'Resultados y Clasif.', component: ResultadosYClasif, visibleTo: SHARED_ROLES },
+  { key: 'Repositorio ABP', component: RepositorioABP, visibleTo: SHARED_ROLES },
+  { key: 'Editor de vídeo propio', component: CortadorDeVideo, visibleTo: STAFF_ROLES },
+  { key: 'Editor de vídeo rival', component: CortadorDeVideoRival, visibleTo: STAFF_ROLES },
+  { key: 'Otras Informaciones', component: OtrasInformaciones, visibleTo: SHARED_ROLES },
+  { key: 'Registro de Eventos', component: RegistroDeEventos, visibleTo: STAFF_ROLES },
+  { key: 'Gestión de usuarios', component: GestionUsuarios, visibleTo: STAFF_ROLES },
 ] as const satisfies readonly AppPageDefinition[];
 
 export type PageKey = typeof APP_PAGES[number]['key'];
