@@ -41,6 +41,67 @@
   border-color: transparent;
 }
 
+.export-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(5, 10, 18, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.export-modal {
+  width: min(460px, 100%);
+  background: rgba(11, 21, 36, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.export-modal h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.06rem;
+}
+
+.export-modal-options {
+  display: grid;
+  gap: 10px;
+}
+
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #cdd4f1;
+}
+
+.export-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #3dffba;
+}
+
+.export-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.plan-export-container {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1280px;
+  padding: 16px;
+  background: #0c1622;
+  z-index: -1;
+}
+
 .plan-card {
   padding: 24px;
 }
