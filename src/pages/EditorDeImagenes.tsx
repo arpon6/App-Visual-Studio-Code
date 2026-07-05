@@ -682,6 +682,12 @@ function EditorDeImagenes() {
   const boards = sharedState.boards;
   const activeBoard = boards.find((board) => board.id === sharedState.activeBoardId) || boards[0];
   const activeBoardId = activeBoard?.id || null;
+  const orderedBoards = activeBoardId
+    ? [
+        ...boards.filter((board) => board.id === activeBoardId),
+        ...boards.filter((board) => board.id !== activeBoardId),
+      ]
+    : boards;
 
   const applySharedState = (next: EditorState) => {
     setSharedRawState({
@@ -925,10 +931,13 @@ function EditorDeImagenes() {
       </div>
 
       <div className="editor-imagenes-stacked">
-        {boards.map((board, index) => (
+        {orderedBoards.map((board) => {
+          const boardNumber = boards.findIndex((item) => item.id === board.id) + 1;
+
+          return (
           <div key={board.id} className="card editor-board-block">
             <div className="section-header editor-board-block-header">
-              <h2>Edicion {index + 1}</h2>
+              <h2>Edicion {boardNumber}</h2>
               <div className="editor-board-inline-actions">
                 <button type="button" onClick={() => setActiveBoard(board.id)}>
                   {board.id === activeBoardId ? 'Activa' : 'Activar'}
@@ -972,7 +981,8 @@ function EditorDeImagenes() {
               }}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
