@@ -134,6 +134,61 @@
   color: #d4dff8;
 }
 
+.editor-imagenes-stacked {
+  display: grid;
+  gap: 16px;
+}
+
+.editor-board-block {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.editor-board-block-header {
+  margin-bottom: 0;
+}
+
+.editor-board-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-board-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-board-meta-row input {
+  min-width: 220px;
+  max-width: 420px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(7, 13, 24, 0.95);
+  color: #eff4ff;
+}
+
+.editor-board-meta-row small {
+  color: #90a6d1;
+}
+
+.editor-board-canvas {
+  position: relative;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: radial-gradient(circle at top, rgba(28, 54, 92, 0.28), rgba(5, 10, 18, 0.96));
+}
+
+.editor-board-canvas.active {
+  border-color: rgba(128, 236, 176, 0.8);
+  box-shadow: 0 0 0 1px rgba(128, 236, 176, 0.3) inset;
+}
+
 .editor-imagenes-boards-card {
   padding: 18px;
   display: grid;
@@ -192,5 +247,10 @@
 
   .editor-imagenes-row input[type='range'] {
     width: 150px;
+  }
+
+  .editor-board-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

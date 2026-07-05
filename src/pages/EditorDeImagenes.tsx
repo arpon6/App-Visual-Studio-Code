@@ -86,6 +86,10 @@ function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+function cloneAnnotation(annotation: Annotation): Annotation {
+  return JSON.parse(JSON.stringify(annotation)) as Annotation;
+}
+
 function annotationCenter(annotation: Annotation): Point {
   if ('at' in annotation) return annotation.at;
   if ('points' in annotation) {
@@ -99,10 +103,6 @@ function annotationCenter(annotation: Annotation): Point {
   };
 }
 
-function cloneAnnotation(annotation: Annotation): Annotation {
-  return JSON.parse(JSON.stringify(annotation)) as Annotation;
-}
-
 function normalizeState(raw: unknown): EditorState {
   const candidate = raw as Partial<EditorState & { background?: string | null; annotations?: Annotation[] }> | null;
   if (candidate && Array.isArray(candidate.boards) && candidate.boards.length > 0) {
@@ -112,11 +112,9 @@ function normalizeState(raw: unknown): EditorState {
       background: board.background || null,
       annotations: Array.isArray(board.annotations) ? board.annotations : [],
     }));
-
     const activeBoardId = boards.some((board) => board.id === candidate.activeBoardId)
       ? (candidate.activeBoardId as string)
       : boards[0].id;
-
     return {
       boards,
       activeBoardId,
@@ -141,10 +139,7 @@ function normalizeState(raw: unknown): EditorState {
 }
 
 function translatePoint(point: Point, dx: number, dy: number): Point {
-  return {
-    x: clamp01(point.x + dx),
-    y: clamp01(point.y + dy),
-  };
+  return { x: clamp01(point.x + dx), y: clamp01(point.y + dy) };
 }
 
 function scalePoint(point: Point, origin: Point, factor: number): Point {
@@ -155,44 +150,32 @@ function scalePoint(point: Point, origin: Point, factor: number): Point {
 }
 
 function translateAnnotation(annotation: Annotation, dx: number, dy: number): Annotation {
-  if ('at' in annotation) {
-    return { ...annotation, at: translatePoint(annotation.at, dx, dy) };
-  }
-  if ('points' in annotation) {
-    return { ...annotation, points: annotation.points.map((point) => translatePoint(point, dx, dy)) };
-  }
-  return {
-    ...annotation,
-    from: translatePoint(annotation.from, dx, dy),
-    to: translatePoint(annotation.to, dx, dy),
-  };
+  if ('at' in annotation) return { ...annotation, at: translatePoint(annotation.at, dx, dy) };
+  if ('points' in annotation) return { ...annotation, points: annotation.points.map((point) => translatePoint(point, dx, dy)) };
+  return { ...annotation, from: translatePoint(annotation.from, dx, dy), to: translatePoint(annotation.to, dx, dy) };
 }
 
 function scaleAnnotation(annotation: Annotation, origin: Point, factor: number): Annotation {
-  const nextFactor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, factor));
-
+  const bounded = Math.max(MIN_SCALE, Math.min(MAX_SCALE, factor));
   if ('at' in annotation) {
-    const size = Math.max(1, Math.round(annotation.width * nextFactor));
     return {
       ...annotation,
-      at: scalePoint(annotation.at, origin, nextFactor),
-      width: size,
+      at: scalePoint(annotation.at, origin, bounded),
+      width: Math.max(1, Math.round(annotation.width * bounded)),
     };
   }
-
   if ('points' in annotation) {
     return {
       ...annotation,
-      points: annotation.points.map((point) => scalePoint(point, origin, nextFactor)),
-      width: Math.max(1, Math.round(annotation.width * nextFactor)),
+      points: annotation.points.map((point) => scalePoint(point, origin, bounded)),
+      width: Math.max(1, Math.round(annotation.width * bounded)),
     };
   }
-
   return {
     ...annotation,
-    from: scalePoint(annotation.from, origin, nextFactor),
-    to: scalePoint(annotation.to, origin, nextFactor),
-    width: Math.max(1, Math.round(annotation.width * nextFactor)),
+    from: scalePoint(annotation.from, origin, bounded),
+    to: scalePoint(annotation.to, origin, bounded),
+    width: Math.max(1, Math.round(annotation.width * bounded)),
   };
 }
 
@@ -215,16 +198,10 @@ function findNearestAnnotationIndex(point: Point, annotations: Annotation[]): nu
     }
   });
 
-  if (nearestDistance > 0.14) return -1;
-  return nearestIndex;
+  return nearestDistance <= 0.14 ? nearestIndex : -1;
 }
 
-function drawArrow(
-  ctx: CanvasRenderingContext2D,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-  width: number,
-) {
+function drawArrow(ctx: CanvasRenderingContext2D, from: { x: number; y: number }, to: { x: number; y: number }, width: number) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   const headLength = Math.max(10, width * 4);
 
@@ -235,24 +212,17 @@ function drawArrow(
 
   ctx.beginPath();
   ctx.moveTo(to.x, to.y);
-  ctx.lineTo(
-    to.x - headLength * Math.cos(angle - Math.PI / 7),
-    to.y - headLength * Math.sin(angle - Math.PI / 7),
-  );
-  ctx.lineTo(
-    to.x - headLength * Math.cos(angle + Math.PI / 7),
-    to.y - headLength * Math.sin(angle + Math.PI / 7),
-  );
+  ctx.lineTo(to.x - headLength * Math.cos(angle - Math.PI / 7), to.y - headLength * Math.sin(angle - Math.PI / 7));
+  ctx.lineTo(to.x - headLength * Math.cos(angle + Math.PI / 7), to.y - headLength * Math.sin(angle + Math.PI / 7));
   ctx.closePath();
   ctx.fill();
 }
 
 function drawAnnotation(ctx: CanvasRenderingContext2D, annotation: Annotation, width: number, height: number) {
   const px = (point: Point) => ({ x: point.x * width, y: point.y * height });
-  const alpha = Math.max(0.05, Math.min(1, annotation.opacity));
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = Math.max(0.05, Math.min(1, annotation.opacity));
   ctx.strokeStyle = annotation.color;
   ctx.fillStyle = annotation.fill;
   ctx.lineWidth = annotation.width;
@@ -351,25 +321,41 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, annotation: Annotation, w
   ctx.restore();
 }
 
-function EditorDeImagenes() {
-  const { user } = useAuth();
-  const canEdit = !!user && EDITOR_ROLES.has(user.role);
+type BoardCanvasProps = {
+  board: EditorBoard;
+  isActive: boolean;
+  canEdit: boolean;
+  loadingShared: boolean;
+  tool: Tool;
+  primaryColor: string;
+  fillColor: string;
+  width: number;
+  opacity: number;
+  onActivate: () => void;
+  onUpdateAnnotations: (next: Annotation[] | ((prev: Annotation[]) => Annotation[])) => void;
+  onSetStatus: (msg: string) => void;
+  onRegisterCanvas: (canvas: HTMLCanvasElement | null) => void;
+};
 
-  const [sharedRawState, setSharedRawState, loadingShared] = useSharedState<EditorState>('editor_imagenes_state', DEFAULT_STATE);
-  const sharedState = useMemo(() => normalizeState(sharedRawState), [sharedRawState]);
-
-  const [imageUrlInput, setImageUrlInput] = useState('');
-  const [tool, setTool] = useState<Tool>('arrow');
-  const [primaryColor, setPrimaryColor] = useState('#dd145f');
-  const [fillColor, setFillColor] = useState('rgba(23,48,122,0.22)');
-  const [width, setWidth] = useState(4);
-  const [opacity, setOpacity] = useState(1);
-  const [status, setStatus] = useState('');
-  const [draft, setDraft] = useState<Draft>(null);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-
+function BoardCanvasEditor({
+  board,
+  isActive,
+  canEdit,
+  loadingShared,
+  tool,
+  primaryColor,
+  fillColor,
+  width,
+  opacity,
+  onActivate,
+  onUpdateAnnotations,
+  onSetStatus,
+  onRegisterCanvas,
+}: BoardCanvasProps) {
   const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
+  const [draft, setDraft] = useState<Draft>(null);
   const [isPointerDown, setIsPointerDown] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -382,40 +368,10 @@ function EditorDeImagenes() {
     snapshot: Annotation;
   } | null>(null);
 
-  const boards = sharedState.boards;
-  const activeBoard = boards.find((board) => board.id === sharedState.activeBoardId) || boards[0];
-  const activeBoardId = activeBoard?.id || null;
-  const annotations = activeBoard?.annotations || [];
-
-  const applySharedState = (next: EditorState) => {
-    setSharedRawState({
-      ...next,
-      activeBoardId: next.activeBoardId || next.boards[0]?.id || null,
-      updatedAt: new Date().toISOString(),
-      updatedBy: user?.username ?? null,
-    });
-  };
-
-  const updateActiveBoard = (updater: (board: EditorBoard) => EditorBoard) => {
-    if (!activeBoardId) return;
-    applySharedState({
-      ...sharedState,
-      boards: sharedState.boards.map((board) => (board.id === activeBoardId ? updater(board) : board)),
-    });
-  };
-
-  const setAnnotations = (next: Annotation[] | ((prev: Annotation[]) => Annotation[])) => {
-    updateActiveBoard((board) => {
-      const resolved = typeof next === 'function'
-        ? (next as (prev: Annotation[]) => Annotation[])(board.annotations)
-        : next;
-      return { ...board, annotations: resolved };
-    });
-  };
-
   useEffect(() => {
-    if (activeBoard) setImageUrlInput(activeBoard.background || '');
-  }, [activeBoardId]);
+    onRegisterCanvas(canvasRef.current);
+    return () => onRegisterCanvas(null);
+  }, [onRegisterCanvas]);
 
   useEffect(() => {
     const image = new Image();
@@ -429,16 +385,16 @@ function EditorDeImagenes() {
     };
     image.onerror = () => {
       imageRef.current = null;
-      setStatus('No se pudo cargar la imagen. Revisa la URL o selecciona un archivo valido.');
+      onSetStatus('No se pudo cargar una imagen en una de las ediciones.');
     };
 
-    if (activeBoard?.background) {
-      image.src = activeBoard.background;
+    if (board.background) {
+      image.src = board.background;
     } else {
       imageRef.current = null;
       setCanvasSize({ width: 1280, height: 720 });
     }
-  }, [activeBoard?.background]);
+  }, [board.background, onSetStatus]);
 
   useEffect(() => {
     const onResize = () => {
@@ -460,7 +416,6 @@ function EditorDeImagenes() {
       if (!ctx) return;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       if (imageRef.current) {
         ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
       } else {
@@ -468,51 +423,30 @@ function EditorDeImagenes() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      for (const annotation of annotations) {
+      for (const annotation of board.annotations) {
         drawAnnotation(ctx, annotation, canvas.width, canvas.height);
       }
 
-      if (selectedIndex != null && annotations[selectedIndex]) {
-        const center = annotationCenter(annotations[selectedIndex]);
-        const cx = center.x * canvas.width;
-        const cy = center.y * canvas.height;
+      if (selectedIndex != null && board.annotations[selectedIndex]) {
+        const center = annotationCenter(board.annotations[selectedIndex]);
         ctx.save();
         ctx.strokeStyle = '#9cf5bf';
         ctx.lineWidth = 2;
         ctx.setLineDash([8, 6]);
         ctx.beginPath();
-        ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+        ctx.arc(center.x * canvas.width, center.y * canvas.height, 18, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
 
       if (draft) {
-        const preview: Annotation =
-          draft.kind === 'free'
-            ? {
-                id: 'draft',
-                kind: 'free',
-                points: draft.points,
-                color: primaryColor,
-                fill: fillColor,
-                width,
-                opacity,
-              }
-            : {
-                id: 'draft',
-                kind: draft.kind,
-                from: draft.from,
-                to: draft.to,
-                color: primaryColor,
-                fill: fillColor,
-                width,
-                opacity,
-              };
-
+        const preview: Annotation = draft.kind === 'free'
+          ? { id: 'draft', kind: 'free', points: draft.points, color: primaryColor, fill: fillColor, width, opacity }
+          : { id: 'draft', kind: draft.kind, from: draft.from, to: draft.to, color: primaryColor, fill: fillColor, width, opacity };
         drawAnnotation(ctx, preview, canvas.width, canvas.height);
       }
     },
-    [annotations, draft, fillColor, opacity, primaryColor, selectedIndex, width],
+    [board.annotations, draft, fillColor, opacity, primaryColor, selectedIndex, width],
   );
 
   useEffect(() => {
@@ -521,43 +455,42 @@ function EditorDeImagenes() {
 
   const getPointFromPointer = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = clamp01((event.clientX - rect.left) / rect.width);
-    const y = clamp01((event.clientY - rect.top) / rect.height);
-    return { x, y };
+    return {
+      x: clamp01((event.clientX - rect.left) / rect.width),
+      y: clamp01((event.clientY - rect.top) / rect.height),
+    };
   };
 
   const getPointFromDrop = (event: React.DragEvent<HTMLCanvasElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = clamp01((event.clientX - rect.left) / rect.width);
-    const y = clamp01((event.clientY - rect.top) / rect.height);
-    return { x, y };
-  };
-
-  const removeNearestAnnotation = (point: Point) => {
-    const nearestIndex = findNearestAnnotationIndex(point, annotations);
-    if (nearestIndex >= 0) {
-      setAnnotations((prev) => prev.filter((_, index) => index !== nearestIndex));
-      setSelectedIndex(null);
-    }
+    return {
+      x: clamp01((event.clientX - rect.left) / rect.width),
+      y: clamp01((event.clientY - rect.top) / rect.height),
+    };
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || loadingShared || !activeBoard) return;
+    onActivate();
+    if (!canEdit || loadingShared) return;
     const point = getPointFromPointer(event);
 
     if (tool === 'erase') {
-      removeNearestAnnotation(point);
+      const nearest = findNearestAnnotationIndex(point, board.annotations);
+      if (nearest >= 0) {
+        onUpdateAnnotations((prev) => prev.filter((_, index) => index !== nearest));
+        setSelectedIndex(null);
+      }
       return;
     }
 
     if (tool === 'move' || tool === 'scale') {
-      const index = findNearestAnnotationIndex(point, annotations);
-      if (index < 0) return;
-      const target = annotations[index];
-      setSelectedIndex(index);
+      const nearest = findNearestAnnotationIndex(point, board.annotations);
+      if (nearest < 0) return;
+      const target = board.annotations[nearest];
+      setSelectedIndex(nearest);
       interactionRef.current = {
         mode: tool,
-        index,
+        index: nearest,
         startPoint: point,
         origin: annotationCenter(target),
         snapshot: cloneAnnotation(target),
@@ -574,18 +507,9 @@ function EditorDeImagenes() {
     if (tool === 'text') {
       const text = window.prompt('Texto', '');
       if (!text || !text.trim()) return;
-      setAnnotations((prev) => [
+      onUpdateAnnotations((prev) => [
         ...prev,
-        {
-          id: uid(),
-          kind: 'text',
-          at: point,
-          text: text.trim(),
-          color: primaryColor,
-          fill: fillColor,
-          width,
-          opacity,
-        },
+        { id: uid(), kind: 'text', at: point, text: text.trim(), color: primaryColor, fill: fillColor, width, opacity },
       ]);
       return;
     }
@@ -593,18 +517,9 @@ function EditorDeImagenes() {
     if (tool === 'badge') {
       const text = window.prompt('Numero', '10');
       if (!text || !text.trim()) return;
-      setAnnotations((prev) => [
+      onUpdateAnnotations((prev) => [
         ...prev,
-        {
-          id: uid(),
-          kind: 'badge',
-          at: point,
-          text: text.trim(),
-          color: primaryColor,
-          fill: fillColor,
-          width,
-          opacity,
-        },
+        { id: uid(), kind: 'badge', at: point, text: text.trim(), color: primaryColor, fill: fillColor, width, opacity },
       ]);
       return;
     }
@@ -632,8 +547,8 @@ function EditorDeImagenes() {
       if (interaction.mode === 'move') {
         const dx = point.x - interaction.startPoint.x;
         const dy = point.y - interaction.startPoint.y;
-        setAnnotations((prev) => prev.map((item, idx) => (
-          idx === interaction.index ? translateAnnotation(interaction.snapshot, dx, dy) : item
+        onUpdateAnnotations((prev) => prev.map((item, index) => (
+          index === interaction.index ? translateAnnotation(interaction.snapshot, dx, dy) : item
         )));
         return;
       }
@@ -641,14 +556,13 @@ function EditorDeImagenes() {
       const baseDistance = distance(interaction.startPoint, interaction.origin);
       const currentDistance = distance(point, interaction.origin);
       const factor = baseDistance < 0.0001 ? 1 : currentDistance / baseDistance;
-      setAnnotations((prev) => prev.map((item, idx) => (
-        idx === interaction.index ? scaleAnnotation(interaction.snapshot, interaction.origin, factor) : item
+      onUpdateAnnotations((prev) => prev.map((item, index) => (
+        index === interaction.index ? scaleAnnotation(interaction.snapshot, interaction.origin, factor) : item
       )));
       return;
     }
 
     if (!draft) return;
-
     if (draft.kind === 'free') {
       setDraft((prev) => {
         if (!prev || prev.kind !== 'free') return prev;
@@ -680,32 +594,15 @@ function EditorDeImagenes() {
     if (draft) {
       if (draft.kind === 'free') {
         if (draft.points.length > 1) {
-          setAnnotations((prev) => [
+          onUpdateAnnotations((prev) => [
             ...prev,
-            {
-              id: uid(),
-              kind: 'free',
-              points: draft.points,
-              color: primaryColor,
-              fill: fillColor,
-              width,
-              opacity,
-            },
+            { id: uid(), kind: 'free', points: draft.points, color: primaryColor, fill: fillColor, width, opacity },
           ]);
         }
       } else {
-        setAnnotations((prev) => [
+        onUpdateAnnotations((prev) => [
           ...prev,
-          {
-            id: uid(),
-            kind: draft.kind,
-            from: draft.from,
-            to: draft.to,
-            color: primaryColor,
-            fill: fillColor,
-            width,
-            opacity,
-          },
+          { id: uid(), kind: draft.kind, from: draft.from, to: draft.to, color: primaryColor, fill: fillColor, width, opacity },
         ]);
       }
     }
@@ -719,38 +616,97 @@ function EditorDeImagenes() {
     }
   };
 
-  const handleCanvasDragOver = (event: React.DragEvent<HTMLCanvasElement>) => {
+  const handleDragOver = (event: React.DragEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
     event.preventDefault();
   };
 
-  const handleCanvasDrop = (event: React.DragEvent<HTMLCanvasElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
     const droppedValue = event.dataTransfer.getData('text/editor-number');
     if (!droppedValue) return;
     event.preventDefault();
     const point = getPointFromDrop(event);
-
-    setAnnotations((prev) => [
+    onActivate();
+    onUpdateAnnotations((prev) => [
       ...prev,
-      {
-        id: uid(),
-        kind: 'badge',
-        at: point,
-        text: droppedValue,
-        color: primaryColor,
-        fill: fillColor,
-        width,
-        opacity,
-      },
+      { id: uid(), kind: 'badge', at: point, text: droppedValue, color: primaryColor, fill: fillColor, width, opacity },
     ]);
   };
 
-  const handleNumberDragStart = (event: React.DragEvent<HTMLButtonElement>, value: number) => {
-    if (!canEdit) return;
-    event.dataTransfer.setData('text/editor-number', String(value));
-    event.dataTransfer.effectAllowed = 'copy';
+  return (
+    <div className={isActive ? 'editor-board-canvas active' : 'editor-board-canvas'} ref={containerRef}>
+      <canvas
+        ref={canvasRef}
+        width={canvasSize.width}
+        height={canvasSize.height}
+        className="editor-imagenes-canvas"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      />
+      {!board.background && (
+        <div className="editor-imagenes-empty-state">
+          <strong>Sin imagen cargada</strong>
+          <span>
+            {canEdit
+              ? 'Carga una imagen por URL o archivo para comenzar a editar.'
+              : 'Esperando que un entrenador o directivo publique una imagen.'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditorDeImagenes() {
+  const { user } = useAuth();
+  const canEdit = !!user && EDITOR_ROLES.has(user.role);
+
+  const [sharedRawState, setSharedRawState, loadingShared] = useSharedState<EditorState>('editor_imagenes_state', DEFAULT_STATE);
+  const sharedState = useMemo(() => normalizeState(sharedRawState), [sharedRawState]);
+
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [tool, setTool] = useState<Tool>('arrow');
+  const [primaryColor, setPrimaryColor] = useState('#dd145f');
+  const [fillColor, setFillColor] = useState('rgba(23,48,122,0.22)');
+  const [width, setWidth] = useState(4);
+  const [opacity, setOpacity] = useState(1);
+  const [status, setStatus] = useState('');
+
+  const canvasRegistry = useRef<Record<string, HTMLCanvasElement | null>>({});
+
+  const boards = sharedState.boards;
+  const activeBoard = boards.find((board) => board.id === sharedState.activeBoardId) || boards[0];
+  const activeBoardId = activeBoard?.id || null;
+
+  const applySharedState = (next: EditorState) => {
+    setSharedRawState({
+      ...next,
+      activeBoardId: next.activeBoardId || next.boards[0]?.id || null,
+      updatedAt: new Date().toISOString(),
+      updatedBy: user?.username ?? null,
+    });
   };
+
+  const updateBoardById = (boardId: string, updater: (board: EditorBoard) => EditorBoard) => {
+    applySharedState({
+      ...sharedState,
+      boards: sharedState.boards.map((board) => (board.id === boardId ? updater(board) : board)),
+    });
+  };
+
+  const updateActiveBoard = (updater: (board: EditorBoard) => EditorBoard) => {
+    if (!activeBoardId) return;
+    updateBoardById(activeBoardId, updater);
+  };
+
+  useEffect(() => {
+    setImageUrlInput(activeBoard?.background || '');
+  }, [activeBoardId]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit || !activeBoard) return;
@@ -761,11 +717,8 @@ function EditorDeImagenes() {
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : null;
       if (!dataUrl) return;
-      updateActiveBoard((board) => ({
-        ...board,
-        background: dataUrl,
-      }));
-      setStatus(`Imagen cargada: ${file.name}`);
+      updateActiveBoard((board) => ({ ...board, background: dataUrl }));
+      setStatus(`Imagen cargada en ${activeBoard.name}: ${file.name}`);
     };
     reader.readAsDataURL(file);
   };
@@ -774,38 +727,32 @@ function EditorDeImagenes() {
     if (!canEdit || !activeBoard) return;
     const next = imageUrlInput.trim();
     if (!next) return;
-    updateActiveBoard((board) => ({
-      ...board,
-      background: next,
-    }));
-    setStatus('Imagen actualizada desde URL.');
+    updateActiveBoard((board) => ({ ...board, background: next }));
+    setStatus(`Imagen actualizada en ${activeBoard.name}.`);
   };
 
   const undo = () => {
     if (!canEdit) return;
-    setAnnotations((prev) => prev.slice(0, -1));
+    updateActiveBoard((board) => ({ ...board, annotations: board.annotations.slice(0, -1) }));
   };
 
   const clearAll = () => {
     if (!canEdit) return;
-    const confirmed = window.confirm('Se eliminaran todas las marcas de la imagen.');
+    const confirmed = window.confirm('Se eliminaran todas las marcas de la edicion activa.');
     if (!confirmed) return;
-    setAnnotations([]);
+    updateActiveBoard((board) => ({ ...board, annotations: [] }));
   };
 
   const clearImage = () => {
-    if (!canEdit || !activeBoard) return;
-    const confirmed = window.confirm('Se eliminara la imagen compartida de esta edicion.');
+    if (!canEdit) return;
+    const confirmed = window.confirm('Se eliminara la imagen de la edicion activa.');
     if (!confirmed) return;
-    updateActiveBoard((board) => ({
-      ...board,
-      background: null,
-      annotations: [],
-    }));
+    updateActiveBoard((board) => ({ ...board, background: null, annotations: [] }));
   };
 
   const exportPng = () => {
-    const canvas = canvasRef.current;
+    if (!activeBoardId) return;
+    const canvas = canvasRegistry.current[activeBoardId];
     if (!canvas) return;
     try {
       const link = document.createElement('a');
@@ -819,10 +766,9 @@ function EditorDeImagenes() {
 
   const duplicateBoard = () => {
     if (!canEdit || !activeBoard) return;
-    const copyIndex = boards.length + 1;
     const duplicated: EditorBoard = {
       id: uid(),
-      name: `${activeBoard.name} copia ${copyIndex}`,
+      name: `${activeBoard.name} copia ${boards.length + 1}`,
       background: activeBoard.background,
       annotations: activeBoard.annotations.map((annotation) => ({ ...cloneAnnotation(annotation), id: uid() })),
     };
@@ -832,32 +778,17 @@ function EditorDeImagenes() {
       boards: [...boards, duplicated],
       activeBoardId: duplicated.id,
     });
-    setStatus('Edicion duplicada.');
-  };
-
-  const switchBoard = (boardId: string) => {
-    applySharedState({
-      ...sharedState,
-      activeBoardId: boardId,
-    });
-    setSelectedIndex(null);
-    setDraft(null);
-    interactionRef.current = null;
+    setStatus('Edicion duplicada. Baja para verla debajo de la anterior.');
   };
 
   const removeBoard = (boardId: string) => {
     if (!canEdit || boards.length <= 1) return;
-    const confirmed = window.confirm('Se eliminara esta edicion duplicada.');
+    const confirmed = window.confirm('Se eliminara esta edicion.');
     if (!confirmed) return;
 
     const nextBoards = boards.filter((board) => board.id !== boardId);
     const nextActive = sharedState.activeBoardId === boardId ? nextBoards[0]?.id || null : sharedState.activeBoardId;
-
-    applySharedState({
-      ...sharedState,
-      boards: nextBoards,
-      activeBoardId: nextActive,
-    });
+    applySharedState({ ...sharedState, boards: nextBoards, activeBoardId: nextActive });
   };
 
   const renameBoard = (boardId: string, nextName: string) => {
@@ -866,6 +797,16 @@ function EditorDeImagenes() {
       ...sharedState,
       boards: boards.map((board) => (board.id === boardId ? { ...board, name: nextName || 'Edicion sin nombre' } : board)),
     });
+  };
+
+  const setActiveBoard = (boardId: string) => {
+    applySharedState({ ...sharedState, activeBoardId: boardId });
+  };
+
+  const handleNumberDragStart = (event: React.DragEvent<HTMLButtonElement>, value: number) => {
+    if (!canEdit) return;
+    event.dataTransfer.setData('text/editor-number', String(value));
+    event.dataTransfer.effectAllowed = 'copy';
   };
 
   const lastUpdateText = sharedState.updatedAt
@@ -884,7 +825,7 @@ function EditorDeImagenes() {
       <div className="card editor-imagenes-controls">
         <div className="editor-imagenes-row">
           <label>
-            URL de imagen
+            URL de imagen ({activeBoard?.name || 'Sin seleccion'})
             <input
               type="text"
               value={imageUrlInput}
@@ -893,10 +834,10 @@ function EditorDeImagenes() {
               disabled={!canEdit}
             />
           </label>
-          <button type="button" onClick={applyImageUrl} disabled={!canEdit}>Cargar URL</button>
+          <button type="button" onClick={applyImageUrl} disabled={!canEdit || !activeBoard}>Cargar URL</button>
           <label className="file-upload-btn">
             Cargar archivo
-            <input type="file" accept="image/*" onChange={handleFileUpload} disabled={!canEdit} />
+            <input type="file" accept="image/*" onChange={handleFileUpload} disabled={!canEdit || !activeBoard} />
           </label>
         </div>
 
@@ -957,14 +898,15 @@ function EditorDeImagenes() {
               {number}
             </button>
           ))}
-          <small>Arrastra un numero al lienzo.</small>
+          <small>Arrastra un numero al lienzo que quieras editar.</small>
         </div>
 
         <div className="editor-imagenes-row editor-imagenes-actions-row">
-          <button type="button" onClick={undo} disabled={!canEdit || annotations.length === 0}>Deshacer</button>
-          <button type="button" onClick={clearAll} disabled={!canEdit || annotations.length === 0}>Limpiar</button>
-          <button type="button" onClick={clearImage} disabled={!canEdit || !activeBoard?.background}>Quitar imagen</button>
-          <button type="button" onClick={exportPng}>Exportar PNG</button>
+          <button type="button" onClick={undo} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Deshacer</button>
+          <button type="button" onClick={clearAll} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Limpiar</button>
+          <button type="button" onClick={clearImage} disabled={!canEdit || !activeBoard || !activeBoard.background}>Quitar imagen</button>
+          <button type="button" onClick={exportPng} disabled={!activeBoard}>Exportar PNG</button>
+          <button type="button" onClick={duplicateBoard} disabled={!canEdit || !activeBoard}>Duplicar edicion actual</button>
         </div>
 
         {!canEdit && (
@@ -982,56 +924,55 @@ function EditorDeImagenes() {
         )}
       </div>
 
-      <div className="card editor-imagenes-canvas-card" ref={containerRef}>
-        <canvas
-          ref={canvasRef}
-          width={canvasSize.width}
-          height={canvasSize.height}
-          className="editor-imagenes-canvas"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          onDragOver={handleCanvasDragOver}
-          onDrop={handleCanvasDrop}
-        />
-        {!activeBoard?.background && (
-          <div className="editor-imagenes-empty-state">
-            <strong>Sin imagen cargada</strong>
-            <span>
-              {canEdit
-                ? 'Carga una imagen por URL o archivo para comenzar a editar.'
-                : 'Esperando que un entrenador o directivo publique una imagen.'}
-            </span>
-          </div>
-        )}
-      </div>
+      <div className="editor-imagenes-stacked">
+        {boards.map((board, index) => (
+          <div key={board.id} className="card editor-board-block">
+            <div className="section-header editor-board-block-header">
+              <h2>Edicion {index + 1}</h2>
+              <div className="editor-board-inline-actions">
+                <button type="button" onClick={() => setActiveBoard(board.id)}>
+                  {board.id === activeBoardId ? 'Activa' : 'Activar'}
+                </button>
+                <button type="button" onClick={() => removeBoard(board.id)} disabled={!canEdit || boards.length === 1}>Eliminar</button>
+              </div>
+            </div>
 
-      <div className="card editor-imagenes-boards-card">
-        <div className="section-header">
-          <h2>Ediciones en paralelo</h2>
-          <button type="button" onClick={duplicateBoard} disabled={!canEdit || !activeBoard}>Duplicar edicion actual</button>
-        </div>
-        <div className="editor-imagenes-boards-grid">
-          {boards.map((board) => (
-            <div key={board.id} className={board.id === activeBoardId ? 'editor-board-item active' : 'editor-board-item'}>
+            <div className="editor-board-meta-row">
               <input
                 type="text"
                 value={board.name}
                 disabled={!canEdit}
                 onChange={(event) => renameBoard(board.id, event.target.value)}
               />
-              <div className="editor-board-meta">
-                <span>{board.background ? 'Con imagen' : 'Sin imagen'}</span>
-                <span>{board.annotations.length} marcas</span>
-              </div>
-              <div className="editor-board-actions">
-                <button type="button" onClick={() => switchBoard(board.id)}>Abrir</button>
-                <button type="button" onClick={() => removeBoard(board.id)} disabled={!canEdit || boards.length === 1}>Eliminar</button>
-              </div>
+              <small>{board.annotations.length} marcas</small>
             </div>
-          ))}
-        </div>
+
+            <BoardCanvasEditor
+              board={board}
+              isActive={board.id === activeBoardId}
+              canEdit={canEdit}
+              loadingShared={loadingShared}
+              tool={tool}
+              primaryColor={primaryColor}
+              fillColor={fillColor}
+              width={width}
+              opacity={opacity}
+              onActivate={() => setActiveBoard(board.id)}
+              onUpdateAnnotations={(next) => {
+                updateBoardById(board.id, (prevBoard) => {
+                  const resolved = typeof next === 'function'
+                    ? (next as (prev: Annotation[]) => Annotation[])(prevBoard.annotations)
+                    : next;
+                  return { ...prevBoard, annotations: resolved };
+                });
+              }}
+              onSetStatus={setStatus}
+              onRegisterCanvas={(canvas) => {
+                canvasRegistry.current[board.id] = canvas;
+              }}
+            />
+          </div>
+        ))}
       </div>
     </section>
   );
