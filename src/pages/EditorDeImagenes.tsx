@@ -4,7 +4,7 @@ import { useSharedState } from '../lib/useSharedState';
 import './EditorDeImagenes.css';
 
 type Point = { x: number; y: number };
-type Tool = 'arrow' | 'line' | 'rect' | 'circle' | 'free' | 'text' | 'badge' | 'erase';
+type Tool = 'move' | 'scale' | 'arrow' | 'line' | 'rect' | 'circle' | 'free' | 'text' | 'badge' | 'erase';
 
 type BaseAnnotation = {
   id: string;
@@ -39,9 +39,16 @@ type TextAnnotation = BaseAnnotation & {
 
 type Annotation = LineAnnotation | ShapeAnnotation | FreeAnnotation | TextAnnotation;
 
-type EditorState = {
+type EditorBoard = {
+  id: string;
+  name: string;
   background: string | null;
   annotations: Annotation[];
+};
+
+type EditorState = {
+  boards: EditorBoard[];
+  activeBoardId: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
 };
@@ -51,18 +58,29 @@ type Draft =
   | { kind: 'free'; points: Point[] }
   | null;
 
-const DEFAULT_STATE: EditorState = {
-  background: null,
-  annotations: [],
-  updatedBy: null,
-  updatedAt: null,
-};
-
 const EDITOR_ROLES = new Set(['entrenador', 'directivo']);
+const MIN_SCALE = 0.2;
+const MAX_SCALE = 6;
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+function newBoard(name = 'Edicion 1'): EditorBoard {
+  return {
+    id: uid(),
+    name,
+    background: null,
+    annotations: [],
+  };
+}
+
+const DEFAULT_STATE: EditorState = {
+  boards: [newBoard()],
+  activeBoardId: null,
+  updatedBy: null,
+  updatedAt: null,
+};
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -79,6 +97,126 @@ function annotationCenter(annotation: Annotation): Point {
     x: (annotation.from.x + annotation.to.x) / 2,
     y: (annotation.from.y + annotation.to.y) / 2,
   };
+}
+
+function cloneAnnotation(annotation: Annotation): Annotation {
+  return JSON.parse(JSON.stringify(annotation)) as Annotation;
+}
+
+function normalizeState(raw: unknown): EditorState {
+  const candidate = raw as Partial<EditorState & { background?: string | null; annotations?: Annotation[] }> | null;
+  if (candidate && Array.isArray(candidate.boards) && candidate.boards.length > 0) {
+    const boards = candidate.boards.map((board, index) => ({
+      id: board.id || uid(),
+      name: board.name || `Edicion ${index + 1}`,
+      background: board.background || null,
+      annotations: Array.isArray(board.annotations) ? board.annotations : [],
+    }));
+
+    const activeBoardId = boards.some((board) => board.id === candidate.activeBoardId)
+      ? (candidate.activeBoardId as string)
+      : boards[0].id;
+
+    return {
+      boards,
+      activeBoardId,
+      updatedBy: candidate.updatedBy || null,
+      updatedAt: candidate.updatedAt || null,
+    };
+  }
+
+  const legacyBoard: EditorBoard = {
+    id: uid(),
+    name: 'Edicion 1',
+    background: candidate?.background || null,
+    annotations: Array.isArray(candidate?.annotations) ? candidate.annotations : [],
+  };
+
+  return {
+    boards: [legacyBoard],
+    activeBoardId: legacyBoard.id,
+    updatedBy: candidate?.updatedBy || null,
+    updatedAt: candidate?.updatedAt || null,
+  };
+}
+
+function translatePoint(point: Point, dx: number, dy: number): Point {
+  return {
+    x: clamp01(point.x + dx),
+    y: clamp01(point.y + dy),
+  };
+}
+
+function scalePoint(point: Point, origin: Point, factor: number): Point {
+  return {
+    x: clamp01(origin.x + (point.x - origin.x) * factor),
+    y: clamp01(origin.y + (point.y - origin.y) * factor),
+  };
+}
+
+function translateAnnotation(annotation: Annotation, dx: number, dy: number): Annotation {
+  if ('at' in annotation) {
+    return { ...annotation, at: translatePoint(annotation.at, dx, dy) };
+  }
+  if ('points' in annotation) {
+    return { ...annotation, points: annotation.points.map((point) => translatePoint(point, dx, dy)) };
+  }
+  return {
+    ...annotation,
+    from: translatePoint(annotation.from, dx, dy),
+    to: translatePoint(annotation.to, dx, dy),
+  };
+}
+
+function scaleAnnotation(annotation: Annotation, origin: Point, factor: number): Annotation {
+  const nextFactor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, factor));
+
+  if ('at' in annotation) {
+    const size = Math.max(1, Math.round(annotation.width * nextFactor));
+    return {
+      ...annotation,
+      at: scalePoint(annotation.at, origin, nextFactor),
+      width: size,
+    };
+  }
+
+  if ('points' in annotation) {
+    return {
+      ...annotation,
+      points: annotation.points.map((point) => scalePoint(point, origin, nextFactor)),
+      width: Math.max(1, Math.round(annotation.width * nextFactor)),
+    };
+  }
+
+  return {
+    ...annotation,
+    from: scalePoint(annotation.from, origin, nextFactor),
+    to: scalePoint(annotation.to, origin, nextFactor),
+    width: Math.max(1, Math.round(annotation.width * nextFactor)),
+  };
+}
+
+function distance(a: Point, b: Point) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function findNearestAnnotationIndex(point: Point, annotations: Annotation[]): number {
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  annotations.forEach((annotation, index) => {
+    const center = annotationCenter(annotation);
+    const dist = distance(center, point);
+    if (dist < nearestDistance) {
+      nearestDistance = dist;
+      nearestIndex = index;
+    }
+  });
+
+  if (nearestDistance > 0.14) return -1;
+  return nearestIndex;
 }
 
 function drawArrow(
@@ -217,7 +355,9 @@ function EditorDeImagenes() {
   const { user } = useAuth();
   const canEdit = !!user && EDITOR_ROLES.has(user.role);
 
-  const [sharedState, setSharedState, loadingShared] = useSharedState<EditorState>('editor_imagenes_state', DEFAULT_STATE);
+  const [sharedRawState, setSharedRawState, loadingShared] = useSharedState<EditorState>('editor_imagenes_state', DEFAULT_STATE);
+  const sharedState = useMemo(() => normalizeState(sharedRawState), [sharedRawState]);
+
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [tool, setTool] = useState<Tool>('arrow');
   const [primaryColor, setPrimaryColor] = useState('#dd145f');
@@ -226,6 +366,7 @@ function EditorDeImagenes() {
   const [opacity, setOpacity] = useState(1);
   const [status, setStatus] = useState('');
   const [draft, setDraft] = useState<Draft>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
   const [isPointerDown, setIsPointerDown] = useState(false);
@@ -233,25 +374,48 @@ function EditorDeImagenes() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const interactionRef = useRef<{
+    mode: 'move' | 'scale';
+    index: number;
+    startPoint: Point;
+    origin: Point;
+    snapshot: Annotation;
+  } | null>(null);
 
-  const annotations = sharedState.annotations || [];
+  const boards = sharedState.boards;
+  const activeBoard = boards.find((board) => board.id === sharedState.activeBoardId) || boards[0];
+  const activeBoardId = activeBoard?.id || null;
+  const annotations = activeBoard?.annotations || [];
 
   const applySharedState = (next: EditorState) => {
-    setSharedState({
+    setSharedRawState({
       ...next,
+      activeBoardId: next.activeBoardId || next.boards[0]?.id || null,
       updatedAt: new Date().toISOString(),
       updatedBy: user?.username ?? null,
     });
   };
 
+  const updateActiveBoard = (updater: (board: EditorBoard) => EditorBoard) => {
+    if (!activeBoardId) return;
+    applySharedState({
+      ...sharedState,
+      boards: sharedState.boards.map((board) => (board.id === activeBoardId ? updater(board) : board)),
+    });
+  };
+
   const setAnnotations = (next: Annotation[] | ((prev: Annotation[]) => Annotation[])) => {
-    const resolved = typeof next === 'function' ? (next as (prev: Annotation[]) => Annotation[])(annotations) : next;
-    applySharedState({ ...sharedState, annotations: resolved });
+    updateActiveBoard((board) => {
+      const resolved = typeof next === 'function'
+        ? (next as (prev: Annotation[]) => Annotation[])(board.annotations)
+        : next;
+      return { ...board, annotations: resolved };
+    });
   };
 
   useEffect(() => {
-    setImageUrlInput(sharedState.background || '');
-  }, [sharedState.background]);
+    if (activeBoard) setImageUrlInput(activeBoard.background || '');
+  }, [activeBoardId]);
 
   useEffect(() => {
     const image = new Image();
@@ -261,22 +425,20 @@ function EditorDeImagenes() {
       const containerWidth = containerRef.current?.clientWidth || 1280;
       const maxWidth = Math.max(360, Math.min(containerWidth, 1280));
       const ratio = image.height > 0 ? image.width / image.height : 16 / 9;
-      const nextWidth = maxWidth;
-      const nextHeight = Math.round(nextWidth / ratio);
-      setCanvasSize({ width: nextWidth, height: nextHeight });
+      setCanvasSize({ width: maxWidth, height: Math.round(maxWidth / ratio) });
     };
     image.onerror = () => {
       imageRef.current = null;
       setStatus('No se pudo cargar la imagen. Revisa la URL o selecciona un archivo valido.');
     };
 
-    if (sharedState.background) {
-      image.src = sharedState.background;
+    if (activeBoard?.background) {
+      image.src = activeBoard.background;
     } else {
       imageRef.current = null;
       setCanvasSize({ width: 1280, height: 720 });
     }
-  }, [sharedState.background]);
+  }, [activeBoard?.background]);
 
   useEffect(() => {
     const onResize = () => {
@@ -310,8 +472,22 @@ function EditorDeImagenes() {
         drawAnnotation(ctx, annotation, canvas.width, canvas.height);
       }
 
+      if (selectedIndex != null && annotations[selectedIndex]) {
+        const center = annotationCenter(annotations[selectedIndex]);
+        const cx = center.x * canvas.width;
+        const cy = center.y * canvas.height;
+        ctx.save();
+        ctx.strokeStyle = '#9cf5bf';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       if (draft) {
-        const preview: Annotation | null =
+        const preview: Annotation =
           draft.kind === 'free'
             ? {
                 id: 'draft',
@@ -333,17 +509,24 @@ function EditorDeImagenes() {
                 opacity,
               };
 
-        if (preview) drawAnnotation(ctx, preview, canvas.width, canvas.height);
+        drawAnnotation(ctx, preview, canvas.width, canvas.height);
       }
     },
-    [annotations, draft, fillColor, opacity, primaryColor, width],
+    [annotations, draft, fillColor, opacity, primaryColor, selectedIndex, width],
   );
 
   useEffect(() => {
     drawAll();
   }, [drawAll, canvasSize]);
 
-  const getPointFromEvent = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
+  const getPointFromPointer = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = clamp01((event.clientX - rect.left) / rect.width);
+    const y = clamp01((event.clientY - rect.top) / rect.height);
+    return { x, y };
+  };
+
+  const getPointFromDrop = (event: React.DragEvent<HTMLCanvasElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = clamp01((event.clientX - rect.left) / rect.width);
     const y = clamp01((event.clientY - rect.top) / rect.height);
@@ -351,32 +534,40 @@ function EditorDeImagenes() {
   };
 
   const removeNearestAnnotation = (point: Point) => {
-    if (!annotations.length) return;
-    let nearestIndex = -1;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-
-    annotations.forEach((annotation, index) => {
-      const center = annotationCenter(annotation);
-      const dx = center.x - point.x;
-      const dy = center.y - point.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-    });
-
-    if (nearestIndex >= 0 && nearestDistance <= 0.12) {
+    const nearestIndex = findNearestAnnotationIndex(point, annotations);
+    if (nearestIndex >= 0) {
       setAnnotations((prev) => prev.filter((_, index) => index !== nearestIndex));
+      setSelectedIndex(null);
     }
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || loadingShared) return;
-    const point = getPointFromEvent(event);
+    if (!canEdit || loadingShared || !activeBoard) return;
+    const point = getPointFromPointer(event);
 
     if (tool === 'erase') {
       removeNearestAnnotation(point);
+      return;
+    }
+
+    if (tool === 'move' || tool === 'scale') {
+      const index = findNearestAnnotationIndex(point, annotations);
+      if (index < 0) return;
+      const target = annotations[index];
+      setSelectedIndex(index);
+      interactionRef.current = {
+        mode: tool,
+        index,
+        startPoint: point,
+        origin: annotationCenter(target),
+        snapshot: cloneAnnotation(target),
+      };
+      setIsPointerDown(true);
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // no-op
+      }
       return;
     }
 
@@ -400,7 +591,7 @@ function EditorDeImagenes() {
     }
 
     if (tool === 'badge') {
-      const text = window.prompt('Dorsal / etiqueta', '10');
+      const text = window.prompt('Numero', '10');
       if (!text || !text.trim()) return;
       setAnnotations((prev) => [
         ...prev,
@@ -433,8 +624,30 @@ function EditorDeImagenes() {
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isPointerDown || !draft || !canEdit) return;
-    const point = getPointFromEvent(event);
+    if (!isPointerDown || !canEdit) return;
+    const point = getPointFromPointer(event);
+
+    if (interactionRef.current) {
+      const interaction = interactionRef.current;
+      if (interaction.mode === 'move') {
+        const dx = point.x - interaction.startPoint.x;
+        const dy = point.y - interaction.startPoint.y;
+        setAnnotations((prev) => prev.map((item, idx) => (
+          idx === interaction.index ? translateAnnotation(interaction.snapshot, dx, dy) : item
+        )));
+        return;
+      }
+
+      const baseDistance = distance(interaction.startPoint, interaction.origin);
+      const currentDistance = distance(point, interaction.origin);
+      const factor = baseDistance < 0.0001 ? 1 : currentDistance / baseDistance;
+      setAnnotations((prev) => prev.map((item, idx) => (
+        idx === interaction.index ? scaleAnnotation(interaction.snapshot, interaction.origin, factor) : item
+      )));
+      return;
+    }
+
+    if (!draft) return;
 
     if (draft.kind === 'free') {
       setDraft((prev) => {
@@ -451,16 +664,43 @@ function EditorDeImagenes() {
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isPointerDown || !draft || !canEdit) return;
+    if (!isPointerDown || !canEdit) return;
 
-    if (draft.kind === 'free') {
-      if (draft.points.length > 1) {
+    if (interactionRef.current) {
+      interactionRef.current = null;
+      setIsPointerDown(false);
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // no-op
+      }
+      return;
+    }
+
+    if (draft) {
+      if (draft.kind === 'free') {
+        if (draft.points.length > 1) {
+          setAnnotations((prev) => [
+            ...prev,
+            {
+              id: uid(),
+              kind: 'free',
+              points: draft.points,
+              color: primaryColor,
+              fill: fillColor,
+              width,
+              opacity,
+            },
+          ]);
+        }
+      } else {
         setAnnotations((prev) => [
           ...prev,
           {
             id: uid(),
-            kind: 'free',
-            points: draft.points,
+            kind: draft.kind,
+            from: draft.from,
+            to: draft.to,
             color: primaryColor,
             fill: fillColor,
             width,
@@ -468,20 +708,6 @@ function EditorDeImagenes() {
           },
         ]);
       }
-    } else {
-      setAnnotations((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          kind: draft.kind,
-          from: draft.from,
-          to: draft.to,
-          color: primaryColor,
-          fill: fillColor,
-          width,
-          opacity,
-        },
-      ]);
     }
 
     setDraft(null);
@@ -493,8 +719,41 @@ function EditorDeImagenes() {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCanvasDragOver = (event: React.DragEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
+    event.preventDefault();
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLCanvasElement>) => {
+    if (!canEdit) return;
+    const droppedValue = event.dataTransfer.getData('text/editor-number');
+    if (!droppedValue) return;
+    event.preventDefault();
+    const point = getPointFromDrop(event);
+
+    setAnnotations((prev) => [
+      ...prev,
+      {
+        id: uid(),
+        kind: 'badge',
+        at: point,
+        text: droppedValue,
+        color: primaryColor,
+        fill: fillColor,
+        width,
+        opacity,
+      },
+    ]);
+  };
+
+  const handleNumberDragStart = (event: React.DragEvent<HTMLButtonElement>, value: number) => {
+    if (!canEdit) return;
+    event.dataTransfer.setData('text/editor-number', String(value));
+    event.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit || !activeBoard) return;
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -502,23 +761,23 @@ function EditorDeImagenes() {
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : null;
       if (!dataUrl) return;
-      applySharedState({
-        ...sharedState,
+      updateActiveBoard((board) => ({
+        ...board,
         background: dataUrl,
-      });
+      }));
       setStatus(`Imagen cargada: ${file.name}`);
     };
     reader.readAsDataURL(file);
   };
 
   const applyImageUrl = () => {
-    if (!canEdit) return;
+    if (!canEdit || !activeBoard) return;
     const next = imageUrlInput.trim();
     if (!next) return;
-    applySharedState({
-      ...sharedState,
+    updateActiveBoard((board) => ({
+      ...board,
       background: next,
-    });
+    }));
     setStatus('Imagen actualizada desde URL.');
   };
 
@@ -534,15 +793,15 @@ function EditorDeImagenes() {
     setAnnotations([]);
   };
 
-  const clearBackground = () => {
-    if (!canEdit) return;
-    const confirmed = window.confirm('Se eliminara la imagen de fondo compartida.');
+  const clearImage = () => {
+    if (!canEdit || !activeBoard) return;
+    const confirmed = window.confirm('Se eliminara la imagen compartida de esta edicion.');
     if (!confirmed) return;
-    applySharedState({
-      ...sharedState,
+    updateActiveBoard((board) => ({
+      ...board,
       background: null,
       annotations: [],
-    });
+    }));
   };
 
   const exportPng = () => {
@@ -551,17 +810,62 @@ function EditorDeImagenes() {
     try {
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
-      link.download = `editor-imagenes-${Date.now()}.png`;
+      link.download = `${(activeBoard?.name || 'editor-imagenes').toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.png`;
       link.click();
     } catch {
       setStatus('No se pudo exportar PNG. Si la imagen viene de una URL externa, verifica CORS.');
     }
   };
 
-  const addDorsal = (value: number) => {
+  const duplicateBoard = () => {
+    if (!canEdit || !activeBoard) return;
+    const copyIndex = boards.length + 1;
+    const duplicated: EditorBoard = {
+      id: uid(),
+      name: `${activeBoard.name} copia ${copyIndex}`,
+      background: activeBoard.background,
+      annotations: activeBoard.annotations.map((annotation) => ({ ...cloneAnnotation(annotation), id: uid() })),
+    };
+
+    applySharedState({
+      ...sharedState,
+      boards: [...boards, duplicated],
+      activeBoardId: duplicated.id,
+    });
+    setStatus('Edicion duplicada.');
+  };
+
+  const switchBoard = (boardId: string) => {
+    applySharedState({
+      ...sharedState,
+      activeBoardId: boardId,
+    });
+    setSelectedIndex(null);
+    setDraft(null);
+    interactionRef.current = null;
+  };
+
+  const removeBoard = (boardId: string) => {
+    if (!canEdit || boards.length <= 1) return;
+    const confirmed = window.confirm('Se eliminara esta edicion duplicada.');
+    if (!confirmed) return;
+
+    const nextBoards = boards.filter((board) => board.id !== boardId);
+    const nextActive = sharedState.activeBoardId === boardId ? nextBoards[0]?.id || null : sharedState.activeBoardId;
+
+    applySharedState({
+      ...sharedState,
+      boards: nextBoards,
+      activeBoardId: nextActive,
+    });
+  };
+
+  const renameBoard = (boardId: string, nextName: string) => {
     if (!canEdit) return;
-    setTool('badge');
-    setStatus(`Herramienta dorsal activa: ${value}. Haz clic en el lienzo para colocarlo.`);
+    applySharedState({
+      ...sharedState,
+      boards: boards.map((board) => (board.id === boardId ? { ...board, name: nextName || 'Edicion sin nombre' } : board)),
+    });
   };
 
   const lastUpdateText = sharedState.updatedAt
@@ -617,13 +921,15 @@ function EditorDeImagenes() {
 
         <div className="editor-imagenes-row editor-imagenes-tools-row">
           {([
+            ['move', 'Mover'],
+            ['scale', 'Escalar'],
             ['arrow', 'Flecha'],
             ['line', 'Linea'],
             ['free', 'Libre'],
             ['rect', 'Rectangulo'],
             ['circle', 'Circulo'],
             ['text', 'Texto'],
-            ['badge', 'Etiqueta'],
+            ['badge', 'Numero'],
             ['erase', 'Borrar'],
           ] as [Tool, string][]).map(([value, label]) => (
             <button
@@ -639,16 +945,25 @@ function EditorDeImagenes() {
         </div>
 
         <div className="editor-imagenes-row editor-imagenes-dorsales-row">
-          <span>Dorsales:</span>
+          <span>1-11:</span>
           {Array.from({ length: 11 }, (_, index) => index + 1).map((number) => (
-            <button key={number} type="button" onClick={() => addDorsal(number)} disabled={!canEdit}>{number}</button>
+            <button
+              key={number}
+              type="button"
+              draggable={canEdit}
+              onDragStart={(event) => handleNumberDragStart(event, number)}
+              disabled={!canEdit}
+            >
+              {number}
+            </button>
           ))}
+          <small>Arrastra un numero al lienzo.</small>
         </div>
 
         <div className="editor-imagenes-row editor-imagenes-actions-row">
           <button type="button" onClick={undo} disabled={!canEdit || annotations.length === 0}>Deshacer</button>
           <button type="button" onClick={clearAll} disabled={!canEdit || annotations.length === 0}>Limpiar</button>
-          <button type="button" onClick={clearBackground} disabled={!canEdit || !sharedState.background}>Quitar fondo</button>
+          <button type="button" onClick={clearImage} disabled={!canEdit || !activeBoard?.background}>Quitar imagen</button>
           <button type="button" onClick={exportPng}>Exportar PNG</button>
         </div>
 
@@ -677,8 +992,10 @@ function EditorDeImagenes() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onDragOver={handleCanvasDragOver}
+          onDrop={handleCanvasDrop}
         />
-        {!sharedState.background && (
+        {!activeBoard?.background && (
           <div className="editor-imagenes-empty-state">
             <strong>Sin imagen cargada</strong>
             <span>
@@ -688,6 +1005,33 @@ function EditorDeImagenes() {
             </span>
           </div>
         )}
+      </div>
+
+      <div className="card editor-imagenes-boards-card">
+        <div className="section-header">
+          <h2>Ediciones en paralelo</h2>
+          <button type="button" onClick={duplicateBoard} disabled={!canEdit || !activeBoard}>Duplicar edicion actual</button>
+        </div>
+        <div className="editor-imagenes-boards-grid">
+          {boards.map((board) => (
+            <div key={board.id} className={board.id === activeBoardId ? 'editor-board-item active' : 'editor-board-item'}>
+              <input
+                type="text"
+                value={board.name}
+                disabled={!canEdit}
+                onChange={(event) => renameBoard(board.id, event.target.value)}
+              />
+              <div className="editor-board-meta">
+                <span>{board.background ? 'Con imagen' : 'Sin imagen'}</span>
+                <span>{board.annotations.length} marcas</span>
+              </div>
+              <div className="editor-board-actions">
+                <button type="button" onClick={() => switchBoard(board.id)}>Abrir</button>
+                <button type="button" onClick={() => removeBoard(board.id)} disabled={!canEdit || boards.length === 1}>Eliminar</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
