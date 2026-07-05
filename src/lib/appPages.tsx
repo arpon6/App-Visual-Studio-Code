@@ -9,6 +9,7 @@ import GeneradorDeSesiones from '../pages/GeneradorDeSesiones';
 import PlanDePartido from '../pages/PlanDePartido';
 import AnalisisDePartido from '../pages/AnalisisDePartido';
 import CortadorDeVideo from '../pages/CortadorDeVideo';
+import EditorDeImagenes from '../pages/EditorDeImagenes';
 import CortadorDeVideoRival from '../pages/CortadorDeVideoRival';
 import DesarrolloIndividual from '../pages/DesarrolloIndividual';
 import Estadisticas from '../pages/Estadisticas';
@@ -44,6 +45,7 @@ export const APP_PAGES = [
   { key: 'Resultados y Clasif.', component: ResultadosYClasif, visibleTo: SHARED_ROLES },
   { key: 'Repositorio ABP', component: RepositorioABP, visibleTo: SHARED_ROLES },
   { key: 'Editor de vídeo propio', component: CortadorDeVideo, visibleTo: STAFF_ROLES },
+  { key: 'Editor de imágenes', component: EditorDeImagenes, visibleTo: SHARED_ROLES },
   { key: 'Editor de vídeo rival', component: CortadorDeVideoRival, visibleTo: STAFF_ROLES },
   { key: 'Otras Informaciones', component: OtrasInformaciones, visibleTo: SHARED_ROLES },
   { key: 'Registro de Eventos', component: RegistroDeEventos, visibleTo: STAFF_ROLES },

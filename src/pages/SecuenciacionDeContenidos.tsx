@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './Calendario.css';
 
 const TEMPORADA_INICIO = '2026-07-30';
@@ -37,9 +39,11 @@ const CONTENIDOS_PREDEFINIDOS = [
 interface Event {
   id: string;
   date: string;
-  type: 'entrenamiento';
+  type: 'entrenamiento' | 'partido';
   place: string;
   time?: string;
+  rival?: string;
+  matchType?: string;
 }
 
 interface SecuenciacionData {
@@ -71,6 +75,7 @@ function SecuenciacionDeContenidos() {
   const [events, setEvents] = useState<Event[]>([]);
   const [secuenciaciones, setSecuenciaciones] = useState<SecuenciacionData[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -93,13 +98,19 @@ function SecuenciacionDeContenidos() {
   const loadEvents = async () => {
     const { data, error } = await supabase
       .from('calendar_events')
-      .select('id, date, type, place, time')
-      .eq('type', 'entrenamiento');
+      .select('id, date, type, place, time, rival, match_type')
+      .in('type', ['entrenamiento', 'partido']);
 
     if (error) { console.error('Error loading events:', error); return; }
 
     setEvents((data || []).map(r => ({
-      id: r.id, date: r.date, type: r.type, place: r.place, time: r.time,
+      id: r.id,
+      date: r.date,
+      type: r.type,
+      place: r.place,
+      time: r.time,
+      rival: r.rival,
+      matchType: r.match_type,
     })));
   };
 
@@ -214,10 +225,10 @@ function SecuenciacionDeContenidos() {
     return contenidosDisponibles.filter(c => c.toLocaleLowerCase('es-ES').includes(term));
   }, [contenidosDisponibles, contenidoSearchTerm]);
 
-  const getEventForDay = (day: number | undefined) => {
+  const getEventsForDay = (day: number | undefined) => {
     if (!day) return null;
     const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
-    return events.find(evt => evt.date === dateStr);
+    return events.filter(evt => evt.date === dateStr);
   };
 
   const getSecuenciacionForDay = (day: number | undefined) => {
@@ -227,8 +238,8 @@ function SecuenciacionDeContenidos() {
   };
 
   const handleDayClick = (day: number) => {
-    const event = getEventForDay(day);
-    if (!event) return;
+    const dayEvents = getEventsForDay(day);
+    if (!dayEvents?.length) return;
 
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const existing = secuenciaciones.find(sec => sec.fecha === dateStr);
@@ -240,6 +251,40 @@ function SecuenciacionDeContenidos() {
     setCustomInput('');
     setContenidoSearchTerm('');
     setShowModal(true);
+  };
+
+  const handleExportPDF = async () => {
+    const element = document.querySelector('.calendar-card') as HTMLElement;
+    if (!element || isExporting) return;
+
+    setIsExporting(true);
+
+    try {
+      const nombreMes = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      const canvas = await html2canvas(element, {
+        backgroundColor: '#0c1622',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.width / canvas.height;
+      const imgW = pageW;
+      const imgH = imgW / ratio;
+      const offsetY = imgH < pageH ? (pageH - imgH) / 2 : 0;
+
+      pdf.addImage(imgData, 'PNG', 0, offsetY, imgW, imgH);
+      pdf.save(`Secuenciacion_${nombreMes}.pdf`);
+    } catch (error) {
+      console.error('Error exportando PDF de secuenciación:', error);
+      alert('No se pudo generar el PDF. Inténtalo de nuevo.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleSelectContenido = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -344,6 +389,14 @@ function SecuenciacionDeContenidos() {
             <button className="nav-btn" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}>←</button>
             <h2 className="month-label">{monthName}</h2>
             <button className="nav-btn" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}>→</button>
+            <button
+              className="nav-btn export-btn"
+              onClick={handleExportPDF}
+              title="Descargar PDF del mes"
+              disabled={isExporting}
+            >
+              {isExporting ? 'Generando PDF...' : '⬇ PDF'}
+            </button>
           </div>
 
           <div className="calendar-weekdays">
@@ -354,22 +407,25 @@ function SecuenciacionDeContenidos() {
 
           <div className="calendar-grid">
             {calendarDays.map((day, idx) => {
-              const event = getEventForDay(day);
+              const dayEvents = getEventsForDay(day);
+              const hasEvents = !!dayEvents?.length;
+              const partido = dayEvents?.find(evt => evt.type === 'partido');
+              const entrenamiento = dayEvents?.find(evt => evt.type === 'entrenamiento');
               const secuenciacion = getSecuenciacionForDay(day);
               const hasContent = secuenciacion && secuenciacion.contenidos.length > 0;
 
               return (
                 <div
                   key={idx}
-                  className={`calendar-day ${!day ? 'empty' : ''} ${event ? 'has-events' : ''}`}
-                  onClick={() => day && event && handleDayClick(day)}
-                  style={{ cursor: event ? 'pointer' : 'default' }}
+                  className={`calendar-day ${!day ? 'empty' : ''} ${hasEvents ? 'has-events' : ''}`}
+                  onClick={() => day && hasEvents && handleDayClick(day)}
+                  style={{ cursor: hasEvents ? 'pointer' : 'default' }}
                 >
                   {day && (
                     <>
                       <div className="day-header">
                         <span className="day-number">{day}</span>
-                        {event && (
+                        {hasEvents && (
                           <span
                             className="day-add-btn"
                             onClick={(e) => { e.stopPropagation(); handleDayClick(day); }}
@@ -379,7 +435,7 @@ function SecuenciacionDeContenidos() {
                           </span>
                         )}
                       </div>
-                      {event && (
+                      {hasEvents && (
                         <div className="day-events-indicator">
                           {hasContent ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
@@ -398,10 +454,22 @@ function SecuenciacionDeContenidos() {
                               ))}
                             </div>
                           ) : (
-                            <span className="event-label type-entrenamiento">
-                              <span className="event-label-type">Entrenamiento</span>
-                              {event.time && <span className="event-label-time">{event.time}</span>}
-                            </span>
+                            <>
+                              {partido && (
+                                <span className="event-label type-partido">
+                                  <span className="event-label-type">Partido</span>
+                                  {partido.matchType && <span className="event-label-meta">{partido.matchType}</span>}
+                                  {partido.rival && <span className="event-label-rival">vs {partido.rival}</span>}
+                                  {partido.time && <span className="event-label-time">{partido.time}</span>}
+                                </span>
+                              )}
+                              {entrenamiento && (
+                                <span className="event-label type-entrenamiento">
+                                  <span className="event-label-type">Entrenamiento</span>
+                                  {entrenamiento.time && <span className="event-label-time">{entrenamiento.time}</span>}
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -415,7 +483,7 @@ function SecuenciacionDeContenidos() {
 
         <div className="card events-list-card">
           <div className="section-header">
-            <h2>Entrenamientos con contenidos</h2>
+            <h2>Eventos con contenidos</h2>
           </div>
           <div className="events-list">
             {secuenciaciones.length === 0 ? (
@@ -428,11 +496,22 @@ function SecuenciacionDeContenidos() {
                 })
                 .map(sec => (
                   <div key={sec.id} className="event-item">
-                    <div className="event-header">
-                      <span className="event-date">{new Date(sec.fecha).toLocaleDateString('es-ES', {
-                        weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric'
-                      })}</span>
-                    </div>
+                    {(() => {
+                      const [year, month, day] = sec.fecha.split('-');
+                      const dateCalendar = `${day}/${month}/${year}`;
+                      const linkedEvents = events.filter(evt => evt.date === dateCalendar);
+                      const tipos = linkedEvents.length > 0
+                        ? linkedEvents.map(evt => evt.type === 'partido' ? 'Partido' : 'Entrenamiento').join(' + ')
+                        : 'Sin evento en calendario';
+                      return (
+                        <div className="event-header">
+                          <span className="event-date">{new Date(sec.fecha).toLocaleDateString('es-ES', {
+                            weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric'
+                          })}</span>
+                          <span className="event-type type-entrenamiento">{tipos}</span>
+                        </div>
+                      );
+                    })()}
                     <div className="event-details">
                       <p><strong>Contenidos ({sec.contenidos.length}):</strong></p>
                       <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>

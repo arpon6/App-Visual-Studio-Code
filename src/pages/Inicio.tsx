@@ -29,6 +29,11 @@ type InicioProps = {
   quickAccessSections: PageKey[];
 };
 
+type RecipientBadge = {
+  label: string;
+  kind: 'group' | 'person';
+};
+
 function Inicio({ quickAccessSections }: InicioProps) {
   const { user } = useAuth();
   const jugadores = usePlantilla();
@@ -201,6 +206,43 @@ function Inicio({ quickAccessSections }: InicioProps) {
 
   const staffUsers = appUsers.filter((u) => u.role !== 'jugador');
 
+  const getUsersForMessage = (msg: TablonMessage): AppUserInfo[] => {
+    const recipients = new Map<string, AppUserInfo>();
+
+    const addUser = (u?: AppUserInfo) => {
+      if (u?.email) recipients.set(u.id, u);
+    };
+
+    if (msg.recipients.includes('staff_admin')) {
+      staffUsers.forEach(addUser);
+    }
+
+    if (msg.recipients.includes('all_players')) {
+      appUsers.filter((u) => u.role === 'jugador').forEach(addUser);
+    }
+
+    msg.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
+      const pid = r.replace('player:', '');
+      const u = appUsers.find((x) => String(x.player_id) === String(pid));
+      addUser(u);
+    });
+
+    msg.recipients.filter((r) => r.startsWith('user:')).forEach((r) => {
+      const uid = r.replace('user:', '');
+      const u = appUsers.find((x) => x.id === uid);
+      addUser(u);
+    });
+
+    const senderEmail = appUsers.find((u) => u.id === msg.senderId)?.email;
+    if (senderEmail) {
+      recipients.forEach((u, id) => {
+        if (u.email === senderEmail) recipients.delete(id);
+      });
+    }
+
+    return Array.from(recipients.values());
+  };
+
   const buildRecipients = (): string[] => {
     if (recipientType === 'all') return ['all_players', 'staff_admin'];
     if (recipientType === 'players_all') return ['all_players'];
@@ -211,24 +253,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
 
   const getEmailsForMessage = (msg: TablonMessage): string[] => {
     const emails = new Set<string>();
-    if (msg.recipients.includes('staff_admin')) {
-      staffUsers.forEach((u) => { if (u.email) emails.add(u.email); });
-    }
-    if (msg.recipients.includes('all_players')) {
-      appUsers.filter((u) => u.role === 'jugador' && u.email).forEach((u) => emails.add(u.email));
-    }
-    msg.recipients.filter((r) => r.startsWith('player:')).forEach((r) => {
-      const pid = r.replace('player:', '');
-      const u = appUsers.find((x) => String(x.player_id) === String(pid));
-      if (u?.email) emails.add(u.email);
-    });
-    msg.recipients.filter((r) => r.startsWith('user:')).forEach((r) => {
-      const uid = r.replace('user:', '');
-      const u = appUsers.find((x) => x.id === uid);
-      if (u?.email) emails.add(u.email);
-    });
-    const senderEmail = appUsers.find((u) => u.id === msg.senderId)?.email;
-    if (senderEmail) emails.delete(senderEmail);
+    getUsersForMessage(msg).forEach((u) => { if (u.email) emails.add(u.email); });
     return Array.from(emails);
   };
 
@@ -302,25 +327,52 @@ function Inicio({ quickAccessSections }: InicioProps) {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const formatRecipients = (recs: string[]): string => {
-    const parts: string[] = [];
-    if (recs.includes('all_players') && recs.includes('staff_admin')) return 'Toda la plantilla y cuerpo técnico';
-    if (recs.includes('all_players')) parts.push('Todos los jugadores');
-    if (recs.includes('staff_admin')) parts.push('Cuerpo técnico');
-    const playerIds = recs.filter((r) => r.startsWith('player:')).map((r) => r.replace('player:', ''));
-    if (playerIds.length > 0) {
-      const names = playerIds.map((pid) => {
-        const j = jugadores.find((x) => String(x.id) === String(pid));
-        return j ? j.nombre : `Jugador ${pid}`;
+  const formatRecipients = (recs: string[]): RecipientBadge[] => {
+    const badges: RecipientBadge[] = [];
+
+    if (recs.includes('all_players') && recs.includes('staff_admin')) {
+      return [{ label: 'Toda la plantilla y cuerpo técnico', kind: 'group' }];
+    }
+
+    if (recs.includes('all_players')) {
+      badges.push({ label: 'Todos los jugadores', kind: 'group' });
+    }
+
+    if (recs.includes('staff_admin')) {
+      staffUsers.forEach((u) => {
+        const roleLabel = u.role === 'entrenador'
+          ? 'Entrenador'
+          : u.role === 'preparador_fisico'
+            ? 'Preparador físico'
+            : u.role === 'directivo'
+              ? 'Directivo'
+              : 'Super admin';
+        badges.push({ label: `${u.username} · ${roleLabel}`, kind: 'person' });
       });
-      parts.push(names.join(', '));
     }
+
+    const playerIds = recs.filter((r) => r.startsWith('player:')).map((r) => r.replace('player:', ''));
+    playerIds.forEach((pid) => {
+      const j = jugadores.find((x) => String(x.id) === String(pid));
+      badges.push({ label: j ? j.nombre : `Jugador ${pid}`, kind: 'person' });
+    });
+
     const userIds = recs.filter((r) => r.startsWith('user:')).map((r) => r.replace('user:', ''));
-    if (userIds.length > 0) {
-      const names = userIds.map((uid) => appUsers.find((u) => u.id === uid)?.username || uid);
-      parts.push(names.join(', '));
-    }
-    return parts.join(' · ') || 'Sin destinatarios';
+    userIds.forEach((uid) => {
+      const u = appUsers.find((item) => item.id === uid);
+      const roleLabel = u?.role === 'entrenador'
+        ? 'Entrenador'
+        : u?.role === 'preparador_fisico'
+          ? 'Preparador físico'
+          : u?.role === 'directivo'
+            ? 'Directivo'
+            : u?.role === 'SUPER_ADMIN'
+              ? 'Super admin'
+              : 'Usuario';
+      badges.push({ label: u ? `${u.username} · ${roleLabel}` : uid, kind: 'person' });
+    });
+
+    return badges.length > 0 ? badges : [{ label: 'Sin destinatarios', kind: 'group' }];
   };
 
   return (
@@ -484,11 +536,33 @@ function Inicio({ quickAccessSections }: InicioProps) {
                       {msg.senderRole === 'jugador' ? 'Jugador' : 'Cuerpo técnico'}
                     </span>
                   </span>
-                  <span style={{ fontSize: 12, color: '#7f96bc' }}>
-                    {new Date(msg.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {' · '}
-                    <span style={{ fontStyle: 'italic' }}>{formatRecipients(msg.recipients)}</span>
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#7f96bc' }}>
+                    <span>
+                      {new Date(msg.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, color: '#9fb5d8' }}>Destinatarios:</span>
+                      {formatRecipients(msg.recipients).map((badge) => (
+                        <span
+                          key={badge.label}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '4px 10px',
+                            borderRadius: 999,
+                            background: badge.kind === 'group' ? 'rgba(127,150,188,0.14)' : 'rgba(139,237,159,0.12)',
+                            color: badge.kind === 'group' ? '#bfd0ea' : '#d8fee0',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            maxWidth: '100%',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {(user?.role !== 'jugador' || user?.id === msg.senderId) && (
                   <button

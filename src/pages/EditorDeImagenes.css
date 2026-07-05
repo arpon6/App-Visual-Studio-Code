@@ -1,0 +1,141 @@
+.editor-imagenes-page {
+  gap: 16px;
+}
+
+.editor-imagenes-controls {
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.editor-imagenes-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.editor-imagenes-row label {
+  display: grid;
+  gap: 6px;
+  color: #b9c7e9;
+  font-size: 0.88rem;
+}
+
+.editor-imagenes-row input[type='text'] {
+  min-width: 320px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(9, 16, 28, 0.9);
+  color: #ecf2ff;
+}
+
+.editor-imagenes-row input[type='color'] {
+  width: 44px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(9, 16, 28, 0.9);
+  padding: 0;
+}
+
+.editor-imagenes-row input[type='range'] {
+  width: 180px;
+}
+
+.editor-imagenes-row button,
+.file-upload-btn {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 30, 48, 0.95);
+  color: #e6edff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.editor-imagenes-row button.active {
+  border-color: rgba(122, 225, 161, 0.9);
+  background: rgba(20, 58, 48, 0.92);
+  color: #baf8d6;
+}
+
+.editor-imagenes-row button:disabled,
+.editor-imagenes-row input:disabled,
+.file-upload-btn:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.file-upload-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-upload-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.editor-imagenes-dorsales-row span {
+  color: #9cb2db;
+  margin-right: 4px;
+  font-size: 0.9rem;
+}
+
+.editor-imagenes-status,
+.editor-imagenes-readonly-msg {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #9fb2d8;
+}
+
+.editor-imagenes-readonly-msg {
+  color: #f3be80;
+}
+
+.editor-imagenes-canvas-card {
+  position: relative;
+  padding: 14px;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  background: radial-gradient(circle at top, rgba(28, 54, 92, 0.35), rgba(5, 10, 18, 0.95));
+}
+
+.editor-imagenes-canvas {
+  max-width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a1322;
+  touch-action: none;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42);
+}
+
+.editor-imagenes-empty-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  text-align: center;
+  color: #a8bbdf;
+  pointer-events: none;
+}
+
+.editor-imagenes-empty-state strong {
+  color: #d4dff8;
+}
+
+@media (max-width: 860px) {
+  .editor-imagenes-row input[type='text'] {
+    min-width: 100%;
+  }
+
+  .editor-imagenes-row input[type='range'] {
+    width: 150px;
+  }
+}
