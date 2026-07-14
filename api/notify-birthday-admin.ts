@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 type Req = {
   method?: string;
   headers?: Record<string, string | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 };
 
 type Res = {
@@ -61,7 +62,10 @@ export default async function handler(req: Req, res: Res) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    const cronHeader = req.headers?.['x-cron-secret'];
+    const validAuth = authHeader === `Bearer ${cronSecret}`;
+    const validCronHeader = cronHeader === cronSecret;
+    if (!validAuth && !validCronHeader) {
       return res.status(401).json({ error: 'Unauthorized cron call' });
     }
   }
@@ -81,9 +85,10 @@ export default async function handler(req: Req, res: Res) {
 
   const now = new Date();
   const madrid = getMadridParts(now);
+  const forceRun = req.query?.force === '1' || req.headers?.['x-force-run'] === '1';
 
   // Ejecutamos el cron cada hora y solo enviamos exactamente a las 08:00 de Madrid.
-  if (!(madrid.hour === '08' && madrid.minute === '00')) {
+  if (!forceRun && !(madrid.hour === '08' && madrid.minute === '00')) {
     return res.status(200).json({ ok: true, skipped: 'Not 08:00 in Europe/Madrid', at: madrid });
   }
 
