@@ -22,3 +22,6 @@ create policy "jugador_select" on wellness_responses
 
 create policy "jugador_update" on wellness_responses
   for update using (true);
+
+create policy "jugador_delete" on wellness_responses
+  for delete using (true);

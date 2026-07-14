@@ -5,7 +5,7 @@ import { usePlantilla } from '../lib/usePlantilla';
 import './Wellness.css';
 
 interface WellnessResponse {
-  id: number;
+  id: string;
   player_id: string;
   event_date: string;
   event_type: string;
@@ -13,6 +13,7 @@ interface WellnessResponse {
   animo: number;
   fisico: number;
   molestias: string | null;
+  created_at: string;
 }
 
 interface WellnessPoint {
@@ -361,6 +362,8 @@ function WellnessDashboard() {
   const jugadores = usePlantilla();
   const [refDate, setRefDate] = useState(todayISO());
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dashboardMsg, setDashboardMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
   const dayFrom = refDate;
   const dayTo = refDate;
@@ -373,11 +376,22 @@ function WellnessDashboard() {
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   useEffect(() => {
-    supabase.from('wellness_responses')
-      .select('*')
-      .gte('event_date', monthFrom)
-      .lte('event_date', monthTo)
-      .then(({ data }) => { if (data) setResponses(data as WellnessResponse[]); });
+    const loadResponses = async () => {
+      const { data, error } = await supabase
+        .from('wellness_responses')
+        .select('*')
+        .gte('event_date', monthFrom)
+        .lte('event_date', monthTo);
+
+      if (error) {
+        setDashboardMsg({ type: 'error', text: 'No se pudieron cargar las respuestas de wellness.' });
+        return;
+      }
+
+      setResponses((data as WellnessResponse[]) || []);
+    };
+
+    void loadResponses();
   }, [monthFrom, monthTo]);
 
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
@@ -395,6 +409,30 @@ function WellnessDashboard() {
   );
 
   const monthResponses = responses;
+  const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
+
+  const handleDeleteResponse = async (responseId: string) => {
+    const shouldDelete = window.confirm('¿Quieres eliminar esta respuesta de wellness? Esta acción no se puede deshacer.');
+    if (!shouldDelete) return;
+
+    setDeletingId(responseId);
+    setDashboardMsg(null);
+
+    const { error } = await supabase
+      .from('wellness_responses')
+      .delete()
+      .eq('id', responseId);
+
+    setDeletingId(null);
+
+    if (error) {
+      setDashboardMsg({ type: 'error', text: 'No se pudo eliminar la respuesta seleccionada.' });
+      return;
+    }
+
+    setResponses(prev => prev.filter(response => response.id !== responseId));
+    setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
+  };
 
   const buildChartDataByPlayer = (rows: WellnessResponse[]) => {
     return jugadores
@@ -415,8 +453,16 @@ function WellnessDashboard() {
   const weekChartData = useMemo(() => buildChartDataByPlayer(weekResponses), [weekResponses, jugadores]);
   const monthChartData = useMemo(() => buildChartDataByPlayer(monthResponses), [monthResponses, jugadores]);
 
+  const dayResponseRows = useMemo(() => {
+    return [...dayResponses]
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map(response => ({
+        ...response,
+        jugador: playersById.get(String(response.player_id)) || String(response.player_id),
+      }));
+  }, [dayResponses, playersById]);
+
   const comentarios = useMemo(() => {
-    const playersById = new Map(jugadores.map(j => [String(j.id), j.nombre]));
     return monthResponses
       .filter(r => Boolean(r.molestias && r.molestias.trim()))
       .sort((a, b) => b.event_date.localeCompare(a.event_date))
@@ -445,6 +491,12 @@ function WellnessDashboard() {
           </div>
         </div>
       </div>
+
+      {dashboardMsg && (
+        <p className={`wellness-dashboard-message ${dashboardMsg.type === 'error' ? 'error' : 'success'}`}>
+          {dashboardMsg.text}
+        </p>
+      )}
 
       {/* KPIs */}
       <div className="wellness-kpi-row">
@@ -476,6 +528,65 @@ function WellnessDashboard() {
           </div>
           <div className="wellness-kpi-value">{comentarios.length}</div>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <small>Detalle editable por fecha</small>
+            <h2>Respuestas del día seleccionado</h2>
+          </div>
+          <span className="wellness-responses-count">{dayResponseRows.length} respuestas</span>
+        </div>
+        {dayResponseRows.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay respuestas registradas para este día.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="wellness-table">
+              <thead>
+                <tr>
+                  <th>JUGADOR</th>
+                  <th>TIPO</th>
+                  <th>RPE</th>
+                  <th>ÁNIMO</th>
+                  <th>FÍSICO</th>
+                  <th>COMENTARIO</th>
+                  <th>ACCIÓN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayResponseRows.map(response => (
+                  <tr key={response.id}>
+                    <td>
+                      <div className="player-cell">
+                        <div className="wellness-avatar">{String(response.jugador).charAt(0)}</div>
+                        {String(response.jugador)}
+                      </div>
+                    </td>
+                    <td>{response.event_type}</td>
+                    <td><span className="wellness-dot dot-rpe">{response.rpe}</span></td>
+                    <td><span className="wellness-dot dot-animo">{response.animo}</span></td>
+                    <td><span className="wellness-dot dot-fisico">{response.fisico}</span></td>
+                    <td>
+                      <span className="wellness-molestia">
+                        {response.molestias?.trim() || 'Sin comentario'}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="wellness-table-delete"
+                        onClick={() => void handleDeleteResponse(response.id)}
+                        disabled={deletingId === response.id}
+                      >
+                        {deletingId === response.id ? 'ELIMINANDO...' : 'ELIMINAR'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Tendencias temporales */}
@@ -521,6 +632,7 @@ function WellnessDashboard() {
                   <th>FECHA</th>
                   <th>JUGADOR</th>
                   <th>COMENTARIO / MOLESTIA</th>
+                  <th>ACCIÓN</th>
                 </tr>
               </thead>
               <tbody>
@@ -534,6 +646,15 @@ function WellnessDashboard() {
                       </div>
                     </td>
                     <td><span className="wellness-molestia">{c.texto}</span></td>
+                    <td>
+                      <button
+                        className="wellness-table-delete"
+                        onClick={() => void handleDeleteResponse(c.id)}
+                        disabled={deletingId === c.id}
+                      >
+                        {deletingId === c.id ? 'ELIMINANDO...' : 'ELIMINAR'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
