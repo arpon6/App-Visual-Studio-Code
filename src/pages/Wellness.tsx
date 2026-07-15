@@ -8,12 +8,23 @@ interface WellnessResponse {
   id: string;
   player_id: string;
   event_date: string;
-  event_type: string;
-  rpe: number;
-  animo: number;
-  fisico: number;
+  event_type: WellnessTestType;
+  rpe: number | null;
+  animo: number | null;
+  fisico: number | null;
   molestias: string | null;
   created_at: string;
+}
+
+type WellnessTestType = 'pre_entrenamiento' | 'post_entrenamiento';
+
+const WELLNESS_TEST_OPTIONS: { type: WellnessTestType; label: string; shortLabel: string }[] = [
+  { type: 'pre_entrenamiento', label: 'PRE ENTRENAMIENTO', shortLabel: 'PRE' },
+  { type: 'post_entrenamiento', label: 'POST ENTRENAMIENTO', shortLabel: 'POST' },
+];
+
+function testTypeLabel(type: WellnessTestType) {
+  return WELLNESS_TEST_OPTIONS.find(option => option.type === type)?.label || 'TEST';
 }
 
 interface WellnessPoint {
@@ -150,13 +161,15 @@ function CategoryAveragesChart({ data }: { data: { label: string; value: number;
 function WellnessJugador({ playerId }: { playerId: string }) {
   const today = todayISO();
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([]);
-  const [rpe, setRpe] = useState(5);
-  const [animo, setAnimo] = useState(5);
-  const [fisico, setFisico] = useState(5);
-  const [molestias, setMolestias] = useState('');
+  const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
+  const [rpe, setRpe] = useState(3);
+  const [animo, setAnimo] = useState(3);
+  const [fisico, setFisico] = useState(3);
+  const [comentario, setComentario] = useState('');
   const [saving, setSaving] = useState(false);
   const [alreadySent, setAlreadySent] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [statusType, setStatusType] = useState<'error' | 'success'>('error');
   const [loadingExisting, setLoadingExisting] = useState(false);
 
   // Cargar eventos del calendario desde localStorage
@@ -167,34 +180,47 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     } catch { /* ignore */ }
   }, []);
 
-  // Evento de hoy (entrenamiento o partido)
-  const todayEvent = useMemo(() => {
+  // El wellness solo está disponible cuando hay entrenamiento
+  const hasTrainingToday = useMemo(() => {
     const display = isoToDisplay(today);
-    return calEvents.find(e => e.date === display && (e.type === 'entrenamiento' || e.type === 'partido'));
+    return calEvents.some(e => e.date === display && e.type === 'entrenamiento');
   }, [calEvents, today]);
 
-  // Comprobar si ya respondió hoy
   useEffect(() => {
-    if (!todayEvent) return;
+    if (!hasTrainingToday) {
+      setAlreadySent(false);
+      setRpe(3);
+      setAnimo(3);
+      setFisico(3);
+      setComentario('');
+      return;
+    }
+
     const loadExisting = async () => {
       setLoadingExisting(true);
+      setStatusMsg('');
       try {
         const { data } = await supabase
           .from('wellness_responses')
           .select('*')
           .eq('player_id', playerId)
           .eq('event_date', today)
+          .eq('event_type', testType)
           .maybeSingle();
 
         if (data) {
           const existing = data as WellnessResponse;
-          setRpe(existing.rpe);
-          setAnimo(existing.animo);
-          setFisico(existing.fisico);
-          setMolestias(existing.molestias || '');
+          setRpe(existing.rpe ?? 3);
+          setAnimo(existing.animo ?? 3);
+          setFisico(existing.fisico ?? 3);
+          setComentario(existing.molestias || '');
           setAlreadySent(true);
         } else {
           setAlreadySent(false);
+          setRpe(3);
+          setAnimo(3);
+          setFisico(3);
+          setComentario('');
         }
       } finally {
         setLoadingExisting(false);
@@ -202,57 +228,77 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     };
 
     void loadExisting();
-  }, [playerId, today, todayEvent]);
+  }, [hasTrainingToday, playerId, testType, today]);
 
   const handleSubmit = async () => {
-    if (!todayEvent) return;
+    if (!hasTrainingToday) return;
     setSaving(true);
-    const { error } = await supabase.from('wellness_responses').upsert({
+    setStatusMsg('');
+
+    const payload = {
       player_id: playerId,
       event_date: today,
-      event_type: todayEvent.type,
-      rpe, animo, fisico,
-      molestias: molestias.trim() || null,
-    }, { onConflict: 'player_id,event_date' });
+      event_type: testType,
+      rpe: testType === 'post_entrenamiento' ? rpe : null,
+      animo: testType === 'pre_entrenamiento' ? animo : null,
+      fisico: testType === 'pre_entrenamiento' ? fisico : null,
+      molestias: comentario.trim() || null,
+    };
+
+    const { error } = await supabase
+      .from('wellness_responses')
+      .upsert(payload, { onConflict: 'player_id,event_date,event_type' });
+
     setSaving(false);
-    if (error) { setStatusMsg('Error al guardar. Inténtalo de nuevo.'); return; }
+
+    if (error) {
+      setStatusType('error');
+      setStatusMsg('Error al guardar. Inténtalo de nuevo.');
+      return;
+    }
+
     setAlreadySent(true);
-    setStatusMsg('');
+    setStatusType('success');
+    setStatusMsg(`${testTypeLabel(testType)} guardado correctamente.`);
   };
 
   const handleDelete = async () => {
-    if (!todayEvent) return;
+    if (!hasTrainingToday) return;
     setSaving(true);
+    setStatusMsg('');
     const { error } = await supabase
       .from('wellness_responses')
       .delete()
       .eq('player_id', playerId)
-      .eq('event_date', today);
+      .eq('event_date', today)
+      .eq('event_type', testType);
     setSaving(false);
 
     if (error) {
+      setStatusType('error');
       setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
       return;
     }
 
     setAlreadySent(false);
-    setRpe(5);
-    setAnimo(5);
-    setFisico(5);
-    setMolestias('');
-    setStatusMsg('Respuesta eliminada. Puedes volver a enviarla.');
+    setRpe(3);
+    setAnimo(3);
+    setFisico(3);
+    setComentario('');
+    setStatusType('success');
+    setStatusMsg(`${testTypeLabel(testType)} eliminado. Puedes volver a enviarlo.`);
   };
 
   const dayName = new Date(today + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  if (!todayEvent) {
+  if (!hasTrainingToday) {
     return (
       <div className="wellness-no-event card">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
         </svg>
-        <p>No hay entrenamiento ni partido programado para hoy.</p>
-        <small>El cuestionario estará disponible los días con evento en el calendario.</small>
+        <p>Hoy no hay entrenamiento programado.</p>
+        <small>Los tests Pre/Post solo aparecen cuando el calendario tiene un evento de entrenamiento.</small>
       </div>
     );
   }
@@ -260,9 +306,22 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   return (
     <div className="wellness-two-col">
       <div className="card wellness-form-card">
+        <div className="wellness-test-switch" role="tablist" aria-label="Tipo de test">
+          {WELLNESS_TEST_OPTIONS.map(option => (
+            <button
+              key={option.type}
+              type="button"
+              className={testType === option.type ? 'active' : ''}
+              onClick={() => setTestType(option.type)}
+              disabled={saving || loadingExisting}
+            >
+              {option.shortLabel}
+            </button>
+          ))}
+        </div>
         <div className="wellness-form-title">
           <div>
-            <h2>CUESTIONARIO {todayEvent.type.toUpperCase()}</h2>
+            <h2>{testTypeLabel(testType)}</h2>
           </div>
           <div className="wellness-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -274,63 +333,67 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         {loadingExisting ? (
           <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p>
         ) : alreadySent ? (
-          <p className="wellness-response-hint success">Ya has enviado hoy. Puedes editar y guardar cambios o eliminar tu respuesta.</p>
+          <p className="wellness-response-hint success">Ya has enviado tu {testTypeLabel(testType)} de hoy. Puedes editar o eliminar la respuesta.</p>
         ) : null}
 
-        {/* RPE */}
-        <div className="wellness-slider-group">
-          <div className="wellness-slider-label">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-            ESFUERZO PERCIBIDO (RPE)
-            <span className={`wellness-slider-value val-rpe`}>{rpe}</span>
-          </div>
-          <WellnessSlider value={rpe} onChange={setRpe} colorClass="rpe" labelMin="MUY SUAVE" labelMax="MÁXIMO" />
-        </div>
+        {testType === 'pre_entrenamiento' ? (
+          <>
+            <div className="wellness-slider-group">
+              <div className="wellness-slider-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                ESTADO FÍSICO
+                <span className="wellness-slider-value val-fisico">{fisico}</span>
+              </div>
+              <WellnessSlider value={fisico} onChange={setFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" />
+            </div>
 
-        {/* Ánimo */}
-        <div className="wellness-slider-group">
-          <div className="wellness-slider-label">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
-            ESTADO ANÍMICO TRAS {todayEvent.type.toUpperCase()}
-            <span className="wellness-slider-value val-animo">{animo}</span>
+            <div className="wellness-slider-group">
+              <div className="wellness-slider-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+                ESTADO ANÍMICO
+                <span className="wellness-slider-value val-animo">{animo}</span>
+              </div>
+              <WellnessSlider value={animo} onChange={setAnimo} min={1} max={5} colorClass="animo" labelMin="BAJO" labelMax="ÓPTIMO" />
+            </div>
+          </>
+        ) : (
+          <div className="wellness-slider-group">
+            <div className="wellness-slider-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+              ESFUERZO PERCIBIDO
+              <span className="wellness-slider-value val-rpe">{rpe}</span>
+            </div>
+            <WellnessSlider value={rpe} onChange={setRpe} min={1} max={5} colorClass="rpe" labelMin="MUY SUAVE" labelMax="MUY ALTO" />
           </div>
-          <WellnessSlider value={animo} onChange={setAnimo} colorClass="animo" labelMin="MUY MAL" labelMax="EXCELENTE" />
-        </div>
+        )}
 
-        {/* Físico */}
-        <div className="wellness-slider-group">
-          <div className="wellness-slider-label">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-            ESTADO FÍSICO
-            <span className="wellness-slider-value val-fisico">{fisico}</span>
-          </div>
-          <WellnessSlider value={fisico} onChange={setFisico} colorClass="fisico" labelMin="MUY FATIGADO" labelMax="PLENA FORMA" />
-        </div>
-
-        {/* Molestias */}
         <div className="wellness-slider-group">
           <div className="wellness-slider-label">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
-            MOLESTIAS O COMENTARIOS
+            {testType === 'pre_entrenamiento' ? 'ACLARACIONES' : 'OBSERVACIÓN O MOLESTIA'}
           </div>
           <textarea
             className="wellness-textarea"
-            placeholder="Escribe aquí si tienes alguna molestia física..."
-            value={molestias}
-            onChange={e => setMolestias(e.target.value)}
+            placeholder={testType === 'pre_entrenamiento' ? 'Escribe cualquier aclaración previa al entrenamiento...' : 'Escribe cualquier observación o molestia tras el entrenamiento...'}
+            value={comentario}
+            onChange={e => setComentario(e.target.value)}
           />
         </div>
 
-        {statusMsg && <p style={{ color: '#ff5252', fontSize: 13, marginBottom: 8 }}>{statusMsg}</p>}
+        {statusMsg && (
+          <p style={{ color: statusType === 'error' ? '#ff7b7b' : '#9af5c3', fontSize: 13, marginBottom: 8 }}>
+            {statusMsg}
+          </p>
+        )}
 
         <div className="wellness-actions">
           <button className="wellness-submit" onClick={handleSubmit} disabled={saving || loadingExisting}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-            {saving ? 'GUARDANDO...' : alreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR CUESTIONARIO'}
+            {saving ? 'GUARDANDO...' : alreadySent ? 'GUARDAR CAMBIOS' : `ENVIAR ${WELLNESS_TEST_OPTIONS.find(option => option.type === testType)?.shortLabel}`}
           </button>
           {alreadySent && (
             <button className="wellness-delete" onClick={handleDelete} disabled={saving || loadingExisting}>
-              ELIMINAR RESPUESTA
+              ELIMINAR {WELLNESS_TEST_OPTIONS.find(option => option.type === testType)?.shortLabel}
             </button>
           )}
         </div>
@@ -361,6 +424,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 function WellnessDashboard() {
   const jugadores = usePlantilla();
   const [refDate, setRefDate] = useState(todayISO());
+  const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dashboardMsg, setDashboardMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
@@ -372,7 +436,7 @@ function WellnessDashboard() {
   const monthFrom = monthStart(refDate);
   const monthTo = addDays(addMonths(monthFrom, 1), -1);
 
-  const weekLabel = `${isoToDisplay(weekFrom)} – ${isoToDisplay(weekTo)}`;
+  const weekLabel = `${isoToDisplay(weekFrom)} - ${isoToDisplay(weekTo)}`;
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   useEffect(() => {
@@ -396,20 +460,32 @@ function WellnessDashboard() {
 
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
 
-  const avg = (arr: number[]) => arr.length ? +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0;
+  const responsesByType = useMemo(
+    () => responses.filter(response => response.event_type === testType),
+    [responses, testType],
+  );
 
   const dayResponses = useMemo(
-    () => responses.filter(r => r.event_date >= dayFrom && r.event_date <= dayTo),
-    [responses, dayFrom, dayTo],
+    () => responsesByType.filter(r => r.event_date >= dayFrom && r.event_date <= dayTo),
+    [responsesByType, dayFrom, dayTo],
   );
 
   const weekResponses = useMemo(
-    () => responses.filter(r => r.event_date >= weekFrom && r.event_date <= weekTo),
-    [responses, weekFrom, weekTo],
+    () => responsesByType.filter(r => r.event_date >= weekFrom && r.event_date <= weekTo),
+    [responsesByType, weekFrom, weekTo],
   );
 
-  const monthResponses = responses;
+  const monthResponses = responsesByType;
   const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
+
+  const avgNullable = (arr: Array<number | null>) => {
+    const valid = arr.filter((value): value is number => typeof value === 'number');
+    return valid.length ? +(valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1) : 0;
+  };
+
+  const avgFisicoMes = avgNullable(monthResponses.map(response => response.fisico));
+  const avgAnimoMes = avgNullable(monthResponses.map(response => response.animo));
+  const avgRpeMes = avgNullable(monthResponses.map(response => response.rpe));
 
   const handleDeleteResponse = async (responseId: string) => {
     const shouldDelete = window.confirm('¿Quieres eliminar esta respuesta de wellness? Esta acción no se puede deshacer.');
@@ -434,28 +510,9 @@ function WellnessDashboard() {
     setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
   };
 
-  const buildChartDataByPlayer = (rows: WellnessResponse[]) => {
-    return jugadores
-      .map(j => {
-        const rs = rows.filter(r => String(r.player_id) === String(j.id));
-        if (!rs.length) return null;
-        return {
-          label: j.nombre.split(' ')[0],
-          rpe: avg(rs.map(r => r.rpe)),
-          animo: avg(rs.map(r => r.animo)),
-          fisico: avg(rs.map(r => r.fisico)),
-        };
-      })
-      .filter(Boolean) as WellnessPoint[];
-  };
-
-  const dayChartData = useMemo(() => buildChartDataByPlayer(dayResponses), [dayResponses, jugadores]);
-  const weekChartData = useMemo(() => buildChartDataByPlayer(weekResponses), [weekResponses, jugadores]);
-  const monthChartData = useMemo(() => buildChartDataByPlayer(monthResponses), [monthResponses, jugadores]);
-
   const dayResponseRows = useMemo(() => {
     return [...dayResponses]
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map(response => ({
         ...response,
         jugador: playersById.get(String(response.player_id)) || String(response.player_id),
@@ -472,7 +529,7 @@ function WellnessDashboard() {
         jugador: playersById.get(String(r.player_id)) || String(r.player_id),
         texto: r.molestias?.trim() || '',
       }));
-  }, [jugadores, monthResponses]);
+  }, [monthResponses, playersById]);
 
   return (
     <div className="wellness-page">
@@ -481,9 +538,21 @@ function WellnessDashboard() {
         <div>
           <div className="badge">WELLNESS</div>
           <h1>Cuestionario Wellness</h1>
-          <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO DE CARGA Y ESTADO DEL DEPORTISTA</small>
+          <small style={{ color: 'var(--text-muted)' }}>SEGUIMIENTO PRE Y POST DE CADA ENTRENAMIENTO</small>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="wellness-test-switch" role="tablist" aria-label="Filtro de test">
+            {WELLNESS_TEST_OPTIONS.map(option => (
+              <button
+                key={option.type}
+                type="button"
+                className={testType === option.type ? 'active' : ''}
+                onClick={() => setTestType(option.type)}
+              >
+                {option.shortLabel}
+              </button>
+            ))}
+          </div>
           <div className="wellness-date-nav">
             <button onClick={() => navigate(-1)}>‹</button>
             <span>{isoToDisplay(refDate)}</span>
@@ -524,9 +593,11 @@ function WellnessDashboard() {
         <div className="wellness-kpi">
           <div className="wellness-kpi-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b8fa8" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-            COMENTARIOS ESCRITOS
+            {testType === 'pre_entrenamiento' ? 'PROMEDIO FÍSICO / ÁNIMO' : 'PROMEDIO ESFUERZO'}
           </div>
-          <div className="wellness-kpi-value">{comentarios.length}</div>
+          <div className="wellness-kpi-value">
+            {testType === 'pre_entrenamiento' ? `${avgFisicoMes || 0} / ${avgAnimoMes || 0}` : `${avgRpeMes || 0}`}
+          </div>
         </div>
       </div>
 
@@ -534,7 +605,7 @@ function WellnessDashboard() {
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <small>Detalle editable por fecha</small>
-            <h2>Respuestas del día seleccionado</h2>
+            <h2>{testTypeLabel(testType)} del día seleccionado</h2>
           </div>
           <span className="wellness-responses-count">{dayResponseRows.length} respuestas</span>
         </div>
@@ -546,11 +617,19 @@ function WellnessDashboard() {
               <thead>
                 <tr>
                   <th>JUGADOR</th>
-                  <th>TIPO</th>
-                  <th>RPE</th>
-                  <th>ÁNIMO</th>
-                  <th>FÍSICO</th>
-                  <th>COMENTARIO</th>
+                  <th>FECHA</th>
+                  {testType === 'pre_entrenamiento' ? (
+                    <>
+                      <th>ESTADO FÍSICO</th>
+                      <th>ESTADO ANÍMICO</th>
+                      <th>ACLARACIÓN</th>
+                    </>
+                  ) : (
+                    <>
+                      <th>ESFUERZO PERCIBIDO</th>
+                      <th>OBSERVACIÓN / MOLESTIA</th>
+                    </>
+                  )}
                   <th>ACCIÓN</th>
                 </tr>
               </thead>
@@ -563,15 +642,19 @@ function WellnessDashboard() {
                         {String(response.jugador)}
                       </div>
                     </td>
-                    <td>{response.event_type}</td>
-                    <td><span className="wellness-dot dot-rpe">{response.rpe}</span></td>
-                    <td><span className="wellness-dot dot-animo">{response.animo}</span></td>
-                    <td><span className="wellness-dot dot-fisico">{response.fisico}</span></td>
-                    <td>
-                      <span className="wellness-molestia">
-                        {response.molestias?.trim() || 'Sin comentario'}
-                      </span>
-                    </td>
+                    <td>{isoToDisplay(response.event_date)}</td>
+                    {testType === 'pre_entrenamiento' ? (
+                      <>
+                        <td><span className="wellness-dot dot-fisico">{response.fisico ?? '-'}</span></td>
+                        <td><span className="wellness-dot dot-animo">{response.animo ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.molestias?.trim() || 'Sin aclaración'}</span></td>
+                      </>
+                    ) : (
+                      <>
+                        <td><span className="wellness-dot dot-rpe">{response.rpe ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.molestias?.trim() || 'Sin observación'}</span></td>
+                      </>
+                    )}
                     <td>
                       <button
                         className="wellness-table-delete"
@@ -589,36 +672,12 @@ function WellnessDashboard() {
         )}
       </div>
 
-      {/* Tendencias temporales */}
-      <div className="card">
-        <div className="section-header">
-          <div>
-            <small>Promedios por jugador</small>
-            <h2>Gráficos por día, semana y mes</h2>
-          </div>
-        </div>
-        <div className="wellness-trends-grid">
-          <div className="wellness-trend-card">
-            <h3>Día {isoToDisplay(refDate)}</h3>
-            {dayChartData.length ? <GroupedWellnessChart data={dayChartData} /> : <p className="wellness-empty-chart">No hay respuestas en este día.</p>}
-          </div>
-          <div className="wellness-trend-card">
-            <h3>Semana {weekLabel}</h3>
-            {weekChartData.length ? <GroupedWellnessChart data={weekChartData} /> : <p className="wellness-empty-chart">No hay respuestas en esta semana.</p>}
-          </div>
-          <div className="wellness-trend-card">
-            <h3>Mes {monthLabel}</h3>
-            {monthChartData.length ? <GroupedWellnessChart data={monthChartData} /> : <p className="wellness-empty-chart">No hay respuestas en este mes.</p>}
-          </div>
-        </div>
-      </div>
-
       {/* Comentarios escritos */}
       <div className="card">
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <small>Texto aportado por los jugadores</small>
-            <h2>Comentarios y molestias del mes</h2>
+            <small>{weekLabel} · {monthLabel}</small>
+            <h2>{testTypeLabel(testType)}: comentarios del mes</h2>
           </div>
           <span className="wellness-responses-count">{comentarios.length} comentarios</span>
         </div>

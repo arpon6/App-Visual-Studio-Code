@@ -7,6 +7,7 @@ import PeriodoAdaptativo from '../pages/PeriodoAdaptativo';
 import SecuenciacionDeContenidos from '../pages/SecuenciacionDeContenidos';
 import GeneradorDeSesiones from '../pages/GeneradorDeSesiones';
 import PlanDePartido from '../pages/PlanDePartido';
+import AnalisisDelRival from '../pages/AnalisisDelRival';
 import AnalisisDePartido from '../pages/AnalisisDePartido';
 import CortadorDeVideo from '../pages/CortadorDeVideo';
 import EditorDeImagenes from '../pages/EditorDeImagenes';
@@ -29,6 +30,7 @@ type AppPageDefinition = {
 
 const STAFF_ROLES = ['entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'] as const;
 const SHARED_ROLES = ['jugador', ...STAFF_ROLES] as const;
+const RIVAL_ANALYSIS_ROLES = ['entrenador', 'directivo', 'SUPER_ADMIN'] as const;
 
 export const APP_PAGES = [
   { key: 'Inicio', component: Inicio, visibleTo: SHARED_ROLES, showOnHome: false },
@@ -38,6 +40,7 @@ export const APP_PAGES = [
   { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: STAFF_ROLES },
   { key: 'Generador de sesiones', component: GeneradorDeSesiones, visibleTo: STAFF_ROLES },
   { key: 'Plan de Partido', component: PlanDePartido, visibleTo: STAFF_ROLES },
+  { key: 'Análisis del rival', component: AnalisisDelRival, visibleTo: RIVAL_ANALYSIS_ROLES },
   { key: 'Desarrollo grupal', component: AnalisisDePartido, visibleTo: SHARED_ROLES },
   { key: 'Desarrollo Individual', component: DesarrolloIndividual, visibleTo: SHARED_ROLES },
   { key: 'Wellness', component: Wellness, visibleTo: SHARED_ROLES },

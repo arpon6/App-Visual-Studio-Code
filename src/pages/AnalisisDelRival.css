@@ -1,0 +1,146 @@
+.rival-loading,
+.rival-empty-state {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: #a1b0d6;
+  text-align: center;
+}
+
+.rival-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rival-field {
+  display: grid;
+  gap: 8px;
+}
+
+.rival-field span {
+  color: #a1b0d6;
+  font-size: 0.85rem;
+}
+
+.rival-field input,
+.rival-field select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 18, 30, 0.95);
+  color: #d7e0ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.rival-save-error {
+  color: #ff9b9b;
+  font-size: 0.82rem;
+}
+
+.rival-table-wrap {
+  width: 100%;
+  overflow: auto;
+}
+
+.rival-players-table {
+  min-width: 820px;
+}
+
+.rival-players-table td:first-child {
+  color: #7f96bc;
+  width: 48px;
+}
+
+.rival-players-table input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(11, 21, 36, 0.9);
+  color: #d7e0ff;
+  padding: 8px 10px;
+}
+
+.rival-boards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rival-board-block {
+  display: grid;
+  gap: 10px;
+}
+
+.rival-board-block h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.rival-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rival-model-card {
+  background: rgba(14, 26, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.rival-model-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rival-model-card textarea {
+  min-height: 180px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(8, 15, 26, 0.9);
+  color: #d7e0ff;
+  padding: 12px;
+  line-height: 1.45;
+}
+
+.rival-model-card--strengths {
+  box-shadow: inset 0 0 0 1px rgba(61, 255, 186, 0.14);
+}
+
+.rival-model-card--weaknesses {
+  box-shadow: inset 0 0 0 1px rgba(255, 152, 102, 0.14);
+}
+
+.rival-export-team {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(61, 153, 255, 0.14);
+  border: 1px solid rgba(61, 153, 255, 0.32);
+  color: #cdd4f1;
+  font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+  .rival-boards-grid,
+  .rival-model-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .rival-selector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rival-players-table {
+    min-width: 680px;
+  }
+}

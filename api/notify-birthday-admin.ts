@@ -54,6 +54,9 @@ function monthDayFromISO(isoDate: string): string | null {
 }
 
 export default async function handler(req: Req, res: Res) {
+  const vercelCronHeader = req.headers?.['x-vercel-cron'];
+  console.log('[notify-birthday-admin] invoked', { method: req.method, vercelCronHeader: vercelCronHeader || null });
+
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -66,6 +69,7 @@ export default async function handler(req: Req, res: Res) {
     const validAuth = authHeader === `Bearer ${cronSecret}`;
     const validCronHeader = cronHeader === cronSecret;
     if (!validAuth && !validCronHeader) {
+      console.warn('[notify-birthday-admin] unauthorized call');
       return res.status(401).json({ error: 'Unauthorized cron call' });
     }
   }
@@ -77,20 +81,16 @@ export default async function handler(req: Req, res: Res) {
   const senderName = process.env.BREVO_SENDER_NAME || process.env.VITE_BREVO_SENDER_NAME || 'Mi Club';
 
   if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('[notify-birthday-admin] missing supabase server credentials');
     return res.status(500).json({ error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' });
   }
   if (!brevoApiKey || !senderEmail) {
+    console.error('[notify-birthday-admin] missing brevo server credentials');
     return res.status(500).json({ error: 'Missing Brevo server credentials' });
   }
 
   const now = new Date();
   const madrid = getMadridParts(now);
-  const forceRun = req.query?.force === '1' || req.headers?.['x-force-run'] === '1';
-
-  // Ejecutamos el cron cada hora y solo enviamos exactamente a las 08:00 de Madrid.
-  if (!forceRun && !(madrid.hour === '08' && madrid.minute === '00')) {
-    return res.status(200).json({ ok: true, skipped: 'Not 08:00 in Europe/Madrid', at: madrid });
-  }
 
   const todayIso = `${madrid.year}-${madrid.month}-${madrid.day}`;
   const todayMonthDay = `${madrid.month}-${madrid.day}`;
@@ -110,12 +110,15 @@ export default async function handler(req: Req, res: Res) {
 
   if (lockError) {
     if (String(lockError.message || '').toLowerCase().includes('duplicate key')) {
+      console.log('[notify-birthday-admin] already processed today', { date: todayIso });
       return res.status(200).json({ ok: true, skipped: 'Already sent today', date: todayIso });
     }
+    console.error('[notify-birthday-admin] lock error', { message: lockError.message });
     return res.status(500).json({ error: 'Failed notification lock', details: lockError.message });
   }
 
   if (!lockData) {
+    console.log('[notify-birthday-admin] lock already exists', { date: todayIso });
     return res.status(200).json({ ok: true, skipped: 'Already processed today', date: todayIso });
   }
 
@@ -125,6 +128,7 @@ export default async function handler(req: Req, res: Res) {
     .not('birth_date', 'is', null);
 
   if (playersError) {
+    console.error('[notify-birthday-admin] players query error', { message: playersError.message });
     return res.status(500).json({ error: 'Failed loading birthdays', details: playersError.message });
   }
 
@@ -137,6 +141,7 @@ export default async function handler(req: Req, res: Res) {
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'es'));
 
   if (birthdayPlayers.length === 0) {
+    console.log('[notify-birthday-admin] no birthdays today', { date: todayIso });
     await supabase
       .from('birthday_email_notifications')
       .update({
@@ -157,6 +162,7 @@ export default async function handler(req: Req, res: Res) {
     .not('email', 'is', null);
 
   if (adminsError) {
+    console.error('[notify-birthday-admin] admins query error', { message: adminsError.message });
     return res.status(500).json({ error: 'Failed loading admin users', details: adminsError.message });
   }
 
@@ -165,6 +171,7 @@ export default async function handler(req: Req, res: Res) {
     .filter(Boolean)));
 
   if (to.length === 0) {
+    console.warn('[notify-birthday-admin] no admin emails', { date: todayIso, birthdays: birthdayPlayers.length });
     await supabase
       .from('birthday_email_notifications')
       .update({
@@ -208,6 +215,7 @@ export default async function handler(req: Req, res: Res) {
 
   const emailBody = await emailResponse.text();
   if (!emailResponse.ok) {
+    console.error('[notify-birthday-admin] brevo send error', { status: emailResponse.status });
     await supabase
       .from('birthday_email_notifications')
       .update({
@@ -236,6 +244,12 @@ export default async function handler(req: Req, res: Res) {
       },
     })
     .eq('notification_date', todayIso);
+
+  console.log('[notify-birthday-admin] sent', {
+    date: todayIso,
+    recipients: to.length,
+    birthdays: birthdayPlayers.length,
+  });
 
   return res.status(200).json({
     ok: true,
