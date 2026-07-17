@@ -544,7 +544,9 @@ function AnalisisDelRival() {
         throw new Error(String(result?.error || 'No se pudo escribir en Google Sheets.'));
       }
 
-      setSheetPushStatus('Google Sheets actualizado correctamente.');
+      const remoteMode = String(result?.result?.mode || 'ok');
+      const remoteRows = Number(result?.result?.updatedRows || players.length);
+      setSheetPushStatus(`Google Sheets actualizado correctamente (${remoteRows} filas, modo ${remoteMode}).`);
       setTeamsData((prev) => ({
         ...prev,
         [selectedTeam]: {
@@ -554,8 +556,6 @@ function AnalisisDelRival() {
           sheetLastSync: String(result?.syncedAt || new Date().toISOString()),
         },
       }));
-
-      await syncPlayersFromSheet(selectedTeam, true);
     } catch (error) {
       console.error('Error escribiendo Google Sheet del analisis rival:', error);
       setSheetPushError((error as Error).message || 'No se pudo escribir en Google Sheets.');

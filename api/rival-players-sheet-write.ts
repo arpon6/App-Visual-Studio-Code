@@ -71,9 +71,13 @@ export default async function handler(req: Req, res: Res) {
 
     const raw = await response.text();
     let payload: unknown = raw;
+    let parsedPayload: Record<string, unknown> | null = null;
 
     try {
       payload = JSON.parse(raw);
+      if (payload && typeof payload === 'object') {
+        parsedPayload = payload as Record<string, unknown>;
+      }
     } catch {
       // Keep raw body.
     }
@@ -82,6 +86,14 @@ export default async function handler(req: Req, res: Res) {
       return res.status(response.status).json({
         error: 'Google Apps Script write failed',
         details: payload,
+      });
+    }
+
+    // Google Apps Script web apps usually return HTTP 200 even for logical errors.
+    if (parsedPayload && parsedPayload.ok === false) {
+      return res.status(502).json({
+        error: String(parsedPayload.error || 'Google Apps Script logical error'),
+        details: parsedPayload,
       });
     }
 
