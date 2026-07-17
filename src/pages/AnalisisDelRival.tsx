@@ -534,7 +534,7 @@ function AnalisisDelRival() {
   const pushPlayersToSheet = async () => {
     if (!selectedTeam || !currentTeamData) return;
 
-    const players = sortPlayersByNumber(currentTeamData.players).filter((row) => row.fullName || row.number || row.traits);
+    const players = currentTeamData.players.filter((row) => row.fullName || row.number || row.traits);
     if (players.length === 0) {
       setSheetPushError('No hay jugadores para enviar a Google Sheets.');
       setSheetPushStatus('');
