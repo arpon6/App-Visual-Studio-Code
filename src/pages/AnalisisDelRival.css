@@ -50,6 +50,13 @@
   justify-items: end;
 }
 
+.rival-sync-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .rival-sync-caption {
   color: #a1b0d6;
   font-size: 0.8rem;
@@ -191,6 +198,10 @@
   .rival-sync-box {
     width: 100%;
     justify-items: stretch;
+  }
+
+  .rival-sync-actions {
+    justify-content: stretch;
   }
 
   .rival-selector-grid {

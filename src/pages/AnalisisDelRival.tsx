@@ -251,6 +251,9 @@ function AnalisisDelRival() {
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [sheetSyncError, setSheetSyncError] = useState('');
   const [sheetSyncStatus, setSheetSyncStatus] = useState('');
+  const [pushingSheet, setPushingSheet] = useState(false);
+  const [sheetPushError, setSheetPushError] = useState('');
+  const [sheetPushStatus, setSheetPushStatus] = useState('');
 
   const hydratedRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -269,7 +272,6 @@ function AnalisisDelRival() {
   const sharedStateKey = useMemo(() => buildSeasonScopedKey(SHARED_STATE_KEY, activeSeason), [activeSeason]);
 
   const currentTeamData = selectedTeam ? (teamsData[selectedTeam] ?? createDefaultTeamData()) : null;
-  const isSheetBacked = Boolean(currentTeamData?.sheetSynced);
 
   const rivalPlayers = useMemo<Player[]>(() => {
     if (!currentTeamData) return [];
@@ -505,11 +507,62 @@ function AnalisisDelRival() {
   };
 
   const updatePlayerRow = (rowId: number, field: keyof Omit<RivalPlayerRow, 'id'>, value: string) => {
-    if (isSheetBacked) return;
     updateCurrentTeam((prev) => ({
       ...prev,
       players: prev.players.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
     }));
+  };
+
+  const pushPlayersToSheet = async () => {
+    if (!selectedTeam || !currentTeamData) return;
+
+    const players = currentTeamData.players.filter((row) => row.fullName || row.number || row.traits);
+    if (players.length === 0) {
+      setSheetPushError('No hay jugadores para enviar a Google Sheets.');
+      setSheetPushStatus('');
+      return;
+    }
+
+    setPushingSheet(true);
+    setSheetPushError('');
+    setSheetPushStatus('Volcando datos a Google Sheets...');
+
+    try {
+      const response = await fetch('/api/rival-players-sheet-write', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          team: selectedTeam,
+          players,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(String(result?.error || 'No se pudo escribir en Google Sheets.'));
+      }
+
+      setSheetPushStatus('Google Sheets actualizado correctamente.');
+      setTeamsData((prev) => ({
+        ...prev,
+        [selectedTeam]: {
+          ...(prev[selectedTeam] ?? createDefaultTeamData()),
+          players,
+          sheetSynced: true,
+          sheetLastSync: String(result?.syncedAt || new Date().toISOString()),
+        },
+      }));
+
+      await syncPlayersFromSheet(selectedTeam, true);
+    } catch (error) {
+      console.error('Error escribiendo Google Sheet del analisis rival:', error);
+      setSheetPushError((error as Error).message || 'No se pudo escribir en Google Sheets.');
+      setSheetPushStatus('');
+    } finally {
+      setPushingSheet(false);
+    }
   };
 
   useEffect(() => {
@@ -671,13 +724,22 @@ function AnalisisDelRival() {
             </div>
             <div className="rival-sync-box">
               <span className="rival-sync-caption">Fuente: Google Sheets, columnas D, E y F</span>
-              <button
-                className="btn"
-                onClick={() => void syncPlayersFromSheet(selectedTeam, true)}
-                disabled={!selectedTeam || syncingSheet}
-              >
-                {syncingSheet ? 'Sincronizando...' : 'Resincronizar'}
-              </button>
+              <div className="rival-sync-actions">
+                <button
+                  className="btn"
+                  onClick={() => void syncPlayersFromSheet(selectedTeam, true)}
+                  disabled={!selectedTeam || syncingSheet}
+                >
+                  {syncingSheet ? 'Sincronizando...' : 'Resincronizar'}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void pushPlayersToSheet()}
+                  disabled={!selectedTeam || pushingSheet}
+                >
+                  {pushingSheet ? 'Guardando...' : 'Guardar en Google Sheets'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -719,6 +781,13 @@ function AnalisisDelRival() {
               )}
             </div>
           )}
+
+          {(sheetPushStatus || sheetPushError) && (
+            <div className="rival-sync-status-row">
+              {sheetPushStatus && <span className="rival-sync-ok">{sheetPushStatus}</span>}
+              {sheetPushError && <span className="rival-sync-error">{sheetPushError}</span>}
+            </div>
+          )}
         </div>
 
         {!selectedTeam && (
@@ -735,7 +804,7 @@ function AnalisisDelRival() {
                   <span className="section-badge">A</span>
                   <div>
                     <h2>Plantilla rival</h2>
-                    <small>{isSheetBacked ? 'Datos sincronizados desde Google Sheets' : 'Introduce jugadores, dorsal y caracteristicas clave'}</small>
+                    <small>Edicion bidireccional con Google Sheets: puedes sincronizar entrada y salida</small>
                   </div>
                 </div>
               </div>
@@ -760,7 +829,6 @@ function AnalisisDelRival() {
                             value={row.fullName}
                             onChange={(e) => updatePlayerRow(row.id, 'fullName', e.target.value)}
                             placeholder="Nombre del jugador"
-                            readOnly={isSheetBacked}
                           />
                         </td>
                         <td>
@@ -769,7 +837,6 @@ function AnalisisDelRival() {
                             value={row.number}
                             onChange={(e) => updatePlayerRow(row.id, 'number', e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
                             placeholder="00"
-                            readOnly={isSheetBacked}
                           />
                         </td>
                         <td>
@@ -778,7 +845,6 @@ function AnalisisDelRival() {
                             value={row.traits}
                             onChange={(e) => updatePlayerRow(row.id, 'traits', e.target.value)}
                             placeholder="Perfil, pierna, rol, comportamiento..."
-                            readOnly={isSheetBacked}
                           />
                         </td>
                       </tr>

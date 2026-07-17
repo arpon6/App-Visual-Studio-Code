@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../lib/AuthContext';
 import './Calendario.css';
@@ -94,19 +94,20 @@ function parseTaskMatrix(raw: string): MatrixTask[] {
     .filter(row => row.tipoTarea || row.intencion || row.socioestructura || row.nombre || row.descripcion);
 }
 
-const TASK_MATRIX = parseTaskMatrix(tareasMatrixCsv);
+const LOCAL_TASK_MATRIX = parseTaskMatrix(tareasMatrixCsv);
+const TASK_MATRIX_SYNC_INTERVAL_MS = 60 * 1000;
 
 function uniqueValues(rows: MatrixTask[], key: keyof Pick<MatrixTask, 'tipoTarea' | 'intencion' | 'socioestructura' | 'nombre'>): string[] {
   return [...new Set(rows.map(row => row[key]).filter(Boolean))];
 }
 
-function normalizeTarea(input: Tarea): Tarea {
+function normalizeTarea(input: Tarea, matrix: MatrixTask[]): Tarea {
   const next = { ...input };
 
-  const tipos = uniqueValues(TASK_MATRIX, 'tipoTarea');
+  const tipos = uniqueValues(matrix, 'tipoTarea');
   if (next.tipoTarea && !tipos.includes(next.tipoTarea)) next.tipoTarea = '';
 
-  let rows = next.tipoTarea ? TASK_MATRIX.filter(row => row.tipoTarea === next.tipoTarea) : TASK_MATRIX;
+  let rows = next.tipoTarea ? matrix.filter(row => row.tipoTarea === next.tipoTarea) : matrix;
 
   const intenciones = uniqueValues(rows, 'intencion');
   if (next.intencion && !intenciones.includes(next.intencion)) {
@@ -175,6 +176,15 @@ function valueOrDash(value: string): string {
   return clean || '-';
 }
 
+type MatrixApiResponse = {
+  ok: boolean;
+  source?: string;
+  count?: number;
+  tasks?: MatrixTask[];
+  syncedAt?: string;
+  error?: string;
+};
+
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MOMENTOS_SEMANA = ['+1', '+2', '+3', '-3', '-2', '-1'];
 const HORAS: string[] = [];
@@ -241,39 +251,40 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled = fa
   );
 }
 
-function TareaRow({ tarea, index, onChange, onRemove }: {
+function TareaRow({ tarea, index, matrix, onChange, onRemove }: {
   tarea: Tarea; index: number;
+  matrix: MatrixTask[];
   onChange: (id: number, patch: Partial<Tarea>) => void;
   onRemove: (id: number) => void;
 }) {
-  const tipos = useMemo(() => uniqueValues(TASK_MATRIX, 'tipoTarea'), []);
+  const tipos = useMemo(() => uniqueValues(matrix, 'tipoTarea'), [matrix]);
   const intenciones = useMemo(
     () => uniqueValues(
-      tarea.tipoTarea ? TASK_MATRIX.filter(row => row.tipoTarea === tarea.tipoTarea) : TASK_MATRIX,
+      tarea.tipoTarea ? matrix.filter(row => row.tipoTarea === tarea.tipoTarea) : matrix,
       'intencion'
     ),
-    [tarea.tipoTarea]
+    [matrix, tarea.tipoTarea]
   );
   const socioestructuras = useMemo(
     () => uniqueValues(
-      TASK_MATRIX.filter(row =>
+      matrix.filter(row =>
         (!tarea.tipoTarea || row.tipoTarea === tarea.tipoTarea) &&
         (!tarea.intencion || row.intencion === tarea.intencion)
       ),
       'socioestructura'
     ),
-    [tarea.tipoTarea, tarea.intencion]
+    [matrix, tarea.tipoTarea, tarea.intencion]
   );
   const nombres = useMemo(
     () => uniqueValues(
-      TASK_MATRIX.filter(row =>
+      matrix.filter(row =>
         (!tarea.tipoTarea || row.tipoTarea === tarea.tipoTarea) &&
         (!tarea.intencion || row.intencion === tarea.intencion) &&
         (!tarea.socioestructura || row.socioestructura === tarea.socioestructura)
       ),
       'nombre'
     ),
-    [tarea.tipoTarea, tarea.intencion, tarea.socioestructura]
+    [matrix, tarea.tipoTarea, tarea.intencion, tarea.socioestructura]
   );
 
   const cell: React.CSSProperties = { padding: '6px 4px', verticalAlign: 'top' };
@@ -378,6 +389,10 @@ function GeneradorDeSesiones() {
   const { user } = useAuth();
   if (user?.role === 'jugador') return <div className="page-section">No tienes acceso a esta sección.</div>;
 
+  const [taskMatrix, setTaskMatrix] = useState<MatrixTask[]>(LOCAL_TASK_MATRIX);
+  const [matrixStatus, setMatrixStatus] = useState('Sincronizando matriz...');
+  const [matrixError, setMatrixError] = useState('');
+
   const [mes, setMes] = useState('');
   const [momentoSemana, setMomentoSemana] = useState('');
   const [hora, setHora] = useState('');
@@ -390,6 +405,51 @@ function GeneradorDeSesiones() {
   const [tareas, setTareas] = useState<Tarea[]>([emptyTarea(1)]);
   const [nextId, setNextId] = useState(2);
 
+  useEffect(() => {
+    let alive = true;
+
+    const syncMatrix = async () => {
+      try {
+        const response = await fetch('/api/sessions-task-matrix', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({} as MatrixApiResponse));
+          throw new Error(String(payload?.error || 'No se pudo leer la matriz remota.'));
+        }
+
+        const payload = await response.json() as MatrixApiResponse;
+        const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+        if (tasks.length === 0) throw new Error('La hoja se ha leido, pero no tiene filas utiles.');
+
+        if (!alive) return;
+        setTaskMatrix(tasks);
+        setMatrixError('');
+        setMatrixStatus(`Matriz sincronizada (${tasks.length} tareas). Ultima actualizacion: ${new Date(payload.syncedAt || Date.now()).toLocaleTimeString()}`);
+      } catch (error) {
+        if (!alive) return;
+        setMatrixError((error as Error).message || 'No se pudo sincronizar la matriz.');
+        setMatrixStatus(`Usando respaldo local (${LOCAL_TASK_MATRIX.length} tareas).`);
+      }
+    };
+
+    void syncMatrix();
+    const intervalId = window.setInterval(() => {
+      void syncMatrix();
+    }, TASK_MATRIX_SYNC_INTERVAL_MS);
+
+    return () => {
+      alive = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    setTareas(prev => prev.map(t => normalizeTarea(t, taskMatrix)));
+  }, [taskMatrix]);
+
   const handleAddTarea = () => {
     setTareas(prev => [...prev, emptyTarea(nextId)]);
     setNextId(prev => prev + 1);
@@ -400,7 +460,7 @@ function GeneradorDeSesiones() {
   };
 
   const handleChangeTarea = (id: number, patch: Partial<Tarea>) => {
-    setTareas(prev => prev.map(t => t.id === id ? normalizeTarea({ ...t, ...patch }) : t));
+    setTareas(prev => prev.map(t => t.id === id ? normalizeTarea({ ...t, ...patch }, taskMatrix) : t));
   };
 
   const handleExportPdf = () => {
@@ -585,6 +645,10 @@ function GeneradorDeSesiones() {
           Los desplegables se alimentan del archivo de matriz. Cada selección filtra la siguiente y, si solo queda una opción posible, la fila se completa automáticamente.
         </div>
 
+        <div style={{ marginBottom: '14px', color: matrixError ? '#ff9d9d' : '#90f4ae', fontSize: '0.8rem' }}>
+          {matrixError ? `${matrixStatus} Error: ${matrixError}` : matrixStatus}
+        </div>
+
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
@@ -608,6 +672,7 @@ function GeneradorDeSesiones() {
                   key={tarea.id}
                   tarea={tarea}
                   index={idx}
+                  matrix={taskMatrix}
                   onChange={handleChangeTarea}
                   onRemove={handleRemoveTarea}
                 />
