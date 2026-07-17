@@ -38,6 +38,58 @@
   font-size: 0.82rem;
 }
 
+.rival-season-label {
+  margin: 6px 0 0;
+  color: #7f96bc;
+  font-size: 0.88rem;
+}
+
+.rival-sync-box {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.rival-sync-caption {
+  color: #a1b0d6;
+  font-size: 0.8rem;
+}
+
+.rival-sync-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.rival-sync-ok,
+.rival-sync-error,
+.rival-sync-meta {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.rival-sync-ok {
+  color: #a8ffd4;
+  background: rgba(61, 255, 186, 0.1);
+  border: 1px solid rgba(61, 255, 186, 0.25);
+}
+
+.rival-sync-error {
+  color: #ffb6b6;
+  background: rgba(255, 102, 102, 0.1);
+  border: 1px solid rgba(255, 102, 102, 0.25);
+}
+
+.rival-sync-meta {
+  color: #cdd4f1;
+  background: rgba(61, 153, 255, 0.1);
+  border: 1px solid rgba(61, 153, 255, 0.25);
+}
+
 .rival-table-wrap {
   width: 100%;
   overflow: auto;
@@ -136,6 +188,11 @@
 }
 
 @media (max-width: 760px) {
+  .rival-sync-box {
+    width: 100%;
+    justify-items: stretch;
+  }
+
   .rival-selector-grid {
     grid-template-columns: 1fr;
   }

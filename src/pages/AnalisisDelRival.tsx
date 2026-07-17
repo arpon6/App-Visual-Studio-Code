@@ -26,6 +26,8 @@ type RivalTeamData = {
   others: RivalBoardState;
   strengths: string;
   weaknesses: string;
+  sheetSynced?: boolean;
+  sheetLastSync?: string | null;
 };
 
 type RivalGlobalState = {
@@ -36,7 +38,9 @@ type RivalGlobalState = {
 type SectionKey = 'plantilla' | 'campos' | 'modelo' | 'abp';
 
 const SHARED_STATE_KEY = 'analisis_rival_v1';
+const SEASON_CONFIG_KEY = 'analisis_rival_active_season';
 const DEFAULT_FORMATION = '1-4-4-2';
+const SHEET_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 const SECTION_OPTIONS: { key: SectionKey; label: string }[] = [
   { key: 'plantilla', label: 'Plantilla rival' },
@@ -63,6 +67,11 @@ function normalizeTeamName(name: string): string {
 
 function slugifyTeamName(name: string): string {
   return normalizeTeamName(name).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'sin_equipo';
+}
+
+function buildSeasonScopedKey(baseKey: string, season: string | null): string {
+  const seasonSlug = season ? slugifyTeamName(season) : '';
+  return seasonSlug ? `${baseKey}__${seasonSlug}` : baseKey;
 }
 
 function createFieldPlayers(formation: string): FieldPlayer[] {
@@ -97,6 +106,8 @@ function createDefaultTeamData(): RivalTeamData {
     },
     strengths: '',
     weaknesses: '',
+    sheetSynced: false,
+    sheetLastSync: null,
   };
 }
 
@@ -145,6 +156,8 @@ function sanitizeLoadedTeamData(input: Partial<RivalTeamData> | undefined): Riva
     others: normalizeBoard(input?.others),
     strengths: typeof input?.strengths === 'string' ? input.strengths : '',
     weaknesses: typeof input?.weaknesses === 'string' ? input.weaknesses : '',
+    sheetSynced: Boolean(input?.sheetSynced),
+    sheetLastSync: typeof input?.sheetLastSync === 'string' ? input.sheetLastSync : null,
   };
 }
 
@@ -159,6 +172,10 @@ function AnalisisDelRival() {
   const [isExporting, setIsExporting] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [selectedSections, setSelectedSections] = useState<Record<SectionKey, boolean>>(DEFAULT_SECTION_SELECTION);
+  const [activeSeason, setActiveSeason] = useState<string | null>(null);
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [sheetSyncError, setSheetSyncError] = useState('');
+  const [sheetSyncStatus, setSheetSyncStatus] = useState('');
 
   const hydratedRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,7 +191,10 @@ function AnalisisDelRival() {
     return availableTeams.filter((team) => normalizeTeamName(team).includes(term));
   }, [availableTeams, teamFilter]);
 
+  const sharedStateKey = useMemo(() => buildSeasonScopedKey(SHARED_STATE_KEY, activeSeason), [activeSeason]);
+
   const currentTeamData = selectedTeam ? (teamsData[selectedTeam] ?? createDefaultTeamData()) : null;
+  const isSheetBacked = Boolean(currentTeamData?.sheetSynced);
 
   const rivalPlayers = useMemo<Player[]>(() => {
     if (!currentTeamData) return [];
@@ -201,7 +221,25 @@ function AnalisisDelRival() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const { data, error } = await supabase.from('shared_state').select('value').eq('key', SHARED_STATE_KEY).maybeSingle();
+
+      const { data: seasonConfig, error: seasonError } = await supabase
+        .from('shared_state')
+        .select('value')
+        .eq('key', SEASON_CONFIG_KEY)
+        .maybeSingle();
+
+      if (seasonError) {
+        console.error('Error cargando temporada activa del analisis del rival:', seasonError);
+      }
+
+      const nextSeason = typeof seasonConfig?.value === 'string' && seasonConfig.value.trim().length > 0
+        ? seasonConfig.value.trim()
+        : null;
+
+      setActiveSeason(nextSeason);
+
+      const targetKey = buildSeasonScopedKey(SHARED_STATE_KEY, nextSeason);
+      const { data, error } = await supabase.from('shared_state').select('value').eq('key', targetKey).maybeSingle();
       if (error) {
         console.error('Error cargando analisis del rival:', error);
         setLoading(false);
@@ -249,7 +287,7 @@ function AnalisisDelRival() {
       };
       const { error } = await supabase
         .from('shared_state')
-        .upsert({ key: SHARED_STATE_KEY, value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        .upsert({ key: sharedStateKey, value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
 
       setSaving(false);
       if (error) {
@@ -261,7 +299,7 @@ function AnalisisDelRival() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }, 700);
-  }, [selectedTeam, teamsData]);
+  }, [selectedTeam, sharedStateKey, teamsData]);
 
   useEffect(() => {
     if (!selectedTeam) return;
@@ -312,12 +350,91 @@ function AnalisisDelRival() {
     });
   };
 
+  const syncPlayersFromSheet = async (teamName: string, force = false) => {
+    if (!teamName) return;
+
+    setSyncingSheet(true);
+    setSheetSyncError('');
+    setSheetSyncStatus('Sincronizando hoja...');
+
+    try {
+      const response = await fetch(`/api/rival-players-sheet?team=${encodeURIComponent(teamName)}`, {
+        method: 'GET',
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401 || response.status === 403
+            ? 'La hoja no es publica para lectura.'
+            : `No se pudo leer la hoja (${response.status}).`
+        );
+      }
+
+      const result = await response.json();
+      const players = Array.isArray(result?.players) ? result.players as RivalPlayerRow[] : [];
+      if (players.length === 0) {
+        throw new Error('No hay jugadores para ese equipo en la hoja publicada.');
+      }
+
+      const payload = JSON.stringify(players);
+
+      setTeamsData((prev) => {
+        const base = prev[teamName] ?? createDefaultTeamData();
+        const currentPayload = JSON.stringify(base.players);
+
+        if (!force && base.sheetSynced && currentPayload === payload) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [teamName]: {
+            ...base,
+            players,
+            sheetSynced: true,
+            sheetLastSync: new Date().toISOString(),
+          },
+        };
+      });
+
+      setSheetSyncStatus('Hoja sincronizada correctamente.');
+    } catch (error) {
+      console.error('Error sincronizando Google Sheet del analisis rival:', error);
+      setSheetSyncError((error as Error).message || 'No se pudo sincronizar la hoja.');
+      setSheetSyncStatus('');
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
+
   const updatePlayerRow = (rowId: number, field: keyof Omit<RivalPlayerRow, 'id'>, value: string) => {
+    if (isSheetBacked) return;
     updateCurrentTeam((prev) => ({
       ...prev,
       players: prev.players.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
     }));
   };
+
+  useEffect(() => {
+    if (!selectedTeam || !hydratedRef.current) return;
+
+    void syncPlayersFromSheet(selectedTeam);
+
+    const intervalId = window.setInterval(() => {
+      void syncPlayersFromSheet(selectedTeam);
+    }, SHEET_SYNC_INTERVAL_MS);
+
+    const handleFocus = () => {
+      void syncPlayersFromSheet(selectedTeam);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [selectedTeam]);
 
   const handleSelectTeam = (team: string) => {
     setSelectedTeam(team);
@@ -417,6 +534,8 @@ function AnalisisDelRival() {
   };
 
   const teamSlug = selectedTeam ? slugifyTeamName(selectedTeam) : 'sin_equipo';
+  const seasonSlug = activeSeason ? slugifyTeamName(activeSeason) : '';
+  const seasonalTeamPrefix = seasonSlug ? `rival_${seasonSlug}_${teamSlug}` : `rival_${teamSlug}`;
 
   if (loading) {
     return (
@@ -433,6 +552,7 @@ function AnalisisDelRival() {
           <div>
             <small>Scouting y preparacion del partido</small>
             <h1>Analisis del rival</h1>
+            {activeSeason && <p className="rival-season-label">Temporada activa: {activeSeason}</p>}
           </div>
           <div className="title-actions">
             {saving && <span className="tb-status tb-status--saving">Guardando...</span>}
@@ -452,6 +572,16 @@ function AnalisisDelRival() {
                 <h2>Seleccion de equipo rival</h2>
                 <small>Busca y filtra entre equipos de liga</small>
               </div>
+            </div>
+            <div className="rival-sync-box">
+              <span className="rival-sync-caption">Fuente: Google Sheets, columnas D, E y F</span>
+              <button
+                className="btn"
+                onClick={() => void syncPlayersFromSheet(selectedTeam, true)}
+                disabled={!selectedTeam || syncingSheet}
+              >
+                {syncingSheet ? 'Sincronizando...' : 'Resincronizar'}
+              </button>
             </div>
           </div>
 
@@ -481,6 +611,18 @@ function AnalisisDelRival() {
               </select>
             </label>
           </div>
+
+          {(sheetSyncStatus || sheetSyncError || currentTeamData?.sheetLastSync) && (
+            <div className="rival-sync-status-row">
+              {sheetSyncStatus && <span className="rival-sync-ok">{sheetSyncStatus}</span>}
+              {sheetSyncError && <span className="rival-sync-error">{sheetSyncError} Comparte la hoja en modo lectura publica o publicala como CSV.</span>}
+              {currentTeamData?.sheetLastSync && (
+                <span className="rival-sync-meta">
+                  Ultima sincronizacion: {new Date(currentTeamData.sheetLastSync).toLocaleString('es-ES')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {!selectedTeam && (
@@ -497,7 +639,7 @@ function AnalisisDelRival() {
                   <span className="section-badge">A</span>
                   <div>
                     <h2>Plantilla rival</h2>
-                    <small>Introduce jugadores, dorsal y caracteristicas clave</small>
+                    <small>{isSheetBacked ? 'Datos sincronizados desde Google Sheets' : 'Introduce jugadores, dorsal y caracteristicas clave'}</small>
                   </div>
                 </div>
               </div>
@@ -522,6 +664,7 @@ function AnalisisDelRival() {
                             value={row.fullName}
                             onChange={(e) => updatePlayerRow(row.id, 'fullName', e.target.value)}
                             placeholder="Nombre del jugador"
+                            readOnly={isSheetBacked}
                           />
                         </td>
                         <td>
@@ -530,6 +673,7 @@ function AnalisisDelRival() {
                             value={row.number}
                             onChange={(e) => updatePlayerRow(row.id, 'number', e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
                             placeholder="00"
+                            readOnly={isSheetBacked}
                           />
                         </td>
                         <td>
@@ -538,6 +682,7 @@ function AnalisisDelRival() {
                             value={row.traits}
                             onChange={(e) => updatePlayerRow(row.id, 'traits', e.target.value)}
                             placeholder="Perfil, pierna, rol, comportamiento..."
+                            readOnly={isSheetBacked}
                           />
                         </td>
                       </tr>
@@ -655,19 +800,19 @@ function AnalisisDelRival() {
 
             <div data-export-section="abp">
               <AbpSection
-                key={`${teamSlug}-abp-ofensivo`}
+                key={`${seasonalTeamPrefix}-abp-ofensivo`}
                 title="ABP ofensivo rival"
                 badge="D"
-                storageKey={`rival_${teamSlug}_abp_ofensivo`}
-                supabaseTitle={`rival_${teamSlug}_abp_ofensivo`}
+                storageKey={`${seasonalTeamPrefix}_abp_ofensivo`}
+                supabaseTitle={`${seasonalTeamPrefix}_abp_ofensivo`}
                 players={rivalPlayers}
               />
               <AbpSection
-                key={`${teamSlug}-abp-defensivo`}
+                key={`${seasonalTeamPrefix}-abp-defensivo`}
                 title="ABP defensivo rival"
                 badge="E"
-                storageKey={`rival_${teamSlug}_abp_defensivo`}
-                supabaseTitle={`rival_${teamSlug}_abp_defensivo`}
+                storageKey={`${seasonalTeamPrefix}_abp_defensivo`}
+                supabaseTitle={`${seasonalTeamPrefix}_abp_defensivo`}
                 players={rivalPlayers}
               />
             </div>
