@@ -74,22 +74,23 @@ export default async function handler(req: Req, res: Res) {
       redirect: 'manual',
     });
 
-    let response = firstResponse;
-
+    // Apps Script often responds with redirect after executing the script.
+    // In that case, treat it as success to avoid false negatives and duplicate writes.
     if ([301, 302, 303, 307, 308].includes(firstResponse.status)) {
-      const location = firstResponse.headers.get('location');
-      if (!location) {
-        return res.status(502).json({ error: 'Apps Script redirect without location header' });
-      }
-
-      response = await fetch(location, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      return res.status(200).json({
+        ok: true,
+        team,
+        players: players.length,
+        syncedAt: new Date().toISOString(),
+        result: {
+          ok: true,
+          mode: 'redirect-ack',
+          status: firstResponse.status,
         },
-        body: requestBody,
       });
     }
+
+    const response = firstResponse;
 
     const raw = await response.text();
     let payload: unknown = raw;
