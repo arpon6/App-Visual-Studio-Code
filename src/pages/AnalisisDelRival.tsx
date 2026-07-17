@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './PlanDePartido.css';
 import './AnalisisDelRival.css';
+import rivalPlayersCsv from '../../Base de datos de jugadores - Matriz.csv?raw';
 import TacticalBoard, { FORMATIONS, type FieldPlayer, type Player } from '../components/TacticalBoard';
 import { AbpSection } from '../components/AbpBoard';
 import { LEAGUE_TEAMS, MY_TEAM_NAME } from '../lib/leagueTeams';
@@ -40,6 +41,8 @@ type SectionKey = 'plantilla' | 'campos' | 'modelo' | 'abp';
 const SHARED_STATE_KEY = 'analisis_rival_v1';
 const SEASON_CONFIG_KEY = 'analisis_rival_active_season';
 const DEFAULT_FORMATION = '1-4-4-2';
+const GOOGLE_SHEET_ID = '1Psz7LtFGTR8rNPdge7BrN_k0r_78XscY3o6PuuR354E';
+const GOOGLE_SHEET_GID = '0';
 const SHEET_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 const SECTION_OPTIONS: { key: SectionKey; label: string }[] = [
@@ -109,6 +112,78 @@ function createDefaultTeamData(): RivalTeamData {
     sheetSynced: false,
     sheetLastSync: null,
   };
+}
+
+function parseCsv(raw: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+    const nextChar = raw[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentCell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      currentRow.push(currentCell.trim());
+      if (currentRow.some((cell) => cell.length > 0)) rows.push(currentRow);
+      currentRow = [];
+      currentCell = '';
+      continue;
+    }
+
+    currentCell += char;
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    if (currentRow.some((cell) => cell.length > 0)) rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+function looksLikeHeader(row: string[]): boolean {
+  const joined = row.join(' ').toLowerCase();
+  return joined.includes('jugador') || joined.includes('equipo') || joined.includes('dorsal') || joined.includes('caracter');
+}
+
+function buildGoogleSheetCsvUrl(sheetId: string, gid: string): string {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+}
+
+function mapSheetRowsToPlayersByTeam(raw: string, teamName: string): RivalPlayerRow[] {
+  const rows = parseCsv(raw);
+  const dataRows = looksLikeHeader(rows[0] || []) ? rows.slice(1) : rows;
+  const normalizedTeam = normalizeTeamName(teamName);
+
+  return dataRows
+    .filter((row) => normalizeTeamName(row[2] || '') === normalizedTeam)
+    .map((row, idx) => ({
+      id: idx + 1,
+      fullName: String(row[3] || '').trim(),
+      number: String(row[4] || '').trim(),
+      traits: String(row[5] || '').trim(),
+    }))
+    .filter((row) => row.fullName || row.number || row.traits)
+    .slice(0, 40);
 }
 
 function applyFormation(prev: FieldPlayer[], formation: string): FieldPlayer[] {
@@ -358,23 +433,44 @@ function AnalisisDelRival() {
     setSheetSyncStatus('Sincronizando hoja...');
 
     try {
-      const response = await fetch(`/api/rival-players-sheet?team=${encodeURIComponent(teamName)}`, {
-        method: 'GET',
-        cache: 'no-store',
-      });
+      let players: RivalPlayerRow[] = [];
 
-      if (!response.ok) {
-        throw new Error(
-          response.status === 401 || response.status === 403
-            ? 'La hoja no es publica para lectura.'
-            : `No se pudo leer la hoja (${response.status}).`
-        );
+      try {
+        const response = await fetch(`/api/rival-players-sheet?team=${encodeURIComponent(teamName)}`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          players = Array.isArray(result?.players) ? result.players as RivalPlayerRow[] : [];
+        }
+      } catch {
+        // Fallback a lectura directa o respaldo local.
       }
 
-      const result = await response.json();
-      const players = Array.isArray(result?.players) ? result.players as RivalPlayerRow[] : [];
       if (players.length === 0) {
-        throw new Error('No hay jugadores para ese equipo en la hoja publicada.');
+        try {
+          const directResponse = await fetch(buildGoogleSheetCsvUrl(GOOGLE_SHEET_ID, GOOGLE_SHEET_GID), {
+            method: 'GET',
+            cache: 'no-store',
+          });
+
+          if (directResponse.ok) {
+            const raw = await directResponse.text();
+            players = mapSheetRowsToPlayersByTeam(raw, teamName);
+          }
+        } catch {
+          // Ultimo fallback abajo.
+        }
+      }
+
+      if (players.length === 0) {
+        players = mapSheetRowsToPlayersByTeam(rivalPlayersCsv, teamName);
+      }
+
+      if (players.length === 0) {
+        throw new Error('No hay jugadores para ese equipo en la hoja ni en el respaldo local.');
       }
 
       const payload = JSON.stringify(players);
