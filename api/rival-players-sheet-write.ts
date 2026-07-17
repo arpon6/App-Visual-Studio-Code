@@ -56,18 +56,40 @@ export default async function handler(req: Req, res: Res) {
   }
 
   try {
-    const response = await fetch(scriptUrl, {
+    const requestBody = JSON.stringify({
+      secret: syncSecret,
+      action: 'upsertTeamPlayers',
+      team,
+      players,
+    });
+
+    // Google Apps Script /exec can issue redirects. Some runtimes may turn POST into GET
+    // when auto-following redirects, which drops body and causes Unauthorized.
+    const firstResponse = await fetch(scriptUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        secret: syncSecret,
-        action: 'upsertTeamPlayers',
-        team,
-        players,
-      }),
+      body: requestBody,
+      redirect: 'manual',
     });
+
+    let response = firstResponse;
+
+    if ([301, 302, 303, 307, 308].includes(firstResponse.status)) {
+      const location = firstResponse.headers.get('location');
+      if (!location) {
+        return res.status(502).json({ error: 'Apps Script redirect without location header' });
+      }
+
+      response = await fetch(location, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      });
+    }
 
     const raw = await response.text();
     let payload: unknown = raw;

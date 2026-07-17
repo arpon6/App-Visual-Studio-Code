@@ -186,6 +186,20 @@ function mapSheetRowsToPlayersByTeam(raw: string, teamName: string): RivalPlayer
     .slice(0, 40);
 }
 
+function sortPlayersByNumber(rows: RivalPlayerRow[]): RivalPlayerRow[] {
+  return [...rows].sort((a, b) => {
+    const numA = Number(a.number);
+    const numB = Number(b.number);
+    const hasA = Number.isFinite(numA) && a.number.trim() !== '';
+    const hasB = Number.isFinite(numB) && b.number.trim() !== '';
+
+    if (hasA && hasB) return numA - numB;
+    if (hasA) return -1;
+    if (hasB) return 1;
+    return a.fullName.localeCompare(b.fullName, 'es');
+  });
+}
+
 function applyFormation(prev: FieldPlayer[], formation: string): FieldPlayer[] {
   const positions = FORMATIONS[formation]?.positions ?? FORMATIONS[DEFAULT_FORMATION].positions;
   return positions.map((pos, idx) => ({
@@ -272,10 +286,14 @@ function AnalisisDelRival() {
   const sharedStateKey = useMemo(() => buildSeasonScopedKey(SHARED_STATE_KEY, activeSeason), [activeSeason]);
 
   const currentTeamData = selectedTeam ? (teamsData[selectedTeam] ?? createDefaultTeamData()) : null;
+  const sortedPlayers = useMemo(
+    () => sortPlayersByNumber(currentTeamData?.players ?? []),
+    [currentTeamData?.players]
+  );
 
   const rivalPlayers = useMemo<Player[]>(() => {
     if (!currentTeamData) return [];
-    return currentTeamData.players
+    return sortedPlayers
       .filter((row) => row.fullName.trim().length > 0)
       .map((row) => ({
         id: row.id,
@@ -283,7 +301,7 @@ function AnalisisDelRival() {
         number: Number(row.number) || 0,
       }))
       .sort((a, b) => a.number - b.number);
-  }, [currentTeamData]);
+  }, [sortedPlayers]);
 
   const titularUsedIds = useMemo(
     () => new Set((currentTeamData?.titular.fieldPlayers || []).map((fp) => fp.player?.id).filter((id): id is number => id !== undefined)),
@@ -516,7 +534,7 @@ function AnalisisDelRival() {
   const pushPlayersToSheet = async () => {
     if (!selectedTeam || !currentTeamData) return;
 
-    const players = currentTeamData.players.filter((row) => row.fullName || row.number || row.traits);
+    const players = sortPlayersByNumber(currentTeamData.players).filter((row) => row.fullName || row.number || row.traits);
     if (players.length === 0) {
       setSheetPushError('No hay jugadores para enviar a Google Sheets.');
       setSheetPushStatus('');
@@ -813,16 +831,14 @@ function AnalisisDelRival() {
                 <table className="list-table rival-players-table">
                   <thead>
                     <tr>
-                      <th>#</th>
                       <th>Nombre y apellidos</th>
                       <th>Dorsal</th>
                       <th>Caracteristicas</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {currentTeamData.players.map((row) => (
+                    {sortedPlayers.map((row) => (
                       <tr key={row.id}>
-                        <td>{row.id}</td>
                         <td>
                           <input
                             type="text"

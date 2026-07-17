@@ -106,11 +106,6 @@
   min-width: 820px;
 }
 
-.rival-players-table td:first-child {
-  color: #7f96bc;
-  width: 48px;
-}
-
 .rival-players-table input {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.08);
