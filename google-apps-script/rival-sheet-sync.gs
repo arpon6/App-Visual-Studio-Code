@@ -30,9 +30,19 @@ function doPost(e) {
     const values = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
 
     const teamRows = [];
+    const teamEntries = [];
     for (let rowIndex = 1; rowIndex < values.length; rowIndex++) {
       if (normalize(values[rowIndex][TEAM_COLUMN - 1]) === normalize(team)) {
-        teamRows.push(rowIndex + 1);
+        const rowNumber = rowIndex + 1;
+        const playerName = String(values[rowIndex][PLAYER_COLUMN - 1] || '').trim();
+        const playerNumber = String(values[rowIndex][NUMBER_COLUMN - 1] || '').trim();
+
+        teamRows.push(rowNumber);
+        teamEntries.push({
+          rowNumber: rowNumber,
+          nameNorm: normalize(playerName),
+          numberNorm: normalize(playerNumber),
+        });
       }
     }
 
@@ -52,13 +62,57 @@ function doPost(e) {
       return jsonResponse({ ok: true, team: team, updatedRows: normalizedPlayers.length, mode: 'append' }, 200);
     }
 
-    const rowsToUse = Math.max(teamRows.length, normalizedPlayers.length);
+    const usedRows = {};
+    const rowsByNameAndNumber = {};
+    const rowsByName = {};
+    const rowsByNumber = {};
+    const emptyRows = [];
 
-    for (let index = 0; index < rowsToUse; index++) {
-      const targetRow = teamRows[index];
-      const player = normalizedPlayers[index] || { fullName: '', number: '', traits: '' };
+    teamEntries.forEach((entry) => {
+      const hasName = Boolean(entry.nameNorm);
+      const hasNumber = Boolean(entry.numberNorm);
+
+      if (hasName && hasNumber) {
+        rowsByNameAndNumber[`${entry.nameNorm}__${entry.numberNorm}`] = entry.rowNumber;
+      }
+      if (hasName && !rowsByName[entry.nameNorm]) {
+        rowsByName[entry.nameNorm] = entry.rowNumber;
+      }
+      if (hasNumber && !rowsByNumber[entry.numberNorm]) {
+        rowsByNumber[entry.numberNorm] = entry.rowNumber;
+      }
+      if (!hasName && !hasNumber) {
+        emptyRows.push(entry.rowNumber);
+      }
+    });
+
+    const takeEmptyRow = () => {
+      while (emptyRows.length > 0) {
+        const rowNumber = emptyRows.shift();
+        if (!usedRows[rowNumber]) return rowNumber;
+      }
+      return null;
+    };
+
+    normalizedPlayers.forEach((player) => {
+      const nameNorm = normalize(player.fullName);
+      const numberNorm = normalize(player.number);
+
+      let targetRow = null;
+      const compositeKey = `${nameNorm}__${numberNorm}`;
+
+      if (nameNorm && numberNorm && rowsByNameAndNumber[compositeKey] && !usedRows[rowsByNameAndNumber[compositeKey]]) {
+        targetRow = rowsByNameAndNumber[compositeKey];
+      } else if (nameNorm && rowsByName[nameNorm] && !usedRows[rowsByName[nameNorm]]) {
+        targetRow = rowsByName[nameNorm];
+      } else if (numberNorm && rowsByNumber[numberNorm] && !usedRows[rowsByNumber[numberNorm]]) {
+        targetRow = rowsByNumber[numberNorm];
+      } else {
+        targetRow = takeEmptyRow();
+      }
 
       if (targetRow) {
+        usedRows[targetRow] = true;
         sheet.getRange(targetRow, TEAM_COLUMN).setValue(team);
         sheet.getRange(targetRow, PLAYER_COLUMN).setValue(player.fullName);
         sheet.getRange(targetRow, NUMBER_COLUMN).setValue(player.number);
@@ -66,9 +120,9 @@ function doPost(e) {
       } else {
         sheet.appendRow(['', '', team, player.fullName, player.number, player.traits]);
       }
-    }
+    });
 
-    return jsonResponse({ ok: true, team: team, updatedRows: normalizedPlayers.length, mode: 'upsert' }, 200);
+    return jsonResponse({ ok: true, team: team, updatedRows: normalizedPlayers.length, mode: 'upsert-by-player' }, 200);
   } catch (error) {
     return jsonResponse({ ok: false, error: String(error) }, 500);
   }
