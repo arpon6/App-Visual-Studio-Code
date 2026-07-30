@@ -175,30 +175,31 @@ function readLocalWellnessResponses() {
 
 async function syncWellnessRecordToSupabase(record: LocalWellnessRecord) {
   try {
-    const { data: existing, error: selectError } = await supabase
+    const { error: deleteError } = await supabase
       .from('wellness_responses')
-      .select('*')
+      .delete()
       .eq('player_id', record.player_id)
       .eq('event_date', record.event_date)
-      .eq('event_type', record.event_type)
-      .maybeSingle();
+      .eq('event_type', record.event_type);
 
-    if (selectError) return;
+    if (deleteError) {
+      console.error('No se pudo limpiar wellness duplicado en Supabase:', deleteError);
+    }
 
-    const payload = {
-      player_id: record.player_id,
-      event_date: record.event_date,
-      event_type: record.event_type,
-      rpe: record.rpe,
-      animo: record.animo,
-      fisico: record.fisico,
-      molestias: record.molestias,
-    };
+    const { error: insertError } = await supabase
+      .from('wellness_responses')
+      .insert({
+        player_id: record.player_id,
+        event_date: record.event_date,
+        event_type: record.event_type,
+        rpe: record.rpe,
+        animo: record.animo,
+        fisico: record.fisico,
+        molestias: record.molestias,
+      });
 
-    if (existing) {
-      await supabase.from('wellness_responses').update(payload).eq('id', existing.id);
-    } else {
-      await supabase.from('wellness_responses').insert(payload);
+    if (insertError) {
+      console.error('No se pudo insertar wellness en Supabase:', insertError);
     }
   } catch (err) {
     console.error('No se pudo sincronizar wellness con Supabase:', err);
@@ -207,16 +208,18 @@ async function syncWellnessRecordToSupabase(record: LocalWellnessRecord) {
 
 async function deleteWellnessRecordFromSupabase(playerId: string, eventDate: string, eventType: WellnessTestType) {
   try {
-    const { data: existing, error: selectError } = await supabase
+    const { error } = await supabase
       .from('wellness_responses')
-      .select('*')
-      .eq('player_id', playerId)
-      .eq('event_date', eventDate)
-      .eq('event_type', eventType)
-      .maybeSingle();
+      .delete()
+      .match({
+        player_id: playerId,
+        event_date: eventDate,
+        event_type: eventType,
+      });
 
-    if (selectError || !existing) return;
-    await supabase.from('wellness_responses').delete().eq('id', existing.id);
+    if (error) {
+      console.error('No se pudo eliminar wellness en Supabase:', error);
+    }
   } catch (err) {
     console.error('No se pudo borrar wellness en Supabase:', err);
   }
@@ -408,10 +411,12 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           .select('*')
           .eq('player_id', playerId)
           .eq('event_date', today)
-          .maybeSingle();
+          .eq('event_type', testType)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-        if (!error && data) {
-          const existing = data as WellnessResponse;
+        if (!error && data && data.length > 0) {
+          const existing = data[0] as WellnessResponse;
           const payload = parseWellnessStoredPayload(existing);
           const entry = testType === 'pre_entrenamiento' ? payload.pre : payload.post;
           if (entry) {
