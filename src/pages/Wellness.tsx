@@ -162,6 +162,11 @@ type LocalWellnessRecord = {
   updated_at: string;
 };
 
+type SyncResult = {
+  ok: boolean;
+  errorMessage?: string;
+};
+
 function readLocalWellnessResponses() {
   try {
     const raw = localStorage.getItem(LOCAL_WELLNESS_STORAGE_KEY);
@@ -173,7 +178,7 @@ function readLocalWellnessResponses() {
   }
 }
 
-async function syncWellnessRecordToSupabase(record: LocalWellnessRecord) {
+async function syncWellnessRecordToSupabase(record: LocalWellnessRecord): Promise<SyncResult> {
   try {
     const { error: deleteError } = await supabase
       .from('wellness_responses')
@@ -200,13 +205,17 @@ async function syncWellnessRecordToSupabase(record: LocalWellnessRecord) {
 
     if (insertError) {
       console.error('No se pudo insertar wellness en Supabase:', insertError);
+      return { ok: false, errorMessage: insertError.message || 'Error de Supabase al guardar' };
     }
+
+    return { ok: true };
   } catch (err) {
     console.error('No se pudo sincronizar wellness con Supabase:', err);
+    return { ok: false, errorMessage: err instanceof Error ? err.message : 'Fallo de red o permisos' };
   }
 }
 
-async function deleteWellnessRecordFromSupabase(playerId: string, eventDate: string, eventType: WellnessTestType) {
+async function deleteWellnessRecordFromSupabase(playerId: string, eventDate: string, eventType: WellnessTestType): Promise<SyncResult> {
   try {
     const { error } = await supabase
       .from('wellness_responses')
@@ -219,9 +228,13 @@ async function deleteWellnessRecordFromSupabase(playerId: string, eventDate: str
 
     if (error) {
       console.error('No se pudo eliminar wellness en Supabase:', error);
+      return { ok: false, errorMessage: error.message || 'Error de Supabase al eliminar' };
     }
+
+    return { ok: true };
   } catch (err) {
     console.error('No se pudo borrar wellness en Supabase:', err);
+    return { ok: false, errorMessage: err instanceof Error ? err.message : 'Fallo de red o permisos' };
   }
 }
 
@@ -490,11 +503,16 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     };
 
     writeLocalWellnessResponse(localRecord);
-    void syncWellnessRecordToSupabase(localRecord);
+    const syncResult = await syncWellnessRecordToSupabase(localRecord);
 
     setAlreadySent(true);
-    setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} guardado correctamente.`);
+    if (syncResult.ok) {
+      setStatusType('success');
+      setStatusMsg(`${testTypeLabel(testType)} guardado y sincronizado.`);
+    } else {
+      setStatusType('error');
+      setStatusMsg(`Guardado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    }
     setSaving(false);
   };
 
@@ -504,14 +522,19 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setStatusMsg('');
 
     deleteLocalWellnessResponse(playerId, today, testType);
-    void deleteWellnessRecordFromSupabase(playerId, today, testType);
+    const syncResult = await deleteWellnessRecordFromSupabase(playerId, today, testType);
     setAlreadySent(false);
     setRpe(3);
     setAnimo(3);
     setFisico(3);
     setComentario('');
-    setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} eliminado. Puedes volver a enviarlo.`);
+    if (syncResult.ok) {
+      setStatusType('success');
+      setStatusMsg(`${testTypeLabel(testType)} eliminado y sincronizado.`);
+    } else {
+      setStatusType('error');
+      setStatusMsg(`Eliminado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    }
     setSaving(false);
   };
 
@@ -736,11 +759,15 @@ function WellnessDashboard() {
     setDashboardMsg(null);
 
     deleteLocalWellnessResponse(response.player_id, response.event_date, response.event_type);
-    void deleteWellnessRecordFromSupabase(response.player_id, response.event_date, response.event_type);
+    const syncResult = await deleteWellnessRecordFromSupabase(response.player_id, response.event_date, response.event_type);
 
     setResponses(prev => prev.filter(item => item.id !== responseId));
     setDeletingId(null);
-    setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
+    if (syncResult.ok) {
+      setDashboardMsg({ type: 'success', text: 'Respuesta eliminada y sincronizada.' });
+    } else {
+      setDashboardMsg({ type: 'error', text: `Respuesta eliminada localmente, pero no sincronizada: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.` });
+    }
   };
 
   const dayResponseRows = useMemo(() => {
