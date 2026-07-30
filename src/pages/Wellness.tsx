@@ -697,12 +697,14 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 // VISTA CUERPO TÉCNICO
 // ══════════════════════════════════════════════════════════════════════════
 function WellnessDashboard() {
+  const { user } = useAuth();
   const jugadores = usePlantilla();
   const [refDate, setRefDate] = useState(todayISO());
   const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dashboardMsg, setDashboardMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const canSeeWeeklyRanking = user?.role === 'entrenador' || user?.role === 'preparador_fisico';
 
   const dayFrom = refDate;
   const dayTo = refDate;
@@ -765,6 +767,27 @@ function WellnessDashboard() {
     () => responsesByType.filter(r => r.event_date >= weekFrom && r.event_date <= weekTo),
     [responsesByType, weekFrom, weekTo],
   );
+
+  const weeklyRankingRows = useMemo(() => {
+    const weeklyCounts = new Map<string, number>();
+    responses
+      .filter(response => response.event_date >= weekFrom && response.event_date <= weekTo)
+      .forEach(response => {
+        const key = String(response.player_id);
+        weeklyCounts.set(key, (weeklyCounts.get(key) || 0) + 1);
+      });
+
+    return jugadores
+      .map(jugador => ({
+        id: String(jugador.id),
+        nombre: jugador.nombre,
+        respuestas: weeklyCounts.get(String(jugador.id)) || 0,
+      }))
+      .sort((a, b) => {
+        if (b.respuestas !== a.respuestas) return b.respuestas - a.respuestas;
+        return a.nombre.localeCompare(b.nombre, 'es-ES');
+      });
+  }, [responses, weekFrom, weekTo, jugadores]);
 
   const monthResponses = responsesByType;
   const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
@@ -895,6 +918,47 @@ function WellnessDashboard() {
           </div>
         </div>
       </div>
+
+      {canSeeWeeklyRanking && (
+        <div className="card">
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <small>{weekLabel}</small>
+              <h2>Clasificación de respuestas</h2>
+            </div>
+            <span className="wellness-responses-count">{weeklyRankingRows.length} jugadores</span>
+          </div>
+          {weeklyRankingRows.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="wellness-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>JUGADOR</th>
+                    <th>RESPUESTAS (SEMANA)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyRankingRows.map((row, index) => (
+                    <tr key={row.id}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <div className="player-cell">
+                          <div className="wellness-avatar">{String(row.nombre).charAt(0)}</div>
+                          {row.nombre}
+                        </div>
+                      </td>
+                      <td>{row.respuestas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
