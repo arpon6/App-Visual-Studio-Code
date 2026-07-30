@@ -919,47 +919,6 @@ function WellnessDashboard() {
         </div>
       </div>
 
-      {canSeeWeeklyRanking && (
-        <div className="card">
-          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <small>{weekLabel}</small>
-              <h2>Clasificación de respuestas</h2>
-            </div>
-            <span className="wellness-responses-count">{weeklyRankingRows.length} jugadores</span>
-          </div>
-          {weeklyRankingRows.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="wellness-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>JUGADOR</th>
-                    <th>RESPUESTAS (SEMANA)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {weeklyRankingRows.map((row, index) => (
-                    <tr key={row.id}>
-                      <td>{index + 1}</td>
-                      <td>
-                        <div className="player-cell">
-                          <div className="wellness-avatar">{String(row.nombre).charAt(0)}</div>
-                          {row.nombre}
-                        </div>
-                      </td>
-                      <td>{row.respuestas}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="card">
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -1080,6 +1039,47 @@ function WellnessDashboard() {
           </div>
         )}
       </div>
+
+      {canSeeWeeklyRanking && (
+        <div className="card">
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <small>{weekLabel}</small>
+              <h2>Clasificación de respuestas</h2>
+            </div>
+            <span className="wellness-responses-count">{weeklyRankingRows.length} jugadores</span>
+          </div>
+          {weeklyRankingRows.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="wellness-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>JUGADOR</th>
+                    <th>RESPUESTAS (SEMANA)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyRankingRows.map((row, index) => (
+                    <tr key={row.id}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <div className="player-cell">
+                          <div className="wellness-avatar">{String(row.nombre).charAt(0)}</div>
+                          {row.nombre}
+                        </div>
+                      </td>
+                      <td>{row.respuestas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
