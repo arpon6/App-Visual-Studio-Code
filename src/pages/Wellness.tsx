@@ -245,20 +245,29 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       molestias: comentario.trim() || null,
     };
 
-    let { error } = await supabase
+    const { data: existing, error: selectError } = await supabase
       .from('wellness_responses')
-      .upsert(payload, { onConflict: 'player_id,event_date,event_type' });
+      .select('id')
+      .eq('player_id', playerId)
+      .eq('event_date', today)
+      .eq('event_type', testType)
+      .maybeSingle();
 
-    if (error) {
-      const fallback = await supabase
-        .from('wellness_responses')
-        .upsert({
-          ...payload,
-          rpe: payload.rpe ?? 3,
-          animo: payload.animo ?? 3,
-          fisico: payload.fisico ?? 3,
-        }, { onConflict: 'player_id,event_date' });
-      error = fallback.error;
+    let error = selectError;
+
+    if (!error) {
+      if (existing) {
+        const updateResult = await supabase
+          .from('wellness_responses')
+          .update(payload)
+          .eq('id', existing.id);
+        error = updateResult.error;
+      } else {
+        const insertResult = await supabase
+          .from('wellness_responses')
+          .insert(payload);
+        error = insertResult.error;
+      }
     }
 
     setSaving(false);
@@ -278,12 +287,34 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     if (!hasTrainingToday) return;
     setSaving(true);
     setStatusMsg('');
+
+    const { data: existing, error: selectError } = await supabase
+      .from('wellness_responses')
+      .select('id')
+      .eq('player_id', playerId)
+      .eq('event_date', today)
+      .eq('event_type', testType)
+      .maybeSingle();
+
+    if (selectError) {
+      setSaving(false);
+      setStatusType('error');
+      setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+      return;
+    }
+
+    if (!existing?.id) {
+      setSaving(false);
+      setStatusType('error');
+      setStatusMsg('No se encontró la respuesta seleccionada para eliminar.');
+      return;
+    }
+
     const { error } = await supabase
       .from('wellness_responses')
       .delete()
-      .eq('player_id', playerId)
-      .eq('event_date', today)
-      .eq('event_type', testType);
+      .eq('id', existing.id);
+
     setSaving(false);
 
     if (error) {
@@ -743,6 +774,7 @@ function WellnessDashboard() {
 function Wellness() {
   const { user } = useAuth();
   const isJugador = user?.role === 'jugador';
+  const isStaff = Boolean(user?.role && ['entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'].includes(user.role));
 
   if (isJugador) {
     // VERIFICA SI HAY player_id EN EL USUARIO
@@ -768,6 +800,13 @@ function Wellness() {
     );
   }
 
+  if (isStaff) {
+    return (
+      <section className="page-section">
+        <WellnessDashboard />
+      </section>
+    );
+  }
 
   return (
     <section className="page-section">
