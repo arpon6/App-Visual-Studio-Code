@@ -2,6 +2,15 @@ function Configuracion() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+  const supabaseProjectRef = (() => {
+    if (!supabaseUrl) return 'No disponible';
+    try {
+      const host = new URL(supabaseUrl).hostname;
+      return host.split('.')[0] || host;
+    } catch {
+      return 'URL no valida';
+    }
+  })();
 
   return (
     <section className="page-section">
@@ -31,6 +40,7 @@ function Configuracion() {
           <p>
             Estado: <strong>{isSupabaseConfigured ? 'Configurado' : 'No configurado'}</strong>
           </p>
+          <p>Proyecto (ref): {supabaseProjectRef}</p>
           <p>URL: {supabaseUrl ?? 'No definida'}</p>
           <p>Anon key: {supabaseAnonKey ? 'Definida' : 'No definida'}</p>
         </div>

@@ -36,6 +36,17 @@ type WellnessStoredPayload = {
   post?: WellnessStoredEntry;
 };
 
+function getSupabaseProjectRef() {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  if (!supabaseUrl) return 'No disponible';
+  try {
+    const host = new URL(supabaseUrl).hostname;
+    return host.split('.')[0] || host;
+  } catch {
+    return 'URL no valida';
+  }
+}
+
 function testTypeLabel(type: WellnessTestType) {
   return WELLNESS_TEST_OPTIONS.find(option => option.type === type)?.label || 'TEST';
 }
@@ -238,6 +249,15 @@ async function deleteWellnessRecordFromSupabase(playerId: string, eventDate: str
   }
 }
 
+async function syncAllLocalWellnessToSupabase() {
+  const pending = readLocalWellnessResponses();
+  if (!pending.length) return;
+
+  for (const record of pending) {
+    await syncWellnessRecordToSupabase(record);
+  }
+}
+
 function writeLocalWellnessResponse(record: LocalWellnessRecord) {
   try {
     const existing = readLocalWellnessResponses();
@@ -379,6 +399,7 @@ function CategoryAveragesChart({ data }: { data: { label: string; value: number;
 // ══════════════════════════════════════════════════════════════════════════
 function WellnessJugador({ playerId }: { playerId: string }) {
   const today = todayISO();
+  const supabaseProjectRef = getSupabaseProjectRef();
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([]);
   const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
   const [rpe, setRpe] = useState(3);
@@ -404,6 +425,10 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     const display = isoToDisplay(today);
     return calEvents.some(e => e.date === display && e.type === 'entrenamiento');
   }, [calEvents, today]);
+
+  useEffect(() => {
+    void syncAllLocalWellnessToSupabase();
+  }, []);
 
   useEffect(() => {
     if (!hasTrainingToday || !playerId) {
@@ -579,6 +604,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           </div>
         </div>
         <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+        <p className="wellness-response-hint">Proyecto Supabase: {supabaseProjectRef}</p>
         {loadingExisting ? (
           <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p>
         ) : alreadySent ? (
@@ -687,6 +713,10 @@ function WellnessDashboard() {
 
   const weekLabel = `${isoToDisplay(weekFrom)} - ${isoToDisplay(weekTo)}`;
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+  useEffect(() => {
+    void syncAllLocalWellnessToSupabase();
+  }, []);
 
   useEffect(() => {
     const loadResponses = async () => {
