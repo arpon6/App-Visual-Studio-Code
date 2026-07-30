@@ -274,47 +274,30 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       return;
     }
 
-    const loadExisting = async () => {
+    const loadExisting = () => {
       setLoadingExisting(true);
       setStatusMsg('');
       try {
-        const { data } = await supabase
-          .from('wellness_responses')
-          .select('*')
-          .eq('player_id', playerId)
-          .eq('event_date', today)
-          .eq('event_type', testType)
-          .maybeSingle();
-
-        if (data) {
-          const existing = data as WellnessResponse;
-          setRpe(existing.rpe ?? 3);
-          setAnimo(existing.animo ?? 3);
-          setFisico(existing.fisico ?? 3);
-          setComentario(existing.molestias || '');
+        const localRecord = readLocalWellnessRecord(playerId, today, testType);
+        if (localRecord) {
+          setRpe(localRecord.rpe ?? 3);
+          setAnimo(localRecord.animo ?? 3);
+          setFisico(localRecord.fisico ?? 3);
+          setComentario(localRecord.molestias || '');
           setAlreadySent(true);
         } else {
-          const localRecord = readLocalWellnessRecord(playerId, today, testType);
-          if (localRecord) {
-            setRpe(localRecord.rpe ?? 3);
-            setAnimo(localRecord.animo ?? 3);
-            setFisico(localRecord.fisico ?? 3);
-            setComentario(localRecord.molestias || '');
-            setAlreadySent(true);
-          } else {
-            setAlreadySent(false);
-            setRpe(3);
-            setAnimo(3);
-            setFisico(3);
-            setComentario('');
-          }
+          setAlreadySent(false);
+          setRpe(3);
+          setAnimo(3);
+          setFisico(3);
+          setComentario('');
         }
       } finally {
         setLoadingExisting(false);
       }
     };
 
-    void loadExisting();
+    loadExisting();
   }, [hasTrainingToday, playerId, testType, today]);
 
   const handleSubmit = async () => {
@@ -322,90 +305,21 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(true);
     setStatusMsg('');
 
-    const payload = {
+    writeLocalWellnessResponse({
       player_id: playerId,
       event_date: today,
       event_type: testType,
-      rpe: testType === 'post_entrenamiento' ? rpe : 3,
-      animo: testType === 'pre_entrenamiento' ? animo : 3,
-      fisico: testType === 'pre_entrenamiento' ? fisico : 3,
+      rpe: testType === 'post_entrenamiento' ? rpe : null,
+      animo: testType === 'pre_entrenamiento' ? animo : null,
+      fisico: testType === 'pre_entrenamiento' ? fisico : null,
       molestias: comentario.trim() || null,
-    };
-
-    const { data: existing, error: selectError } = await supabase
-      .from('wellness_responses')
-      .select('id')
-      .eq('player_id', playerId)
-      .eq('event_date', today)
-      .eq('event_type', testType)
-      .maybeSingle();
-
-    let error: WellnessSaveError = selectError;
-
-    if (!error) {
-      if (existing) {
-        const updateResult = await supabase
-          .from('wellness_responses')
-          .update(payload)
-          .eq('id', existing.id);
-        error = updateResult.error;
-      } else {
-        const insertResult = await supabase
-          .from('wellness_responses')
-          .insert(payload);
-        error = insertResult.error;
-
-        if (error && isUniqueConstraintError(error)) {
-          const sameTypeRow = await supabase
-            .from('wellness_responses')
-            .select('id')
-            .eq('player_id', playerId)
-            .eq('event_date', today)
-            .eq('event_type', testType)
-            .maybeSingle();
-
-          if (sameTypeRow.data?.id) {
-            const updateResult = await supabase
-              .from('wellness_responses')
-              .update(payload)
-              .eq('id', sameTypeRow.data.id);
-            error = updateResult.error;
-          } else {
-            error = {
-              name: 'WellnessSaveError',
-              code: 'WELLNESS_SCHEMA',
-              message: 'La base de datos necesita la migración de wellness para guardar Pre y Post por separado.',
-              details: 'La base de datos necesita la migración de wellness para guardar Pre y Post por separado.',
-              hint: 'Ejecuta la migración de wellness en Supabase para permitir un registro independiente por tipo.',
-            } as WellnessSaveError;
-          }
-        }
-      }
-    }
+      updated_at: new Date().toISOString(),
+    });
 
     setSaving(false);
-
-    if (error) {
-      writeLocalWellnessResponse({
-        player_id: playerId,
-        event_date: today,
-        event_type: testType,
-        rpe: testType === 'post_entrenamiento' ? rpe : null,
-        animo: testType === 'pre_entrenamiento' ? animo : null,
-        fisico: testType === 'pre_entrenamiento' ? fisico : null,
-        molestias: comentario.trim() || null,
-        updated_at: new Date().toISOString(),
-      });
-
-      setAlreadySent(true);
-      setStatusType('success');
-      setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo. El dato no se ha sincronizado aún con Supabase porque la tabla necesita la migración de wellness.`);
-      return;
-    }
-
     setAlreadySent(true);
     setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} guardado correctamente.`);
+    setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo.`);
   };
 
   const handleDelete = async () => {
@@ -413,48 +327,15 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(true);
     setStatusMsg('');
 
-    const { data: existing, error: selectError } = await supabase
-      .from('wellness_responses')
-      .select('id')
-      .eq('player_id', playerId)
-      .eq('event_date', today)
-      .eq('event_type', testType)
-      .maybeSingle();
-
-    if (selectError || !existing?.id) {
-      deleteLocalWellnessResponse(playerId, today, testType);
-      setSaving(false);
-      setAlreadySent(false);
-      setRpe(3);
-      setAnimo(3);
-      setFisico(3);
-      setComentario('');
-      setStatusType('success');
-      setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
-      return;
-    }
-
-    const { error } = await supabase
-      .from('wellness_responses')
-      .delete()
-      .eq('id', existing.id);
-
-    setSaving(false);
-
     deleteLocalWellnessResponse(playerId, today, testType);
-
-    if (error) {
-      setStatusType('success');
-      setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
-      setAlreadySent(false);
-      setRpe(3);
-      setAnimo(3);
-      setFisico(3);
-      setComentario('');
-      return;
-    }
-
+    setSaving(false);
     setAlreadySent(false);
+    setRpe(3);
+    setAnimo(3);
+    setFisico(3);
+    setComentario('');
+    setStatusType('success');
+    setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
     setRpe(3);
     setAnimo(3);
     setFisico(3);
@@ -614,27 +495,12 @@ function WellnessDashboard() {
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   useEffect(() => {
-    const loadResponses = async () => {
-      const { data, error } = await supabase
-        .from('wellness_responses')
-        .select('*')
-        .gte('event_date', monthFrom)
-        .lte('event_date', monthTo);
-
-      if (error) {
-        setDashboardMsg({ type: 'error', text: 'No se pudieron cargar las respuestas de wellness.' });
-        return;
-      }
-
-      const supabaseRows = (data as WellnessResponse[]) || [];
-      const localRows = readLocalWellnessResponses()
-        .filter(record => !supabaseRows.some(row => row.player_id === record.player_id && row.event_date === record.event_date && row.event_type === record.event_type))
-        .map(buildLocalWellnessResponse);
-
-      setResponses([...supabaseRows, ...localRows]);
+    const loadResponses = () => {
+      const localRows = readLocalWellnessResponses().map(buildLocalWellnessResponse);
+      setResponses(localRows);
     };
 
-    void loadResponses();
+    loadResponses();
   }, [monthFrom, monthTo]);
 
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
@@ -676,46 +542,9 @@ function WellnessDashboard() {
     setDeletingId(responseId);
     setDashboardMsg(null);
 
-    let error: unknown = null;
-
-    try {
-      if (!responseId.startsWith('local-')) {
-        const deleteResult = await Promise.race([
-          supabase
-            .from('wellness_responses')
-            .delete()
-            .eq('id', responseId),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-        error = deleteResult.error;
-
-        if (error) {
-          const fallbackDelete = await supabase
-            .from('wellness_responses')
-            .delete()
-            .eq('player_id', responseToDelete.player_id)
-            .eq('event_date', responseToDelete.event_date)
-            .eq('event_type', responseToDelete.event_type);
-          error = fallbackDelete.error;
-        }
-      }
-    } catch (deleteError) {
-      error = deleteError as Error;
-    } finally {
-      setDeletingId(null);
-    }
-
-    const errorText = typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: string }).message || '') : '';
-    const isIgnorableDeleteError = /permission denied|row-level security|policy|timeout|network|fetch|not found|0 rows/i.test(errorText);
-
     deleteLocalWellnessResponse(responseToDelete.player_id, responseToDelete.event_date, responseToDelete.event_type);
     setResponses(prev => prev.filter(response => response.id !== responseId));
-
-    if (error && !isIgnorableDeleteError) {
-      setDashboardMsg({ type: 'error', text: 'No se pudo eliminar la respuesta seleccionada.' });
-      return;
-    }
-
+    setDeletingId(null);
     setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
   };
 
