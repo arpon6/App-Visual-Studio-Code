@@ -73,6 +73,55 @@ function addMonths(iso: string, n: number) {
   return d.toISOString().split('T')[0];
 }
 
+const LOCAL_WELLNESS_STORAGE_KEY = 'wellness_local_responses';
+
+type LocalWellnessRecord = {
+  player_id: string;
+  event_date: string;
+  event_type: WellnessTestType;
+  rpe: number | null;
+  animo: number | null;
+  fisico: number | null;
+  molestias: string | null;
+  updated_at: string;
+};
+
+function readLocalWellnessResponses() {
+  try {
+    const raw = localStorage.getItem(LOCAL_WELLNESS_STORAGE_KEY);
+    if (!raw) return [] as LocalWellnessRecord[];
+    const parsed = JSON.parse(raw) as LocalWellnessRecord[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [] as LocalWellnessRecord[];
+  }
+}
+
+function writeLocalWellnessResponse(record: LocalWellnessRecord) {
+  try {
+    const existing = readLocalWellnessResponses();
+    const filtered = existing.filter(item => !(item.player_id === record.player_id && item.event_date === record.event_date && item.event_type === record.event_type));
+    filtered.push(record);
+    localStorage.setItem(LOCAL_WELLNESS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch {
+    // ignore localStorage write errors
+  }
+}
+
+function deleteLocalWellnessResponse(playerId: string, eventDate: string, eventType: WellnessTestType) {
+  try {
+    const existing = readLocalWellnessResponses();
+    const filtered = existing.filter(item => !(item.player_id === playerId && item.event_date === eventDate && item.event_type === eventType));
+    localStorage.setItem(LOCAL_WELLNESS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch {
+    // ignore localStorage delete errors
+  }
+}
+
+function readLocalWellnessRecord(playerId: string, eventDate: string, eventType: WellnessTestType) {
+  return readLocalWellnessResponses().find(item => item.player_id === playerId && item.event_date === eventDate && item.event_type === eventType) || null;
+}
+
 type WellnessSaveError = {
   name: string;
   code?: string;
@@ -231,11 +280,20 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           setComentario(existing.molestias || '');
           setAlreadySent(true);
         } else {
-          setAlreadySent(false);
-          setRpe(3);
-          setAnimo(3);
-          setFisico(3);
-          setComentario('');
+          const localRecord = readLocalWellnessRecord(playerId, today, testType);
+          if (localRecord) {
+            setRpe(localRecord.rpe ?? 3);
+            setAnimo(localRecord.animo ?? 3);
+            setFisico(localRecord.fisico ?? 3);
+            setComentario(localRecord.molestias || '');
+            setAlreadySent(true);
+          } else {
+            setAlreadySent(false);
+            setRpe(3);
+            setAnimo(3);
+            setFisico(3);
+            setComentario('');
+          }
         }
       } finally {
         setLoadingExisting(false);
@@ -314,6 +372,26 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(false);
 
     if (error) {
+      const shouldUseLocalFallback = isUniqueConstraintError(error) || error.code === 'WELLNESS_SCHEMA' || /migración|unique constraint|duplicate key/i.test(error.message || '');
+
+      if (shouldUseLocalFallback) {
+        writeLocalWellnessResponse({
+          player_id: playerId,
+          event_date: today,
+          event_type: testType,
+          rpe: testType === 'post_entrenamiento' ? rpe : null,
+          animo: testType === 'pre_entrenamiento' ? animo : null,
+          fisico: testType === 'pre_entrenamiento' ? fisico : null,
+          molestias: comentario.trim() || null,
+          updated_at: new Date().toISOString(),
+        });
+
+        setAlreadySent(true);
+        setStatusType('success');
+        setStatusMsg(`${testTypeLabel(testType)} guardado localmente. La sincronización con Supabase se completará cuando aplique la migración de wellness.`);
+        return;
+      }
+
       setStatusType('error');
       setStatusMsg(error.message || 'Error al guardar. Inténtalo de nuevo.');
       return;
@@ -359,11 +437,18 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(false);
 
     if (error) {
-      setStatusType('error');
-      setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+      deleteLocalWellnessResponse(playerId, today, testType);
+      setStatusType('success');
+      setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
+      setAlreadySent(false);
+      setRpe(3);
+      setAnimo(3);
+      setFisico(3);
+      setComentario('');
       return;
     }
 
+    deleteLocalWellnessResponse(playerId, today, testType);
     setAlreadySent(false);
     setRpe(3);
     setAnimo(3);
