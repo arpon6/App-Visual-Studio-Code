@@ -350,17 +350,16 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           .select('*')
           .eq('player_id', playerId)
           .eq('event_date', today)
+          .eq('event_type', testType)
           .maybeSingle();
 
         if (data) {
           const existing = data as WellnessResponse;
-          const payload = parseWellnessStoredPayload(existing);
-          const state = getWellnessDisplayState(payload, testType);
-          setRpe(state.rpe);
-          setAnimo(state.animo);
-          setFisico(state.fisico);
-          setComentario(state.comentario);
-          setAlreadySent(state.exists);
+          setRpe(testType === 'post_entrenamiento' ? (existing.rpe ?? 3) : 3);
+          setAnimo(testType === 'pre_entrenamiento' ? (existing.animo ?? 3) : 3);
+          setFisico(testType === 'pre_entrenamiento' ? (existing.fisico ?? 3) : 3);
+          setComentario(existing.molestias?.trim() || '');
+          setAlreadySent(true);
         } else {
           setAlreadySent(false);
           setRpe(3);
@@ -386,19 +385,12 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       .select('*')
       .eq('player_id', playerId)
       .eq('event_date', today)
+      .eq('event_type', testType)
       .maybeSingle();
 
     let error: WellnessSaveError = selectError;
 
     if (!error) {
-      const currentPayload = parseWellnessStoredPayload(existing as WellnessResponse | null);
-      const mergedPayload = buildWellnessStoredPayload(currentPayload, testType, {
-        animo: testType === 'pre_entrenamiento' ? animo : null,
-        fisico: testType === 'pre_entrenamiento' ? fisico : null,
-        rpe: testType === 'post_entrenamiento' ? rpe : null,
-        comentario: comentario.trim() || null,
-      });
-
       const payload = {
         player_id: playerId,
         event_date: today,
@@ -406,7 +398,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         rpe: testType === 'post_entrenamiento' ? rpe : null,
         animo: testType === 'pre_entrenamiento' ? animo : null,
         fisico: testType === 'pre_entrenamiento' ? fisico : null,
-        molestias: serializeWellnessPayload(mergedPayload),
+        molestias: comentario.trim() || null,
       };
 
       if (existing) {
@@ -446,6 +438,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       .select('*')
       .eq('player_id', playerId)
       .eq('event_date', today)
+      .eq('event_type', testType)
       .maybeSingle();
 
     if (selectError || !existing) {
@@ -455,50 +448,20 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       return;
     }
 
-    const payload = parseWellnessStoredPayload(existing as WellnessResponse);
-    const nextPayload = { ...payload };
-    if (testType === 'pre_entrenamiento') {
-      delete nextPayload.pre;
-    } else {
-      delete nextPayload.post;
-    }
+    const { error } = await supabase
+      .from('wellness_responses')
+      .delete()
+      .eq('id', existing.id);
 
     setSaving(false);
 
-    if (Object.keys(nextPayload).length === 0) {
-      const { error } = await supabase
-        .from('wellness_responses')
-        .delete()
-        .eq('id', existing.id);
-
-      if (error) {
-        setStatusType('error');
-        setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
-        return;
-      }
-    } else {
-      const { error } = await supabase
-        .from('wellness_responses')
-        .update({
-          ...existing,
-          molestias: serializeWellnessPayload(nextPayload),
-        })
-        .eq('id', existing.id);
-
-      if (error) {
-        setStatusType('error');
-        setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
-        return;
-      }
+    if (error) {
+      setStatusType('error');
+      setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+      return;
     }
 
     setAlreadySent(false);
-    setRpe(3);
-    setAnimo(3);
-    setFisico(3);
-    setComentario('');
-    setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} eliminado. Puedes volver a enviarlo.`);
     setRpe(3);
     setAnimo(3);
     setFisico(3);
@@ -679,7 +642,7 @@ function WellnessDashboard() {
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
 
   const responsesByType = useMemo(
-    () => responses.filter(response => hasStoredEntryForType(response, testType)),
+    () => responses.filter(response => response.event_type === testType),
     [responses, testType],
   );
 
@@ -701,9 +664,9 @@ function WellnessDashboard() {
     return valid.length ? +(valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1) : 0;
   };
 
-  const avgFisicoMes = avgNullable(monthResponses.map(response => response.fisico));
-  const avgAnimoMes = avgNullable(monthResponses.map(response => response.animo));
-  const avgRpeMes = avgNullable(monthResponses.map(response => response.rpe));
+  const avgFisicoMes = avgNullable(monthResponses.map(response => testType === 'pre_entrenamiento' ? response.fisico : null));
+  const avgAnimoMes = avgNullable(monthResponses.map(response => testType === 'pre_entrenamiento' ? response.animo : null));
+  const avgRpeMes = avgNullable(monthResponses.map(response => testType === 'post_entrenamiento' ? response.rpe : null));
 
   const handleDeleteResponse = async (responseId: string) => {
     const shouldDelete = window.confirm('¿Quieres eliminar esta respuesta de wellness? Esta acción no se puede deshacer.');
