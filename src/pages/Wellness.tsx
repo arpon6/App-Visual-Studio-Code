@@ -687,15 +687,22 @@ function WellnessDashboard() {
 
     let error = null;
 
-    if (!responseId.startsWith('local-')) {
-      const deleteResult = await supabase
-        .from('wellness_responses')
-        .delete()
-        .eq('id', responseId);
-      error = deleteResult.error;
+    try {
+      if (!responseId.startsWith('local-')) {
+        const deleteResult = await Promise.race([
+          supabase
+            .from('wellness_responses')
+            .delete()
+            .eq('id', responseId),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
+        error = deleteResult.error;
+      }
+    } catch (deleteError) {
+      error = deleteError as Error;
+    } finally {
+      setDeletingId(null);
     }
-
-    setDeletingId(null);
 
     if (error) {
       setDashboardMsg({ type: 'error', text: 'No se pudo eliminar la respuesta seleccionada.' });
