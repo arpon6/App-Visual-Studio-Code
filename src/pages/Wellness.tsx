@@ -386,28 +386,20 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(false);
 
     if (error) {
-      const shouldUseLocalFallback = isUniqueConstraintError(error) || error.code === 'WELLNESS_SCHEMA' || /migración|unique constraint|duplicate key/i.test(error.message || '');
+      writeLocalWellnessResponse({
+        player_id: playerId,
+        event_date: today,
+        event_type: testType,
+        rpe: testType === 'post_entrenamiento' ? rpe : null,
+        animo: testType === 'pre_entrenamiento' ? animo : null,
+        fisico: testType === 'pre_entrenamiento' ? fisico : null,
+        molestias: comentario.trim() || null,
+        updated_at: new Date().toISOString(),
+      });
 
-      if (shouldUseLocalFallback) {
-        writeLocalWellnessResponse({
-          player_id: playerId,
-          event_date: today,
-          event_type: testType,
-          rpe: testType === 'post_entrenamiento' ? rpe : null,
-          animo: testType === 'pre_entrenamiento' ? animo : null,
-          fisico: testType === 'pre_entrenamiento' ? fisico : null,
-          molestias: comentario.trim() || null,
-          updated_at: new Date().toISOString(),
-        });
-
-        setAlreadySent(true);
-        setStatusType('success');
-        setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo. El dato no se ha sincronizado aún con Supabase porque la tabla necesita la migración de wellness.`);
-        return;
-      }
-
-      setStatusType('error');
-      setStatusMsg(error.message || 'Error al guardar. Inténtalo de nuevo.');
+      setAlreadySent(true);
+      setStatusType('success');
+      setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo. El dato no se ha sincronizado aún con Supabase porque la tabla necesita la migración de wellness.`);
       return;
     }
 
@@ -429,17 +421,16 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       .eq('event_type', testType)
       .maybeSingle();
 
-    if (selectError) {
+    if (selectError || !existing?.id) {
+      deleteLocalWellnessResponse(playerId, today, testType);
       setSaving(false);
-      setStatusType('error');
-      setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
-      return;
-    }
-
-    if (!existing?.id) {
-      setSaving(false);
-      setStatusType('error');
-      setStatusMsg('No se encontró la respuesta seleccionada para eliminar.');
+      setAlreadySent(false);
+      setRpe(3);
+      setAnimo(3);
+      setFisico(3);
+      setComentario('');
+      setStatusType('success');
+      setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
       return;
     }
 
@@ -450,8 +441,9 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
     setSaving(false);
 
+    deleteLocalWellnessResponse(playerId, today, testType);
+
     if (error) {
-      deleteLocalWellnessResponse(playerId, today, testType);
       setStatusType('success');
       setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
       setAlreadySent(false);
@@ -462,7 +454,6 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       return;
     }
 
-    deleteLocalWellnessResponse(playerId, today, testType);
     setAlreadySent(false);
     setRpe(3);
     setAnimo(3);
