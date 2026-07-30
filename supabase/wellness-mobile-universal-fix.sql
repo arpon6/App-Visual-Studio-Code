@@ -8,6 +8,12 @@ alter table if exists wellness_responses disable row level security;
 alter table wellness_responses
   drop constraint if exists wellness_responses_player_id_fkey;
 
+-- PRE/POST: en pre no siempre hay rpe y en post no siempre hay animo/fisico.
+alter table wellness_responses
+  alter column rpe drop not null,
+  alter column animo drop not null,
+  alter column fisico drop not null;
+
 alter table wellness_responses
   alter column player_id type text
   using player_id::text;
