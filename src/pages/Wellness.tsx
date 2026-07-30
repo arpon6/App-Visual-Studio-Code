@@ -73,7 +73,16 @@ function addMonths(iso: string, n: number) {
   return d.toISOString().split('T')[0];
 }
 
-function isUniqueConstraintError(error: { code?: string; message?: string; details?: string } | null | undefined) {
+type WellnessSaveError = {
+  name: string;
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+  toJSON?: () => object;
+} | null;
+
+function isUniqueConstraintError(error: WellnessSaveError) {
   if (!error) return false;
   const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
   return error.code === '23505' || /duplicate key|unique constraint|violates unique/i.test(message);
@@ -259,7 +268,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       .eq('event_type', testType)
       .maybeSingle();
 
-    let error = selectError;
+    let error: WellnessSaveError = selectError;
 
     if (!error) {
       if (existing) {
@@ -275,19 +284,28 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         error = insertResult.error;
 
         if (error && isUniqueConstraintError(error)) {
-          const fallbackRow = await supabase
+          const sameTypeRow = await supabase
             .from('wellness_responses')
             .select('id')
             .eq('player_id', playerId)
             .eq('event_date', today)
+            .eq('event_type', testType)
             .maybeSingle();
 
-          if (fallbackRow.data?.id) {
+          if (sameTypeRow.data?.id) {
             const updateResult = await supabase
               .from('wellness_responses')
-              .update({ ...payload, event_type: testType })
-              .eq('id', fallbackRow.data.id);
+              .update(payload)
+              .eq('id', sameTypeRow.data.id);
             error = updateResult.error;
+          } else {
+            error = {
+              name: 'WellnessSaveError',
+              code: 'WELLNESS_SCHEMA',
+              message: 'La base de datos necesita la migración de wellness para guardar Pre y Post por separado.',
+              details: 'La base de datos necesita la migración de wellness para guardar Pre y Post por separado.',
+              hint: 'Ejecuta la migración de wellness en Supabase para permitir un registro independiente por tipo.',
+            } as WellnessSaveError;
           }
         }
       }
@@ -297,7 +315,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
     if (error) {
       setStatusType('error');
-      setStatusMsg('Error al guardar. Inténtalo de nuevo.');
+      setStatusMsg(error.message || 'Error al guardar. Inténtalo de nuevo.');
       return;
     }
 
