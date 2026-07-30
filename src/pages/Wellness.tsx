@@ -122,6 +122,20 @@ function readLocalWellnessRecord(playerId: string, eventDate: string, eventType:
   return readLocalWellnessResponses().find(item => item.player_id === playerId && item.event_date === eventDate && item.event_type === eventType) || null;
 }
 
+function buildLocalWellnessResponse(record: LocalWellnessRecord): WellnessResponse {
+  return {
+    id: `local-${record.player_id}-${record.event_date}-${record.event_type}`,
+    player_id: record.player_id,
+    event_date: record.event_date,
+    event_type: record.event_type,
+    rpe: record.rpe,
+    animo: record.animo,
+    fisico: record.fisico,
+    molestias: record.molestias,
+    created_at: record.updated_at,
+  };
+}
+
 type WellnessSaveError = {
   name: string;
   code?: string;
@@ -621,7 +635,12 @@ function WellnessDashboard() {
         return;
       }
 
-      setResponses((data as WellnessResponse[]) || []);
+      const supabaseRows = (data as WellnessResponse[]) || [];
+      const localRows = readLocalWellnessResponses()
+        .filter(record => !supabaseRows.some(row => row.player_id === record.player_id && row.event_date === record.event_date && row.event_type === record.event_type))
+        .map(buildLocalWellnessResponse);
+
+      setResponses([...supabaseRows, ...localRows]);
     };
 
     void loadResponses();
@@ -660,13 +679,21 @@ function WellnessDashboard() {
     const shouldDelete = window.confirm('¿Quieres eliminar esta respuesta de wellness? Esta acción no se puede deshacer.');
     if (!shouldDelete) return;
 
+    const responseToDelete = responses.find(response => response.id === responseId);
+    if (!responseToDelete) return;
+
     setDeletingId(responseId);
     setDashboardMsg(null);
 
-    const { error } = await supabase
-      .from('wellness_responses')
-      .delete()
-      .eq('id', responseId);
+    let error = null;
+
+    if (!responseId.startsWith('local-')) {
+      const deleteResult = await supabase
+        .from('wellness_responses')
+        .delete()
+        .eq('id', responseId);
+      error = deleteResult.error;
+    }
 
     setDeletingId(null);
 
@@ -675,6 +702,7 @@ function WellnessDashboard() {
       return;
     }
 
+    deleteLocalWellnessResponse(responseToDelete.player_id, responseToDelete.event_date, responseToDelete.event_type);
     setResponses(prev => prev.filter(response => response.id !== responseId));
     setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
   };
