@@ -23,8 +23,75 @@ const WELLNESS_TEST_OPTIONS: { type: WellnessTestType; label: string; shortLabel
   { type: 'post_entrenamiento', label: 'POST ENTRENAMIENTO', shortLabel: 'POST' },
 ];
 
+type WellnessStoredEntry = {
+  animo?: number | null;
+  fisico?: number | null;
+  rpe?: number | null;
+  comentario?: string | null;
+  saved_at?: string;
+};
+
+type WellnessStoredPayload = {
+  pre?: WellnessStoredEntry;
+  post?: WellnessStoredEntry;
+};
+
 function testTypeLabel(type: WellnessTestType) {
   return WELLNESS_TEST_OPTIONS.find(option => option.type === type)?.label || 'TEST';
+}
+
+function parseWellnessStoredPayload(response: WellnessResponse | null): WellnessStoredPayload {
+  if (!response) return {};
+
+  const raw = response.molestias?.trim();
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw) as WellnessStoredPayload;
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+  } catch {
+    // fallback to legacy plain-text comments
+  }
+
+  return {};
+}
+
+function buildWellnessStoredPayload(current: WellnessStoredPayload, type: WellnessTestType, values: { animo?: number | null; fisico?: number | null; rpe?: number | null; comentario?: string | null }) {
+  const next: WellnessStoredPayload = { ...current };
+  const entry: WellnessStoredEntry = {
+    ...values,
+    saved_at: new Date().toISOString(),
+  };
+
+  if (type === 'pre_entrenamiento') {
+    next.pre = entry;
+  } else {
+    next.post = entry;
+  }
+
+  return next;
+}
+
+function getWellnessDisplayState(payload: WellnessStoredPayload, type: WellnessTestType) {
+  const entry = type === 'pre_entrenamiento' ? payload.pre : payload.post;
+  return {
+    exists: Boolean(entry),
+    animo: payload.pre?.animo ?? 3,
+    fisico: payload.pre?.fisico ?? 3,
+    rpe: payload.post?.rpe ?? 3,
+    comentario: entry?.comentario || '',
+  };
+}
+
+function serializeWellnessPayload(payload: WellnessStoredPayload) {
+  return JSON.stringify(payload);
+}
+
+function hasStoredEntryForType(response: WellnessResponse, type: WellnessTestType) {
+  const payload = parseWellnessStoredPayload(response);
+  return type === 'pre_entrenamiento' ? Boolean(payload.pre) : Boolean(payload.post);
 }
 
 interface WellnessPoint {
@@ -274,17 +341,26 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       return;
     }
 
-    const loadExisting = () => {
+    const loadExisting = async () => {
       setLoadingExisting(true);
       setStatusMsg('');
       try {
-        const localRecord = readLocalWellnessRecord(playerId, today, testType);
-        if (localRecord) {
-          setRpe(localRecord.rpe ?? 3);
-          setAnimo(localRecord.animo ?? 3);
-          setFisico(localRecord.fisico ?? 3);
-          setComentario(localRecord.molestias || '');
-          setAlreadySent(true);
+        const { data } = await supabase
+          .from('wellness_responses')
+          .select('*')
+          .eq('player_id', playerId)
+          .eq('event_date', today)
+          .maybeSingle();
+
+        if (data) {
+          const existing = data as WellnessResponse;
+          const payload = parseWellnessStoredPayload(existing);
+          const state = getWellnessDisplayState(payload, testType);
+          setRpe(state.rpe);
+          setAnimo(state.animo);
+          setFisico(state.fisico);
+          setComentario(state.comentario);
+          setAlreadySent(state.exists);
         } else {
           setAlreadySent(false);
           setRpe(3);
@@ -297,7 +373,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       }
     };
 
-    loadExisting();
+    void loadExisting();
   }, [hasTrainingToday, playerId, testType, today]);
 
   const handleSubmit = async () => {
@@ -305,21 +381,59 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(true);
     setStatusMsg('');
 
-    writeLocalWellnessResponse({
-      player_id: playerId,
-      event_date: today,
-      event_type: testType,
-      rpe: testType === 'post_entrenamiento' ? rpe : null,
-      animo: testType === 'pre_entrenamiento' ? animo : null,
-      fisico: testType === 'pre_entrenamiento' ? fisico : null,
-      molestias: comentario.trim() || null,
-      updated_at: new Date().toISOString(),
-    });
+    const { data: existing, error: selectError } = await supabase
+      .from('wellness_responses')
+      .select('*')
+      .eq('player_id', playerId)
+      .eq('event_date', today)
+      .maybeSingle();
+
+    let error: WellnessSaveError = selectError;
+
+    if (!error) {
+      const currentPayload = parseWellnessStoredPayload(existing as WellnessResponse | null);
+      const mergedPayload = buildWellnessStoredPayload(currentPayload, testType, {
+        animo: testType === 'pre_entrenamiento' ? animo : null,
+        fisico: testType === 'pre_entrenamiento' ? fisico : null,
+        rpe: testType === 'post_entrenamiento' ? rpe : null,
+        comentario: comentario.trim() || null,
+      });
+
+      const payload = {
+        player_id: playerId,
+        event_date: today,
+        event_type: testType,
+        rpe: testType === 'post_entrenamiento' ? rpe : null,
+        animo: testType === 'pre_entrenamiento' ? animo : null,
+        fisico: testType === 'pre_entrenamiento' ? fisico : null,
+        molestias: serializeWellnessPayload(mergedPayload),
+      };
+
+      if (existing) {
+        const updateResult = await supabase
+          .from('wellness_responses')
+          .update(payload)
+          .eq('id', existing.id);
+        error = updateResult.error;
+      } else {
+        const insertResult = await supabase
+          .from('wellness_responses')
+          .insert(payload);
+        error = insertResult.error;
+      }
+    }
 
     setSaving(false);
+
+    if (error) {
+      setStatusType('error');
+      setStatusMsg('Error al guardar. Inténtalo de nuevo.');
+      return;
+    }
+
     setAlreadySent(true);
     setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo.`);
+    setStatusMsg(`${testTypeLabel(testType)} guardado correctamente.`);
   };
 
   const handleDelete = async () => {
@@ -327,15 +441,64 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(true);
     setStatusMsg('');
 
-    deleteLocalWellnessResponse(playerId, today, testType);
+    const { data: existing, error: selectError } = await supabase
+      .from('wellness_responses')
+      .select('*')
+      .eq('player_id', playerId)
+      .eq('event_date', today)
+      .maybeSingle();
+
+    if (selectError || !existing) {
+      setSaving(false);
+      setStatusType('error');
+      setStatusMsg('No se encontró la respuesta seleccionada para eliminar.');
+      return;
+    }
+
+    const payload = parseWellnessStoredPayload(existing as WellnessResponse);
+    const nextPayload = { ...payload };
+    if (testType === 'pre_entrenamiento') {
+      delete nextPayload.pre;
+    } else {
+      delete nextPayload.post;
+    }
+
     setSaving(false);
+
+    if (Object.keys(nextPayload).length === 0) {
+      const { error } = await supabase
+        .from('wellness_responses')
+        .delete()
+        .eq('id', existing.id);
+
+      if (error) {
+        setStatusType('error');
+        setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from('wellness_responses')
+        .update({
+          ...existing,
+          molestias: serializeWellnessPayload(nextPayload),
+        })
+        .eq('id', existing.id);
+
+      if (error) {
+        setStatusType('error');
+        setStatusMsg('Error al eliminar. Inténtalo de nuevo.');
+        return;
+      }
+    }
+
     setAlreadySent(false);
     setRpe(3);
     setAnimo(3);
     setFisico(3);
     setComentario('');
     setStatusType('success');
-    setStatusMsg(`${testTypeLabel(testType)} eliminado localmente.`);
+    setStatusMsg(`${testTypeLabel(testType)} eliminado. Puedes volver a enviarlo.`);
     setRpe(3);
     setAnimo(3);
     setFisico(3);
@@ -495,18 +658,28 @@ function WellnessDashboard() {
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   useEffect(() => {
-    const loadResponses = () => {
-      const localRows = readLocalWellnessResponses().map(buildLocalWellnessResponse);
-      setResponses(localRows);
+    const loadResponses = async () => {
+      const { data, error } = await supabase
+        .from('wellness_responses')
+        .select('*')
+        .gte('event_date', monthFrom)
+        .lte('event_date', monthTo);
+
+      if (error) {
+        setDashboardMsg({ type: 'error', text: 'No se pudieron cargar las respuestas de wellness.' });
+        return;
+      }
+
+      setResponses((data as WellnessResponse[]) || []);
     };
 
-    loadResponses();
+    void loadResponses();
   }, [monthFrom, monthTo]);
 
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
 
   const responsesByType = useMemo(
-    () => responses.filter(response => response.event_type === testType),
+    () => responses.filter(response => hasStoredEntryForType(response, testType)),
     [responses, testType],
   );
 
@@ -536,26 +709,38 @@ function WellnessDashboard() {
     const shouldDelete = window.confirm('¿Quieres eliminar esta respuesta de wellness? Esta acción no se puede deshacer.');
     if (!shouldDelete) return;
 
-    const responseToDelete = responses.find(response => response.id === responseId);
-    if (!responseToDelete) return;
-
     setDeletingId(responseId);
     setDashboardMsg(null);
 
-    deleteLocalWellnessResponse(responseToDelete.player_id, responseToDelete.event_date, responseToDelete.event_type);
-    setResponses(prev => prev.filter(response => response.id !== responseId));
+    const { error } = await supabase
+      .from('wellness_responses')
+      .delete()
+      .eq('id', responseId);
+
     setDeletingId(null);
+
+    if (error) {
+      setDashboardMsg({ type: 'error', text: 'No se pudo eliminar la respuesta seleccionada.' });
+      return;
+    }
+
+    setResponses(prev => prev.filter(response => response.id !== responseId));
     setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
   };
 
   const dayResponseRows = useMemo(() => {
     return [...dayResponses]
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map(response => ({
-        ...response,
-        jugador: playersById.get(String(response.player_id)) || String(response.player_id),
-      }));
-  }, [dayResponses, playersById]);
+      .map(response => {
+        const payload = parseWellnessStoredPayload(response);
+        const displayState = getWellnessDisplayState(payload, testType);
+        return {
+          ...response,
+          jugador: playersById.get(String(response.player_id)) || String(response.player_id),
+          displayState,
+        };
+      });
+  }, [dayResponses, playersById, testType]);
 
   const comentarios = useMemo(() => {
     return monthResponses
@@ -683,14 +868,14 @@ function WellnessDashboard() {
                     <td>{isoToDisplay(response.event_date)}</td>
                     {testType === 'pre_entrenamiento' ? (
                       <>
-                        <td><span className="wellness-dot dot-fisico">{response.fisico ?? '-'}</span></td>
-                        <td><span className="wellness-dot dot-animo">{response.animo ?? '-'}</span></td>
-                        <td><span className="wellness-molestia">{response.molestias?.trim() || 'Sin aclaración'}</span></td>
+                        <td><span className="wellness-dot dot-fisico">{response.displayState.fisico ?? '-'}</span></td>
+                        <td><span className="wellness-dot dot-animo">{response.displayState.animo ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin aclaración'}</span></td>
                       </>
                     ) : (
                       <>
-                        <td><span className="wellness-dot dot-rpe">{response.rpe ?? '-'}</span></td>
-                        <td><span className="wellness-molestia">{response.molestias?.trim() || 'Sin observación'}</span></td>
+                        <td><span className="wellness-dot dot-rpe">{response.displayState.rpe ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin observación'}</span></td>
                       </>
                     )}
                     <td>
