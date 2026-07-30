@@ -73,6 +73,12 @@ function addMonths(iso: string, n: number) {
   return d.toISOString().split('T')[0];
 }
 
+function isUniqueConstraintError(error: { code?: string; message?: string; details?: string } | null | undefined) {
+  if (!error) return false;
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+  return error.code === '23505' || /duplicate key|unique constraint|violates unique/i.test(message);
+}
+
 // ── Slider con color dinámico ──────────────────────────────────────────────
 function WellnessSlider({ value, onChange, min = 1, max = 10, colorClass, labelMin, labelMax }: {
   value: number; onChange: (v: number) => void;
@@ -267,6 +273,23 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           .from('wellness_responses')
           .insert(payload);
         error = insertResult.error;
+
+        if (error && isUniqueConstraintError(error)) {
+          const fallbackRow = await supabase
+            .from('wellness_responses')
+            .select('id')
+            .eq('player_id', playerId)
+            .eq('event_date', today)
+            .maybeSingle();
+
+          if (fallbackRow.data?.id) {
+            const updateResult = await supabase
+              .from('wellness_responses')
+              .update({ ...payload, event_type: testType })
+              .eq('id', fallbackRow.data.id);
+            error = updateResult.error;
+          }
+        }
       }
     }
 
