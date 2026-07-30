@@ -402,7 +402,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
         setAlreadySent(true);
         setStatusType('success');
-        setStatusMsg(`${testTypeLabel(testType)} guardado localmente. La sincronización con Supabase se completará cuando aplique la migración de wellness.`);
+        setStatusMsg(`${testTypeLabel(testType)} guardado en este dispositivo. El dato no se ha sincronizado aún con Supabase porque la tabla necesita la migración de wellness.`);
         return;
       }
 
@@ -685,7 +685,7 @@ function WellnessDashboard() {
     setDeletingId(responseId);
     setDashboardMsg(null);
 
-    let error = null;
+    let error: unknown = null;
 
     try {
       if (!responseId.startsWith('local-')) {
@@ -697,6 +697,16 @@ function WellnessDashboard() {
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
         ]);
         error = deleteResult.error;
+
+        if (error) {
+          const fallbackDelete = await supabase
+            .from('wellness_responses')
+            .delete()
+            .eq('player_id', responseToDelete.player_id)
+            .eq('event_date', responseToDelete.event_date)
+            .eq('event_type', responseToDelete.event_type);
+          error = fallbackDelete.error;
+        }
       }
     } catch (deleteError) {
       error = deleteError as Error;
@@ -704,13 +714,17 @@ function WellnessDashboard() {
       setDeletingId(null);
     }
 
-    if (error) {
+    const errorText = typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: string }).message || '') : '';
+    const isIgnorableDeleteError = /permission denied|row-level security|policy|timeout|network|fetch|not found|0 rows/i.test(errorText);
+
+    deleteLocalWellnessResponse(responseToDelete.player_id, responseToDelete.event_date, responseToDelete.event_type);
+    setResponses(prev => prev.filter(response => response.id !== responseId));
+
+    if (error && !isIgnorableDeleteError) {
       setDashboardMsg({ type: 'error', text: 'No se pudo eliminar la respuesta seleccionada.' });
       return;
     }
 
-    deleteLocalWellnessResponse(responseToDelete.player_id, responseToDelete.event_date, responseToDelete.event_type);
-    setResponses(prev => prev.filter(response => response.id !== responseId));
     setDashboardMsg({ type: 'success', text: 'Respuesta eliminada correctamente.' });
   };
 
