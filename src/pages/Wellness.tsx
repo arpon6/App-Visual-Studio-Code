@@ -239,15 +239,27 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       player_id: playerId,
       event_date: today,
       event_type: testType,
-      rpe: testType === 'post_entrenamiento' ? rpe : null,
-      animo: testType === 'pre_entrenamiento' ? animo : null,
-      fisico: testType === 'pre_entrenamiento' ? fisico : null,
+      rpe: testType === 'post_entrenamiento' ? rpe : 3,
+      animo: testType === 'pre_entrenamiento' ? animo : 3,
+      fisico: testType === 'pre_entrenamiento' ? fisico : 3,
       molestias: comentario.trim() || null,
     };
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('wellness_responses')
       .upsert(payload, { onConflict: 'player_id,event_date,event_type' });
+
+    if (error) {
+      const fallback = await supabase
+        .from('wellness_responses')
+        .upsert({
+          ...payload,
+          rpe: payload.rpe ?? 3,
+          animo: payload.animo ?? 3,
+          fisico: payload.fisico ?? 3,
+        }, { onConflict: 'player_id,event_date' });
+      error = fallback.error;
+    }
 
     setSaving(false);
 
