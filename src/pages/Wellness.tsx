@@ -837,18 +837,6 @@ function WellnessDashboard() {
       });
   }, [dayResponses, playersById, testType]);
 
-  const comentarios = useMemo(() => {
-    return monthResponses
-      .filter(r => Boolean(r.molestias && r.molestias.trim()))
-      .sort((a, b) => b.event_date.localeCompare(a.event_date))
-      .map(r => ({
-        id: r.id,
-        fecha: r.event_date,
-        jugador: playersById.get(String(r.player_id)) || String(r.player_id),
-        texto: r.molestias?.trim() || '',
-      }));
-  }, [monthResponses, playersById]);
-
   return (
     <div className="wellness-page">
       {/* Controles */}
@@ -980,56 +968,6 @@ function WellnessDashboard() {
                         disabled={deletingId === response.id}
                       >
                         {deletingId === response.id ? 'ELIMINANDO...' : 'ELIMINAR'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Comentarios escritos */}
-      <div className="card">
-        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <small>{weekLabel} · {monthLabel}</small>
-            <h2>{testTypeLabel(testType)}: comentarios del mes</h2>
-          </div>
-          <span className="wellness-responses-count">{comentarios.length} comentarios</span>
-        </div>
-        {comentarios.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay comentarios escritos en este mes.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="wellness-table">
-              <thead>
-                <tr>
-                  <th>FECHA</th>
-                  <th>JUGADOR</th>
-                  <th>COMENTARIO / MOLESTIA</th>
-                  <th>ACCIÓN</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comentarios.map(c => (
-                  <tr key={c.id}>
-                    <td>{isoToDisplay(c.fecha)}</td>
-                    <td>
-                      <div className="player-cell">
-                        <div className="wellness-avatar">{String(c.jugador).charAt(0)}</div>
-                        {String(c.jugador)}
-                      </div>
-                    </td>
-                    <td><span className="wellness-molestia">{c.texto}</span></td>
-                    <td>
-                      <button
-                        className="wellness-table-delete"
-                        onClick={() => void handleDeleteResponse(c.id)}
-                        disabled={deletingId === c.id}
-                      >
-                        {deletingId === c.id ? 'ELIMINANDO...' : 'ELIMINAR'}
                       </button>
                     </td>
                   </tr>

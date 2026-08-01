@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { DEFAULT_MATCH_TYPE, LEAGUE_TEAMS, MY_TEAM_NAME } from '../lib/leagueTeams';
+import { CALENDARIO_LIGA_2026_27 } from '../lib/leagueFixtures';
 
 interface Partido {
   id: string;
@@ -29,7 +30,8 @@ interface ClasifRow {
   pts: number;
 }
 
-const TEMPORADA = '2023-24';
+const TEMPORADA = '2026-27';
+const SCORE_PENDING = -1;
 
 const emptyPartido = (): Omit<Partido, 'id'> => ({
   jornada: 1,
@@ -53,6 +55,10 @@ function normalizeTeamName(name: string): string {
 
 function isMyTeam(name: string): boolean {
   return normalizeTeamName(name) === normalizeTeamName(MY_TEAM_NAME);
+}
+
+function hasPlayedScore(p: Partido): boolean {
+  return Number.isInteger(p.goles_local) && Number.isInteger(p.goles_visitante) && p.goles_local >= 0 && p.goles_visitante >= 0;
 }
 
 function buildClasificacion(partidos: Partido[]): ClasifRow[] {
@@ -80,6 +86,8 @@ function buildClasificacion(partidos: Partido[]): ClasifRow[] {
   LEAGUE_TEAMS.forEach(team => ensureTeam(team));
 
   partidos.forEach(p => {
+    if (!hasPlayedScore(p)) return;
+
     const localKey = ensureTeam(p.equipo_local);
     const visitKey = ensureTeam(p.equipo_visitante);
     if (!localKey || !visitKey) return;
@@ -127,6 +135,7 @@ function buildClasificacion(partidos: Partido[]): ClasifRow[] {
 }
 
 function scoreColor(local: number, visitante: number, esMiEquipoLocal: boolean) {
+  if (local < 0 || visitante < 0) return '#7f96bc';
   const gf = esMiEquipoLocal ? local : visitante;
   const gc = esMiEquipoLocal ? visitante : local;
   if (gf > gc) return '#16d67a';
@@ -164,6 +173,8 @@ function ResultadosYClasif() {
   const [actaFile, setActaFile] = useState<File | null>(null);
   const [actaUrl, setActaUrl] = useState('');
   const [uploadMsg, setUploadMsg] = useState('');
+  const [detalleGolesLocal, setDetalleGolesLocal] = useState('');
+  const [detalleGolesVisitante, setDetalleGolesVisitante] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,7 +182,7 @@ function ResultadosYClasif() {
   }, []);
 
   const fetchAll = async () => {
-    const { data: p } = await supabase.from('resultados_partidos').select('*').order('jornada');
+    const { data: p } = await supabase.from('resultados_partidos').select('*').order('jornada').order('fecha');
     const partidosData = (p || []).map((row: any) => ({
       ...row,
       competicion: row.competicion || DEFAULT_MATCH_TYPE,
@@ -218,6 +229,45 @@ function ResultadosYClasif() {
     setDetalle(null);
   };
 
+  const handleGenerarLigaDesdeCalendario = async () => {
+    if (!confirm('Se van a generar todos los partidos de liga desde el documento Calendario. Solo se anadiran los que falten. Continuar?')) return;
+
+    setSaving(true);
+    const { data: existing } = await supabase
+      .from('resultados_partidos')
+      .select('jornada, fecha, equipo_local, equipo_visitante, competicion');
+
+    const existingKeys = new Set(
+      (existing || []).map((p: any) => {
+        const comp = normalizeTeamName(p.competicion || DEFAULT_MATCH_TYPE);
+        return `${p.jornada}|${p.fecha}|${normalizeTeamName(p.equipo_local)}|${normalizeTeamName(p.equipo_visitante)}|${comp}`;
+      })
+    );
+
+    const rowsToInsert = CALENDARIO_LIGA_2026_27
+      .filter(f => {
+        const key = `${f.jornada}|${f.fecha}|${normalizeTeamName(f.equipo_local)}|${normalizeTeamName(f.equipo_visitante)}|${normalizeTeamName(DEFAULT_MATCH_TYPE)}`;
+        return !existingKeys.has(key);
+      })
+      .map(f => ({
+        jornada: f.jornada,
+        fecha: f.fecha,
+        equipo_local: f.equipo_local,
+        equipo_visitante: f.equipo_visitante,
+        goles_local: SCORE_PENDING,
+        goles_visitante: SCORE_PENDING,
+        competicion: DEFAULT_MATCH_TYPE,
+      }));
+
+    if (rowsToInsert.length > 0) {
+      await supabase.from('resultados_partidos').insert(rowsToInsert);
+    }
+
+    await fetchAll();
+    setSaving(false);
+    alert(rowsToInsert.length > 0 ? `Se han generado ${rowsToInsert.length} partidos de liga.` : 'Ya estaban generados todos los partidos de liga.');
+  };
+
   const handleResetAll = async () => {
     if (!confirm('Se eliminaran todos los resultados introducidos y la clasificacion se reiniciara. Continuar?')) return;
     setSaving(true);
@@ -250,6 +300,27 @@ function ResultadosYClasif() {
       setUploadMsg('Error al subir el archivo.');
     }
     setActaFile(null);
+    setSaving(false);
+  };
+
+  const handleGuardarResultadoDetalle = async () => {
+    if (!detalle) return;
+
+    const local = Number(detalleGolesLocal);
+    const visitante = Number(detalleGolesVisitante);
+    if (!Number.isInteger(local) || !Number.isInteger(visitante) || local < 0 || visitante < 0) {
+      alert('Introduce un marcador valido (numeros enteros >= 0).');
+      return;
+    }
+
+    setSaving(true);
+    await supabase
+      .from('resultados_partidos')
+      .update({ goles_local: local, goles_visitante: visitante })
+      .eq('id', detalle.id);
+
+    setDetalle({ ...detalle, goles_local: local, goles_visitante: visitante });
+    await fetchAll();
     setSaving(false);
   };
 
@@ -309,9 +380,27 @@ function ResultadosYClasif() {
         ))}
         {!isReadOnly && tab === 'resultados' && (
           <button
-            onClick={() => setShowAddPartido(v => !v)}
+            onClick={handleGenerarLigaDesdeCalendario}
+            disabled={saving}
             style={{
               marginLeft: 'auto',
+              padding: '8px 16px',
+              borderRadius: '10px',
+              background: saving ? '#555' : '#16d67a',
+              color: '#071119',
+              border: 'none',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              fontWeight: 700,
+              fontSize: '0.84rem',
+            }}
+          >
+            Generar liga
+          </button>
+        )}
+        {!isReadOnly && tab === 'resultados' && (
+          <button
+            onClick={() => setShowAddPartido(v => !v)}
+            style={{
               padding: '8px 18px',
               borderRadius: '10px',
               background: '#2d68ff',
@@ -470,7 +559,7 @@ function ResultadosYClasif() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
           {partidos.length === 0 && (
             <div style={{ gridColumn: '1/-1', color: '#7f96bc', textAlign: 'center', padding: '40px' }}>
-              No hay partidos. Pulsa "+ Anadir" para registrar resultados.
+              No hay partidos. Pulsa "Generar liga" para crear el calendario completo.
             </div>
           )}
 
@@ -510,7 +599,7 @@ function ResultadosYClasif() {
                   </div>
 
                   <div style={{ fontSize: '1.6rem', fontWeight: 900, color, letterSpacing: '0.05em', textAlign: 'center', minWidth: '70px' }}>
-                    {p.goles_local}-{p.goles_visitante}
+                    {hasPlayedScore(p) ? `${p.goles_local}-${p.goles_visitante}` : '---'}
                   </div>
 
                   <div style={{ fontSize: '0.8rem', color: '#cdd4f1', textAlign: 'center', textTransform: 'uppercase' }}>
@@ -521,6 +610,8 @@ function ResultadosYClasif() {
                 <button
                   onClick={() => {
                     setDetalle(p);
+                    setDetalleGolesLocal(hasPlayedScore(p) ? String(p.goles_local) : '');
+                    setDetalleGolesVisitante(hasPlayedScore(p) ? String(p.goles_visitante) : '');
                     setActaFile(null);
                     setUploadMsg('');
                   }}
@@ -662,7 +753,7 @@ function ResultadosYClasif() {
                   JORNADA {detalle.jornada}
                 </span>
                 <h2 style={{ margin: '4px 0 0', fontSize: '1.1rem' }}>
-                  {detalle.equipo_local} {detalle.goles_local}-{detalle.goles_visitante} {detalle.equipo_visitante}
+                  {detalle.equipo_local} {hasPlayedScore(detalle) ? `${detalle.goles_local}-${detalle.goles_visitante}` : '---'} {detalle.equipo_visitante}
                 </h2>
                 <span style={{ color: '#7f96bc', fontSize: '0.82rem' }}>
                   {detalle.fecha
@@ -765,6 +856,56 @@ function ResultadosYClasif() {
                 </p>
               )}
             </div>
+
+            {!isReadOnly && (
+              <div
+                style={{
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  padding: '16px',
+                  display: 'grid',
+                  gap: '12px',
+                  background: 'rgba(10,18,30,0.6)',
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>Resultado del partido</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    value={detalleGolesLocal}
+                    onChange={e => setDetalleGolesLocal(e.target.value)}
+                    placeholder="Local"
+                    style={inputStyle}
+                  />
+                  <span style={{ color: '#7f96bc', fontWeight: 700, textAlign: 'center' }}>-</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={detalleGolesVisitante}
+                    onChange={e => setDetalleGolesVisitante(e.target.value)}
+                    placeholder="Visitante"
+                    style={inputStyle}
+                  />
+                  <button
+                    onClick={handleGuardarResultadoDetalle}
+                    disabled={saving}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      background: saving ? '#555' : '#16d67a',
+                      color: '#071119',
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {!isReadOnly && (
               <button
