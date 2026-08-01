@@ -324,6 +324,23 @@ function ResultadosYClasif() {
     setSaving(false);
   };
 
+  const handleEliminarResultadoDetalle = async () => {
+    if (!detalle) return;
+    if (!confirm('Se eliminara el resultado guardado de este partido y dejara de contar en la clasificacion. Continuar?')) return;
+
+    setSaving(true);
+    await supabase
+      .from('resultados_partidos')
+      .update({ goles_local: SCORE_PENDING, goles_visitante: SCORE_PENDING })
+      .eq('id', detalle.id);
+
+    setDetalle({ ...detalle, goles_local: SCORE_PENDING, goles_visitante: SCORE_PENDING });
+    setDetalleGolesLocal('');
+    setDetalleGolesVisitante('');
+    await fetchAll();
+    setSaving(false);
+  };
+
   const esMiEquipoLocal = (p: Partido) => isMyTeam(p.equipo_local);
 
   return (
@@ -904,6 +921,23 @@ function ResultadosYClasif() {
                     Guardar
                   </button>
                 </div>
+                <button
+                  onClick={handleEliminarResultadoDetalle}
+                  disabled={saving || !hasPlayedScore(detalle)}
+                  style={{
+                    justifySelf: 'start',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: saving || !hasPlayedScore(detalle) ? 'rgba(127,150,188,0.18)' : 'rgba(244,66,66,0.12)',
+                    color: saving || !hasPlayedScore(detalle) ? '#8ba0c2' : '#f44242',
+                    border: saving || !hasPlayedScore(detalle) ? '1px solid rgba(127,150,188,0.28)' : '1px solid rgba(244,66,66,0.25)',
+                    cursor: saving || !hasPlayedScore(detalle) ? 'not-allowed' : 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  Eliminar resultado
+                </button>
               </div>
             )}
 
