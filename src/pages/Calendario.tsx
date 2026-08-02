@@ -131,21 +131,22 @@ function Calendario() {
       if (data) {
         const birthdayEvents: Event[] = data
           .filter(player => player.birth_date)
-          .map(player => {
+          .reduce<Event[]>((acc, player) => {
             const fullName = [player.first_name, player.last_name1, player.last_name2].filter(Boolean).join(' ');
             const birthParts = parseBirthDateParts(player.birth_date);
-            if (!birthParts) return null;
+            if (!birthParts) return acc;
+
             const dateStr = `${String(birthParts.day).padStart(2, '0')}/${String(birthParts.month).padStart(2, '0')}/${year}`;
-            return {
+            acc.push({
               id: `birthday-${fullName}-${year}`,
               date: dateStr,
-              type: 'cumpleaños' as const,
+              type: 'cumpleaños',
               place: 'N/A',
               playerName: fullName,
               description: `Cumpleaños de ${fullName}`,
-            };
-          })
-          .filter((event): event is Event => event !== null);
+            });
+            return acc;
+          }, []);
         const nonBirthday = baseEvents.filter(e => normalizeEventType(e.type) !== 'cumpleanos');
         setEvents([...nonBirthday, ...birthdayEvents]);
       }
