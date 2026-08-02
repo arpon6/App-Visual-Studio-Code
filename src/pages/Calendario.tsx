@@ -37,6 +37,46 @@ const EMPTY_FORM = {
   matchType: DEFAULT_MATCH_TYPE,
 };
 
+const normalizeEventType = (value: string | null | undefined): string => {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
+const parseBirthDateParts = (value: string | null | undefined): { day: number; month: number } | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { day, month };
+    }
+    return null;
+  }
+
+  const dmyMatch = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const day = Number(dmyMatch[1]);
+    const month = Number(dmyMatch[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { day, month };
+    }
+    return null;
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return { day: parsed.getDate(), month: parsed.getMonth() + 1 };
+  }
+
+  return null;
+};
+
 function Calendario() {
   const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
@@ -93,8 +133,9 @@ function Calendario() {
           .filter(player => player.birth_date)
           .map(player => {
             const fullName = [player.first_name, player.last_name1, player.last_name2].filter(Boolean).join(' ');
-            const birthDate = new Date(player.birth_date);
-            const dateStr = `${String(birthDate.getDate()).padStart(2, '0')}/${String(birthDate.getMonth() + 1).padStart(2, '0')}/${year}`;
+            const birthParts = parseBirthDateParts(player.birth_date);
+            if (!birthParts) return null;
+            const dateStr = `${String(birthParts.day).padStart(2, '0')}/${String(birthParts.month).padStart(2, '0')}/${year}`;
             return {
               id: `birthday-${fullName}-${year}`,
               date: dateStr,
@@ -103,8 +144,9 @@ function Calendario() {
               playerName: fullName,
               description: `Cumpleaños de ${fullName}`,
             };
-          });
-        const nonBirthday = baseEvents.filter(e => e.type !== 'cumpleaños');
+          })
+          .filter((event): event is Event => event !== null);
+        const nonBirthday = baseEvents.filter(e => normalizeEventType(e.type) !== 'cumpleanos');
         setEvents([...nonBirthday, ...birthdayEvents]);
       }
     } catch (error) {
