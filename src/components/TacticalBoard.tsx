@@ -162,6 +162,8 @@ export default function TacticalBoard({
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const dragMoved = useRef(false);
+  const touchDragTimerRef = useRef<number | null>(null);
+  const touchDragPendingSlotRef = useRef<number | null>(null);
 
   const changeFormation = (key: string) => {
     onFormationChange(key);
@@ -202,6 +204,22 @@ export default function TacticalBoard({
       y: clientY - rect.top - (fp.y / 100) * rect.height,
     };
     dragMoved.current = false;
+
+    if ('touches' in e) {
+      if (touchDragTimerRef.current !== null) {
+        window.clearTimeout(touchDragTimerRef.current);
+      }
+      touchDragPendingSlotRef.current = slotId;
+      touchDragTimerRef.current = window.setTimeout(() => {
+        if (touchDragPendingSlotRef.current === slotId) {
+          setDragging(slotId);
+          touchDragPendingSlotRef.current = null;
+        }
+        touchDragTimerRef.current = null;
+      }, 35);
+      return;
+    }
+
     setDragging(slotId);
   };
 
@@ -217,6 +235,16 @@ export default function TacticalBoard({
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+
+    if (touchDragPendingSlotRef.current !== null) {
+      setDragging(touchDragPendingSlotRef.current);
+      touchDragPendingSlotRef.current = null;
+    }
+
     if (dragging === null) return;
     const field = fieldRef.current;
     if (!field) return;
@@ -228,6 +256,11 @@ export default function TacticalBoard({
   };
 
   const stopDrag = () => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+    touchDragPendingSlotRef.current = null;
     if (dragging !== null) {
       setDragging(null);
     }
@@ -354,6 +387,8 @@ export function MiniTacticalBoard({ title, storageKey, supabaseTitle, players }:
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const dragMoved = useRef(false);
+  const touchDragTimerRef = useRef<number | null>(null);
+  const touchDragPendingSlotRef = useRef<number | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -438,6 +473,22 @@ export function MiniTacticalBoard({ title, storageKey, supabaseTitle, players }:
       y: clientY - rect.top - (fp.y / 100) * rect.height,
     };
     dragMoved.current = false;
+
+    if ('touches' in e) {
+      if (touchDragTimerRef.current !== null) {
+        window.clearTimeout(touchDragTimerRef.current);
+      }
+      touchDragPendingSlotRef.current = slotId;
+      touchDragTimerRef.current = window.setTimeout(() => {
+        if (touchDragPendingSlotRef.current === slotId) {
+          setDragging(slotId);
+          touchDragPendingSlotRef.current = null;
+        }
+        touchDragTimerRef.current = null;
+      }, 35);
+      return;
+    }
+
     setDragging(slotId);
   };
 
@@ -453,6 +504,16 @@ export function MiniTacticalBoard({ title, storageKey, supabaseTitle, players }:
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+
+    if (touchDragPendingSlotRef.current !== null) {
+      setDragging(touchDragPendingSlotRef.current);
+      touchDragPendingSlotRef.current = null;
+    }
+
     if (dragging === null) return;
     const field = fieldRef.current;
     if (!field) return;
@@ -464,6 +525,11 @@ export function MiniTacticalBoard({ title, storageKey, supabaseTitle, players }:
   };
 
   const stopDrag = () => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+    touchDragPendingSlotRef.current = null;
     if (dragging !== null) {
       if (dragMoved.current) persist(formation, fieldPlayers);
       setDragging(null);

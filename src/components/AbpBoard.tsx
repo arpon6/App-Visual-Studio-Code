@@ -174,6 +174,8 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const dragMoved = useRef(false);
+  const touchDragTimerRef = useRef<number | null>(null);
+  const touchDragPendingIdRef = useRef<string | null>(null);
 
   const getRelPos = (clientX: number, clientY: number) => {
     const rect = fieldRef.current!.getBoundingClientRect();
@@ -239,6 +241,16 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
     if (!rect) return;
     e.preventDefault();
 
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+
+    if (touchDragPendingIdRef.current) {
+      setDraggingId(touchDragPendingIdRef.current);
+      touchDragPendingIdRef.current = null;
+    }
+
     const { clientX, clientY } = getClientPoint(e);
 
     if (draggingId) {
@@ -261,9 +273,16 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
     }
   };
 
-  const onFieldMouseUp = (e: React.MouseEvent) => {
+  const onFieldMouseUp = (e: React.MouseEvent | React.TouchEvent) => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current);
+      touchDragTimerRef.current = null;
+    }
+    touchDragPendingIdRef.current = null;
+
+    const point = getClientPoint(e);
     if (drawingArrow) {
-      const pos = getRelPos(e.clientX, e.clientY);
+      const pos = getRelPos(point.clientX, point.clientY);
       const dx = pos.x - drawingArrow.x1, dy = pos.y - drawingArrow.y1;
       if (Math.sqrt(dx * dx + dy * dy) > 3) {
         onChange({
@@ -294,6 +313,22 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
       y: clientY - rect.top - (p.y / 100) * rect.height,
     };
     dragMoved.current = false;
+
+    if ('touches' in e) {
+      if (touchDragTimerRef.current !== null) {
+        window.clearTimeout(touchDragTimerRef.current);
+      }
+      touchDragPendingIdRef.current = id;
+      touchDragTimerRef.current = window.setTimeout(() => {
+        if (touchDragPendingIdRef.current === id) {
+          setDraggingId(id);
+          touchDragPendingIdRef.current = null;
+        }
+        touchDragTimerRef.current = null;
+      }, 35);
+      return;
+    }
+
     setDraggingId(id);
   };
 
@@ -392,6 +427,7 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
         onMouseLeave={onFieldMouseUp}
         onTouchMove={onFieldTouchMove}
         onTouchEnd={onFieldMouseUp}
+        onTouchCancel={onFieldMouseUp}
       >
         <HalfFieldLines />
 
