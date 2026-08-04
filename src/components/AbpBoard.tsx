@@ -87,16 +87,38 @@ function defaultBoard(name: string): AbpBoardState {
   };
 }
 
+function normalizeBoard(board: Partial<AbpBoardState>): AbpBoardState {
+  return {
+    name: typeof board.name === 'string' && board.name.trim() ? board.name : 'Sin nombre',
+    players: Array.isArray(board.players) ? board.players : defaultBoard('Pizarra 1').players,
+    arrows: Array.isArray(board.arrows) ? board.arrows : [],
+    focuses: Array.isArray(board.focuses) ? board.focuses : [],
+    blocks: Array.isArray(board.blocks) ? board.blocks : [],
+    videoUrl: typeof board.videoUrl === 'string' ? board.videoUrl : '',
+  };
+}
+
+function normalizeBoards(boards: unknown): AbpBoardState[] {
+  if (!Array.isArray(boards) || boards.length === 0) return [defaultBoard('Pizarra 1')];
+  return boards.map((board) => normalizeBoard(board as Partial<AbpBoardState>));
+}
+
 function loadBoards(storageKey: string): AbpBoardState[] {
   try {
     const raw = localStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0)
-        return parsed.map((b: AbpBoardState) => ({ ...b, blocks: b.blocks ?? [], videoUrl: b.videoUrl ?? '' }));
+        return normalizeBoards(parsed);
     }
   } catch { /* ignorar */ }
   return [defaultBoard('Pizarra 1')];
+}
+
+async function fetchBoards(storageTitle: string): Promise<AbpBoardState[] | null> {
+  const { data } = await supabase.from('match_plans').select('tactics').eq('title', storageTitle).maybeSingle();
+  if (!data?.tactics || !Array.isArray(data.tactics)) return null;
+  return normalizeBoards(data.tactics);
 }
 
 // ── Half-field SVG ───────────────────────────────────────────────────────────
@@ -536,28 +558,43 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (localStorage.getItem(storageKey)) return;
-    supabase.from('match_plans').select('tactics').eq('title', supabaseTitle).maybeSingle()
-      .then(({ data }) => {
-        if (data?.tactics && Array.isArray(data.tactics)) {
-          const loaded = (data.tactics as AbpBoardState[]).map(b => ({ ...b, blocks: b.blocks ?? [], videoUrl: b.videoUrl ?? '' }));
-          setBoards(loaded);
-          localStorage.setItem(storageKey, JSON.stringify(loaded));
-        }
-      });
+    let isMounted = true;
+
+    const syncFromRemote = async () => {
+      const remoteBoards = await fetchBoards(supabaseTitle);
+      if (!isMounted || !remoteBoards) return;
+      setBoards(remoteBoards);
+      localStorage.setItem(storageKey, JSON.stringify(remoteBoards));
+    };
+
+    void syncFromRemote();
+
+    const channel = supabase
+      .channel(`abp_repo_sync_${supabaseTitle}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_plans', filter: `title=eq.${supabaseTitle}` }, () => {
+        void syncFromRemote();
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
   }, [storageKey, supabaseTitle]);
 
   const persist = useCallback((next: AbpBoardState[]) => {
-    localStorage.setItem(storageKey, JSON.stringify(next));
+    const normalized = normalizeBoards(next);
+    setBoards(normalized);
+    localStorage.setItem(storageKey, JSON.stringify(normalized));
     setSaved(false);
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(async () => {
       setSaving(true);
       const { data } = await supabase.from('match_plans').select('id').eq('title', supabaseTitle).maybeSingle();
       if (data?.id) {
-        await supabase.from('match_plans').update({ tactics: next }).eq('id', data.id);
+        await supabase.from('match_plans').update({ tactics: normalized }).eq('id', data.id);
       } else {
-        await supabase.from('match_plans').insert({ title: supabaseTitle, tactics: next });
+        await supabase.from('match_plans').insert({ title: supabaseTitle, tactics: normalized });
       }
       setSaving(false);
       setSaved(true);
