@@ -705,6 +705,7 @@ function WellnessDashboard() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dashboardMsg, setDashboardMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const canSeeWeeklyRanking = user?.role === 'entrenador' || user?.role === 'preparador_fisico';
+  const canSeePlayerAverages = user?.role === 'entrenador' || user?.role === 'preparador_fisico';
 
   const dayFrom = refDate;
   const dayTo = refDate;
@@ -791,6 +792,63 @@ function WellnessDashboard() {
 
   const monthResponses = responsesByType;
   const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
+
+  const buildPlayerAverageRows = (periodResponses: WellnessResponse[]) => {
+    const grouped = new Map<string, { nombre: string; fisicoSum: number; fisicoCount: number; animoSum: number; animoCount: number; rpeSum: number; rpeCount: number }>();
+
+    periodResponses.forEach(response => {
+      const payload = parseWellnessStoredPayload(response);
+      const existing = grouped.get(String(response.player_id)) || {
+        nombre: playersById.get(String(response.player_id)) || String(response.player_id),
+        fisicoSum: 0,
+        fisicoCount: 0,
+        animoSum: 0,
+        animoCount: 0,
+        rpeSum: 0,
+        rpeCount: 0,
+      };
+
+      if (payload.pre?.fisico != null) {
+        existing.fisicoSum += payload.pre.fisico;
+        existing.fisicoCount += 1;
+      }
+
+      if (payload.pre?.animo != null) {
+        existing.animoSum += payload.pre.animo;
+        existing.animoCount += 1;
+      }
+
+      if (payload.post?.rpe != null) {
+        existing.rpeSum += payload.post.rpe;
+        existing.rpeCount += 1;
+      }
+
+      grouped.set(String(response.player_id), existing);
+    });
+
+    return jugadores
+      .map(jugador => {
+        const stats = grouped.get(String(jugador.id));
+        return {
+          id: String(jugador.id),
+          nombre: jugador.nombre,
+          preFisico: stats?.fisicoCount ? +(stats.fisicoSum / stats.fisicoCount).toFixed(1) : null,
+          preAnimo: stats?.animoCount ? +(stats.animoSum / stats.animoCount).toFixed(1) : null,
+          postRpe: stats?.rpeCount ? +(stats.rpeSum / stats.rpeCount).toFixed(1) : null,
+        };
+      })
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es-ES'));
+  };
+
+  const weeklyAverageRows = useMemo(() => {
+    const periodResponses = responses.filter(response => response.event_date >= weekFrom && response.event_date <= weekTo);
+    return buildPlayerAverageRows(periodResponses);
+  }, [buildPlayerAverageRows, responses, weekFrom, weekTo]);
+
+  const playerAverageRows = useMemo(() => {
+    const periodResponses = responses.filter(response => response.event_date >= monthFrom && response.event_date <= monthTo);
+    return buildPlayerAverageRows(periodResponses);
+  }, [buildPlayerAverageRows, monthFrom, monthTo, responses]);
 
   const avgNullable = (arr: Array<number | null>) => {
     const valid = arr.filter((value): value is number => typeof value === 'number');
@@ -1012,6 +1070,67 @@ function WellnessDashboard() {
                       <td>{row.respuestas}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {canSeePlayerAverages && (
+        <div className="card">
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <small>{monthLabel}</small>
+              <h2>Promedios por jugador</h2>
+            </div>
+            <span className="wellness-responses-count">{playerAverageRows.length} jugadores</span>
+          </div>
+          {playerAverageRows.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay datos de wellness para este periodo.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="wellness-table">
+                <thead>
+                  <tr>
+                    <th>JUGADOR</th>
+                    <th>PRE FÍSICO</th>
+                    <th>PRE ÁNIMO</th>
+                    <th>POST ESFUERZO</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {playerAverageRows.map((row, index) => {
+                    const weeklyRow = weeklyAverageRows[index];
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <div className="player-cell">
+                            <div className="wellness-avatar">{String(row.nombre).charAt(0)}</div>
+                            {row.nombre}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="wellness-average-stack">
+                            <span className="wellness-average-pill">S: {weeklyRow?.preFisico != null ? weeklyRow.preFisico.toFixed(1) : '—'}</span>
+                            <span className="wellness-average-pill">M: {row.preFisico != null ? row.preFisico.toFixed(1) : '—'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="wellness-average-stack">
+                            <span className="wellness-average-pill">S: {weeklyRow?.preAnimo != null ? weeklyRow.preAnimo.toFixed(1) : '—'}</span>
+                            <span className="wellness-average-pill">M: {row.preAnimo != null ? row.preAnimo.toFixed(1) : '—'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="wellness-average-stack">
+                            <span className="wellness-average-pill">S: {weeklyRow?.postRpe != null ? weeklyRow.postRpe.toFixed(1) : '—'}</span>
+                            <span className="wellness-average-pill">M: {row.postRpe != null ? row.postRpe.toFixed(1) : '—'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

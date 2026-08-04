@@ -119,3 +119,5 @@
 .wellness-table-delete { padding: 8px 10px; background: transparent; color: #ff7b7b; border: 1px solid rgba(255, 123, 123, .35); border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: .06em; cursor: pointer; transition: all .15s; }
 .wellness-table-delete:hover { border-color: #ff7b7b; color: #ffc2c2; }
 .wellness-table-delete:disabled { opacity: .5; cursor: wait; }
+.wellness-average-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; padding: 6px 8px; border-radius: 999px; background: rgba(0, 230, 118, .14); color: var(--accent, #00e676); font-weight: 700; font-size: 12px; }
+.wellness-average-stack { display: flex; flex-wrap: wrap; gap: 6px; }
