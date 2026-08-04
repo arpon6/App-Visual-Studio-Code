@@ -227,7 +227,11 @@ export default function TacticalBoard({
     onFieldPlayersChange(fieldPlayers.map(fp => fp.slotId === dragging ? { ...fp, x, y } : fp));
   };
 
-  const stopDrag = () => { setDragging(null); };
+  const stopDrag = () => {
+    if (dragging !== null) {
+      setDragging(null);
+    }
+  };
 
   return (
     <div className="tb-wrapper">
@@ -257,6 +261,7 @@ export default function TacticalBoard({
         onMouseLeave={stopDrag}
         onTouchMove={onTouchMove}
         onTouchEnd={stopDrag}
+        onTouchCancel={stopDrag}
       >
         <svg className="tb-field-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
           <rect x="5" y="3" width="90" height="94" rx="1" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
@@ -496,6 +501,7 @@ export function MiniTacticalBoard({ title, storageKey, supabaseTitle, players }:
         onMouseLeave={stopDrag}
         onTouchMove={onTouchMove}
         onTouchEnd={stopDrag}
+        onTouchCancel={stopDrag}
       >
         <svg className="tb-field-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
           <rect x="5" y="3" width="90" height="94" rx="1" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />

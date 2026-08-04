@@ -197,6 +197,14 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
     }
   };
 
+  const getClientPoint = (e: React.MouseEvent | React.TouchEvent) => {
+    if ('touches' in e) {
+      const touch = e.touches[0];
+      return { clientX: touch.clientX, clientY: touch.clientY };
+    }
+    return { clientX: e.clientX, clientY: e.clientY };
+  };
+
   const onFieldMouseMove = (e: React.MouseEvent) => {
     const rect = fieldRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -226,6 +234,33 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
     }
   };
 
+  const onFieldTouchMove = (e: React.TouchEvent) => {
+    const rect = fieldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    e.preventDefault();
+
+    const { clientX, clientY } = getClientPoint(e);
+
+    if (draggingId) {
+      const x = Math.min(97, Math.max(3, ((clientX - rect.left - dragOffset.current.x) / rect.width) * 100));
+      const y = Math.min(97, Math.max(3, ((clientY - rect.top - dragOffset.current.y) / rect.height) * 100));
+      dragMoved.current = true;
+      onChange({ ...board, players: board.players.map(p => p.id === draggingId ? { ...p, x, y } : p) });
+      return;
+    }
+    if (draggingFocusId) {
+      const x = Math.min(97, Math.max(3, ((clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(97, Math.max(3, ((clientY - rect.top) / rect.height) * 100));
+      onChange({ ...board, focuses: board.focuses.map(f => f.id === draggingFocusId ? { ...f, x, y } : f) });
+      return;
+    }
+    if (draggingBlockId) {
+      const x = Math.min(97, Math.max(3, ((clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(97, Math.max(3, ((clientY - rect.top) / rect.height) * 100));
+      onChange({ ...board, blocks: board.blocks.map(b => b.id === draggingBlockId ? { ...b, x, y } : b) });
+    }
+  };
+
   const onFieldMouseUp = (e: React.MouseEvent) => {
     if (drawingArrow) {
       const pos = getRelPos(e.clientX, e.clientY);
@@ -248,14 +283,15 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
     setDraggingBlockId(null);
   };
 
-  const startPlayerDrag = (e: React.MouseEvent, id: string) => {
+  const startPlayerDrag = (e: React.MouseEvent | React.TouchEvent, id: string) => {
     if (tool !== 'move') return;
     e.stopPropagation();
     const rect = fieldRef.current!.getBoundingClientRect();
     const p = board.players.find(p => p.id === id)!;
+    const { clientX, clientY } = getClientPoint(e);
     dragOffset.current = {
-      x: e.clientX - rect.left - (p.x / 100) * rect.width,
-      y: e.clientY - rect.top - (p.y / 100) * rect.height,
+      x: clientX - rect.left - (p.x / 100) * rect.width,
+      y: clientY - rect.top - (p.y / 100) * rect.height,
     };
     dragMoved.current = false;
     setDraggingId(id);
@@ -354,6 +390,8 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
         onMouseMove={onFieldMouseMove}
         onMouseUp={onFieldMouseUp}
         onMouseLeave={onFieldMouseUp}
+        onTouchMove={onFieldTouchMove}
+        onTouchEnd={onFieldMouseUp}
       >
         <HalfFieldLines />
 
@@ -436,6 +474,7 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
             className={`tb-player tb-player--mini abp-player${p.isGk ? ' abp-gk' : ''}${p.player ? ' tb-player--filled' : ''}${selectingId === p.id ? ' tb-player--selecting' : ''}`}
             style={{ left: `${p.x}%`, top: `${p.y}%` }}
             onMouseDown={e => startPlayerDrag(e, p.id)}
+            onTouchStart={e => startPlayerDrag(e, p.id)}
             onClick={() => handlePlayerClick(p.id)}
           >
             <div className="tb-player-circle">{p.player ? p.player.number : '+'}</div>
