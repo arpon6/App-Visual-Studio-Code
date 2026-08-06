@@ -36,7 +36,7 @@ export const APP_PAGES = [
   { key: 'Inicio', component: Inicio, visibleTo: SHARED_ROLES, showOnHome: false },
   { key: 'Plantilla', component: Plantilla, visibleTo: SHARED_ROLES },
   { key: 'Calendario', component: Calendario, visibleTo: SHARED_ROLES },
-  { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: SHARED_ROLES },
+  { key: 'Periodo Adaptativo', component: PeriodoAdaptativo, visibleTo: [], showOnHome: false },
   { key: 'Secuenciación de contenidos', component: SecuenciacionDeContenidos, visibleTo: STAFF_ROLES },
   { key: 'Generador de sesiones', component: GeneradorDeSesiones, visibleTo: STAFF_ROLES },
   { key: 'Plan de Partido', component: PlanDePartido, visibleTo: STAFF_ROLES },

@@ -142,11 +142,11 @@ function HalfFieldLines() {
 function ArrowDefs() {
   return (
     <defs>
-      <marker id="abp-arrow-ball" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-        <path d="M0,0 L0,6 L6,3 z" fill="#3dffba" />
+      <marker id="abp-arrow-ball" markerWidth="5" markerHeight="5" refX="4.7" refY="2.5" orient="auto">
+        <path d="M0,0.25 L0,4.75 L5,2.5 z" fill="#3dffba" />
       </marker>
-      <marker id="abp-arrow-player" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-        <path d="M0,0 L0,6 L6,3 z" fill="#3d99ff" />
+      <marker id="abp-arrow-player" markerWidth="5" markerHeight="5" refX="4.7" refY="2.5" orient="auto">
+        <path d="M0,0.25 L0,4.75 L5,2.5 z" fill="#3d99ff" />
       </marker>
     </defs>
   );
@@ -432,7 +432,6 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
         <HalfFieldLines />
 
         <svg className="abp-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <ArrowDefs />
 
           {/* Focos */}
           {board.focuses.map(f => (
@@ -454,13 +453,18 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
             />
           ))}
 
+        </svg>
+
+        <svg className="abp-svg-layer abp-svg-layer--arrows" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <ArrowDefs />
+
           {/* Flechas */}
           {board.arrows.map(a => (
             <line key={a.id}
               x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2}
               stroke={a.type === 'ball' ? '#3dffba' : '#3d99ff'}
-              strokeWidth="0.9"
-              strokeDasharray={a.type === 'player' ? '3 2' : undefined}
+              strokeWidth="0.65"
+              strokeDasharray={a.type === 'player' ? '2.4 1.7' : undefined}
               markerEnd={`url(#abp-arrow-${a.type})`}
               style={{ cursor: 'pointer' }}
               onClick={() => onChange({ ...board, arrows: board.arrows.filter(x => x.id !== a.id) })}
@@ -472,9 +476,10 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
               x1={drawingArrow.x1} y1={drawingArrow.y1}
               x2={drawingArrow.x2} y2={drawingArrow.y2}
               stroke={tool === 'arrow-ball' ? '#3dffba' : '#3d99ff'}
-              strokeWidth="0.9"
-              strokeDasharray={tool === 'arrow-player' ? '3 2' : undefined}
-              opacity="0.6" pointerEvents="none"
+              strokeWidth="0.65"
+              strokeDasharray={tool === 'arrow-player' ? '2.4 1.7' : undefined}
+              markerEnd={`url(#abp-arrow-${tool === 'arrow-ball' ? 'ball' : 'player'})`}
+              opacity="0.65" pointerEvents="none"
             />
           )}
         </svg>
@@ -704,6 +709,25 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
     persist(next);
   };
 
+  const moveBoard = (idx: number, direction: -1 | 1) => {
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= boards.length) return;
+
+    const next = [...boards];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+
+    const nextActiveIdx =
+      activeIdx === idx
+        ? targetIdx
+        : activeIdx === targetIdx
+          ? idx
+          : activeIdx;
+
+    setBoards(next);
+    setActiveIdx(nextActiveIdx);
+    persist(next);
+  };
+
   const importFromRepo = (board: AbpBoardState) => {
     const imported = { ...board, name: board.name + ' (importada)' };
     const next = [...boards, imported];
@@ -775,6 +799,28 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
       <div className="abp-tabs">
         {boards.map((b, i) => (
           <div key={i} className={`abp-tab${activeIdx === i ? ' active' : ''}`} onClick={() => setActiveIdx(i)}>
+            {!readOnly && boards.length > 1 && (
+              <div className="abp-tab-actions" onClick={e => e.stopPropagation()}>
+                <button
+                  className="abp-tab-move"
+                  title="Mover jugada a la izquierda"
+                  aria-label="Mover jugada a la izquierda"
+                  disabled={i === 0}
+                  onClick={() => moveBoard(i, -1)}
+                >
+                  ◀
+                </button>
+                <button
+                  className="abp-tab-move"
+                  title="Mover jugada a la derecha"
+                  aria-label="Mover jugada a la derecha"
+                  disabled={i === boards.length - 1}
+                  onClick={() => moveBoard(i, 1)}
+                >
+                  ▶
+                </button>
+              </div>
+            )}
             {!readOnly && editingName === i ? (
               <input
                 className="abp-tab-input" autoFocus value={b.name}
@@ -815,6 +861,24 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
 
 export function AbpContainer() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [offensiveType, setOffensiveType] = useState<'corner' | 'falta_lateral' | 'falta_frontal'>('corner');
+  const [defensiveType, setDefensiveType] = useState<'corner' | 'falta_lateral' | 'falta_frontal'>('corner');
+
+  const playTypeOptions: { key: 'corner' | 'falta_lateral' | 'falta_frontal'; label: string }[] = [
+    { key: 'corner', label: 'Córner' },
+    { key: 'falta_lateral', label: 'Falta lateral' },
+    { key: 'falta_frontal', label: 'Falta frontal' },
+  ];
+
+  const getTypedKey = (baseKey: string, type: 'corner' | 'falta_lateral' | 'falta_frontal') => {
+    if (type === 'corner') return baseKey;
+    return `${baseKey}_${type}`;
+  };
+
+  const getTypeLabel = (type: 'corner' | 'falta_lateral' | 'falta_frontal') => {
+    const found = playTypeOptions.find(option => option.key === type);
+    return found ? found.label : 'Córner';
+  };
 
   useEffect(() => {
     supabase.from('plantilla').select('number, first_name, last_name1').then(({ data }) => {
@@ -831,10 +895,55 @@ export function AbpContainer() {
 
   return (
     <>
-      <AbpSection title="ABP Ofensivo" badge="B" storageKey="abp_ofensivo" supabaseTitle="abp_ofensivo" players={players}
-        repoStorageKeys={['abp_repo_ofensivo', 'abp_repo_defensivo']} />
-      <AbpSection title="ABP Defensivo" badge="C" storageKey="abp_defensivo" supabaseTitle="abp_defensivo" players={players}
-        repoStorageKeys={['abp_repo_ofensivo', 'abp_repo_defensivo']} />
+      <div className="abp-type-wrap">
+        <div className="abp-type-tabs" role="tablist" aria-label="Tipo de jugada ABP ofensiva">
+          {playTypeOptions.map(option => (
+            <button
+              key={option.key}
+              className={`abp-type-tab${offensiveType === option.key ? ' active' : ''}`}
+              onClick={() => setOffensiveType(option.key)}
+              role="tab"
+              aria-selected={offensiveType === option.key}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <AbpSection
+          key={`abp_ofensivo_${offensiveType}`}
+          title={`ABP Ofensivo · ${getTypeLabel(offensiveType)}`}
+          badge="B"
+          storageKey={getTypedKey('abp_ofensivo', offensiveType)}
+          supabaseTitle={getTypedKey('abp_ofensivo', offensiveType)}
+          players={players}
+          repoStorageKeys={['abp_repo_ofensivo', 'abp_repo_defensivo']}
+        />
+      </div>
+
+      <div className="abp-type-wrap">
+        <div className="abp-type-tabs" role="tablist" aria-label="Tipo de jugada ABP defensiva">
+          {playTypeOptions.map(option => (
+            <button
+              key={option.key}
+              className={`abp-type-tab${defensiveType === option.key ? ' active' : ''}`}
+              onClick={() => setDefensiveType(option.key)}
+              role="tab"
+              aria-selected={defensiveType === option.key}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <AbpSection
+          key={`abp_defensivo_${defensiveType}`}
+          title={`ABP Defensivo · ${getTypeLabel(defensiveType)}`}
+          badge="C"
+          storageKey={getTypedKey('abp_defensivo', defensiveType)}
+          supabaseTitle={getTypedKey('abp_defensivo', defensiveType)}
+          players={players}
+          repoStorageKeys={['abp_repo_ofensivo', 'abp_repo_defensivo']}
+        />
+      </div>
     </>
   );
 }
