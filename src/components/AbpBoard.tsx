@@ -142,11 +142,11 @@ function HalfFieldLines() {
 function ArrowDefs() {
   return (
     <defs>
-      <marker id="abp-arrow-ball" markerWidth="5" markerHeight="5" refX="4.7" refY="2.5" orient="auto">
-        <path d="M0,0.25 L0,4.75 L5,2.5 z" fill="#3dffba" />
+      <marker id="abp-arrow-ball" markerWidth="10" markerHeight="10" refX="8.8" refY="5" orient="auto">
+        <path d="M0,0.8 L0,9.2 L10,5 z" fill="#3dffba" />
       </marker>
-      <marker id="abp-arrow-player" markerWidth="5" markerHeight="5" refX="4.7" refY="2.5" orient="auto">
-        <path d="M0,0.25 L0,4.75 L5,2.5 z" fill="#3d99ff" />
+      <marker id="abp-arrow-player" markerWidth="10" markerHeight="10" refX="8.8" refY="5" orient="auto">
+        <path d="M0,0.8 L0,9.2 L10,5 z" fill="#3d99ff" />
       </marker>
     </defs>
   );
@@ -464,6 +464,7 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
               x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2}
               stroke={a.type === 'ball' ? '#3dffba' : '#3d99ff'}
               strokeWidth="0.65"
+              strokeLinecap="round"
               strokeDasharray={a.type === 'player' ? '2.4 1.7' : undefined}
               markerEnd={`url(#abp-arrow-${a.type})`}
               style={{ cursor: 'pointer' }}
@@ -477,6 +478,7 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
               x2={drawingArrow.x2} y2={drawingArrow.y2}
               stroke={tool === 'arrow-ball' ? '#3dffba' : '#3d99ff'}
               strokeWidth="0.65"
+              strokeLinecap="round"
               strokeDasharray={tool === 'arrow-player' ? '2.4 1.7' : undefined}
               markerEnd={`url(#abp-arrow-${tool === 'arrow-ball' ? 'ball' : 'player'})`}
               opacity="0.65" pointerEvents="none"
@@ -880,6 +882,18 @@ export function AbpContainer() {
     return found ? found.label : 'Córner';
   };
 
+  const onOffensiveTypeChange = (value: string) => {
+    if (value === 'corner' || value === 'falta_lateral' || value === 'falta_frontal') {
+      setOffensiveType(value);
+    }
+  };
+
+  const onDefensiveTypeChange = (value: string) => {
+    if (value === 'corner' || value === 'falta_lateral' || value === 'falta_frontal') {
+      setDefensiveType(value);
+    }
+  };
+
   useEffect(() => {
     supabase.from('plantilla').select('number, first_name, last_name1').then(({ data }) => {
       if (!data) return;
@@ -896,18 +910,18 @@ export function AbpContainer() {
   return (
     <>
       <div className="abp-type-wrap">
-        <div className="abp-type-tabs" role="tablist" aria-label="Tipo de jugada ABP ofensiva">
-          {playTypeOptions.map(option => (
-            <button
-              key={option.key}
-              className={`abp-type-tab${offensiveType === option.key ? ' active' : ''}`}
-              onClick={() => setOffensiveType(option.key)}
-              role="tab"
-              aria-selected={offensiveType === option.key}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="abp-type-select-row">
+          <label className="abp-type-select-label" htmlFor="abp-offensive-type">Tipo de jugada ofensiva</label>
+          <select
+            id="abp-offensive-type"
+            className="abp-type-select"
+            value={offensiveType}
+            onChange={e => onOffensiveTypeChange(e.target.value)}
+          >
+            {playTypeOptions.map(option => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
         </div>
         <AbpSection
           key={`abp_ofensivo_${offensiveType}`}
@@ -921,18 +935,18 @@ export function AbpContainer() {
       </div>
 
       <div className="abp-type-wrap">
-        <div className="abp-type-tabs" role="tablist" aria-label="Tipo de jugada ABP defensiva">
-          {playTypeOptions.map(option => (
-            <button
-              key={option.key}
-              className={`abp-type-tab${defensiveType === option.key ? ' active' : ''}`}
-              onClick={() => setDefensiveType(option.key)}
-              role="tab"
-              aria-selected={defensiveType === option.key}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="abp-type-select-row">
+          <label className="abp-type-select-label" htmlFor="abp-defensive-type">Tipo de jugada defensiva</label>
+          <select
+            id="abp-defensive-type"
+            className="abp-type-select"
+            value={defensiveType}
+            onChange={e => onDefensiveTypeChange(e.target.value)}
+          >
+            {playTypeOptions.map(option => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
         </div>
         <AbpSection
           key={`abp_defensivo_${defensiveType}`}
