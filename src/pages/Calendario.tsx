@@ -446,24 +446,31 @@ function Calendario() {
     const element = document.querySelector('.calendar-card') as HTMLElement;
     if (!element) return;
 
-    const canvas = await html2canvas(element, {
-      backgroundColor: '#0c1622',
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    });
+    element.classList.add('exporting-pdf');
+    await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
 
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const ratio = canvas.width / canvas.height;
-    const imgW = pageW;
-    const imgH = imgW / ratio;
-    const offsetY = imgH < pageH ? (pageH - imgH) / 2 : 0;
+    try {
+      const canvas = await html2canvas(element, {
+        backgroundColor: '#0c1622',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
 
-    pdf.addImage(imgData, 'PNG', 0, offsetY, imgW, imgH);
-    pdf.save(`Calendario_${nombre}.pdf`);
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.width / canvas.height;
+      const imgW = pageW;
+      const imgH = imgW / ratio;
+      const offsetY = imgH < pageH ? (pageH - imgH) / 2 : 0;
+
+      pdf.addImage(imgData, 'PNG', 0, offsetY, imgW, imgH);
+      pdf.save(`Calendario_${nombre}.pdf`);
+    } finally {
+      element.classList.remove('exporting-pdf');
+    }
   };
 
   if (!loaded) return null;
@@ -563,6 +570,9 @@ function Calendario() {
                               <option key={group} value={group}>{group}</option>
                             ))}
                           </select>
+                          <span className="training-group-display">
+                            {getEffectiveTrainingGroupForDate(dateStr, trainingGroupsByDate[dateStr]) || '-'}
+                          </span>
                         </div>
                       )}
                     </>
