@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Player, PlayerSelectorModal } from './TacticalBoard';
-import bloqueoIcon from '../../bloqueo.png';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -363,12 +362,12 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
   const usedIds = new Set(board.players.map(p => p.player?.id).filter((id): id is number => id !== undefined));
   const embedUrl = getYoutubeEmbedUrl(board.videoUrl);
 
-  const tools: { key: Tool; label: string; title: string; iconSrc?: string }[] = [
+  const tools: { key: Tool; label: string; title: string }[] = [
     { key: 'move',         label: '↖',  title: 'Mover jugador' },
     { key: 'focus',        label: '◎',  title: 'Foco (zona destino)' },
     { key: 'arrow-player', label: '⤳',  title: 'Flecha jugador' },
     { key: 'arrow-ball',   label: '→',  title: 'Flecha balón' },
-    { key: 'block',        label: 'Bloq.', title: 'Bloqueo', iconSrc: bloqueoIcon },
+    { key: 'block',        label: '⛔', title: 'Bloqueo' },
   ];
 
   return (
@@ -401,11 +400,7 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
               className={`abp-tool-btn${tool === t.key ? ' active' : ''}`}
               onClick={() => setTool(t.key)}
             >
-              {t.iconSrc ? (
-                <img src={t.iconSrc} alt={t.title} className="abp-tool-icon" />
-              ) : (
-                t.label
-              )}
+              {t.label}
               <span className="abp-tool-label">{t.title}</span>
             </button>
           ))}
@@ -442,15 +437,29 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
 
           {/* Bloqueos */}
           {board.blocks.map(b => (
-            <image
-              key={b.id}
-              href={bloqueoIcon}
-              x={b.x - 3.5}
-              y={b.y - 3.5}
-              width="7"
-              height="7"
-              preserveAspectRatio="xMidYMid meet"
-            />
+            <g key={b.id} transform={`translate(${b.x}, ${b.y})`}>
+              <rect
+                x="-3.5"
+                y="-3.5"
+                width="7"
+                height="7"
+                rx="1.2"
+                fill="rgba(255, 120, 120, 0.16)"
+                stroke="rgba(255, 120, 120, 0.9)"
+                strokeWidth="0.5"
+              />
+              <text
+                x="0"
+                y="0.7"
+                textAnchor="middle"
+                fontSize="4.6"
+                fontWeight="700"
+                fill="rgba(255, 120, 120, 0.95)"
+                style={{ userSelect: 'none', pointerEvents: 'none' }}
+              >
+                ⛔
+              </text>
+            </g>
           ))}
 
         </svg>
