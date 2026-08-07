@@ -239,6 +239,43 @@
   color: #90f4ae;
 }
 
+.training-group-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.training-group-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #90f4ae;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.training-group-select {
+  flex: 1;
+  min-width: 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 22, 34, 0.88);
+  color: #cdd4f1;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  padding: 3px 6px;
+}
+
+.training-group-select:focus {
+  outline: none;
+  border-color: #90f4ae;
+  box-shadow: 0 0 0 2px rgba(144, 244, 174, 0.1);
+}
+
+.training-group-select:disabled {
+  opacity: 0.7;
+}
+
 .events-list-card {
   padding: 24px;
   display: flex;

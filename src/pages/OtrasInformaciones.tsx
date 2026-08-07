@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import { usePlantilla } from '../lib/usePlantilla';
+import { useSharedState } from '../lib/useSharedState';
 
 interface Documento {
   id: string;
@@ -10,9 +12,18 @@ interface Documento {
   created_at: string;
 }
 
+const GRUPOS_COLS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4'] as const;
+const FILAS_POR_GRUPO = 8; // número de filas (slots) por grupo
+type GruposMaterial = Record<string, (string | null)[]>; // grupo -> array de ids de jugador
+
 function OtrasInformaciones() {
   const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
+  const jugadores = usePlantilla();
+  const [gruposMaterial, setGruposMaterial, loadingGrupos] = useSharedState<GruposMaterial>(
+    'otras_info_grupos_material',
+    Object.fromEntries(GRUPOS_COLS.map(g => [g, Array(FILAS_POR_GRUPO).fill(null)])),
+  );
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [titulo, setTitulo] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -71,6 +82,13 @@ function OtrasInformaciones() {
     await supabase.storage.from('documentos').remove([path]);
     await supabase.from('other_information').delete().eq('id', doc.id);
     setDocumentos(prev => prev.filter(d => d.id !== doc.id));
+  };
+
+  const handleGrupoChange = (grupo: string, idx: number, value: string | null) => {
+    setGruposMaterial(prev => ({
+      ...prev,
+      [grupo]: prev[grupo].map((v, i) => (i === idx ? value : v)),
+    }));
   };
 
   return (
@@ -136,6 +154,83 @@ function OtrasInformaciones() {
               </li>
             ))}
           </ul>
+        )}
+      </div>
+      <div className="card">
+        <div className="section-header">
+          <h2>Grupos de material</h2>
+        </div>
+        {loadingGrupos ? (
+          <p>Cargando...</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
+              <thead>
+                <tr>
+                  {GRUPOS_COLS.map(g => (
+                    <th
+                      key={g}
+                      style={{
+                        padding: '10px 14px',
+                        textAlign: 'center',
+                        color: '#7f96bc',
+                        fontSize: '0.82rem',
+                        letterSpacing: '0.06em',
+                        borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      {g.toUpperCase()}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: FILAS_POR_GRUPO }).map((_, rowIdx) => (
+                  <tr key={rowIdx}>
+                    {GRUPOS_COLS.map(g => {
+                      const val = gruposMaterial[g]?.[rowIdx] ?? null;
+                      const jugador = jugadores.find(j => j.id === val);
+                      return (
+                        <td
+                          key={g}
+                          style={{
+                            padding: '6px 10px',
+                            textAlign: 'center',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          }}
+                        >
+                          {isReadOnly ? (
+                            <span style={{ fontSize: '0.88rem', color: val ? '#fff' : '#555' }}>
+                              {jugador ? jugador.nombre : '—'}
+                            </span>
+                          ) : (
+                            <select
+                              value={val ?? ''}
+                              onChange={e => handleGrupoChange(g, rowIdx, e.target.value || null)}
+                              style={{
+                                width: '100%',
+                                background: '#1a2133',
+                                color: val ? '#fff' : '#7f96bc',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: '6px',
+                                padding: '5px 8px',
+                                fontSize: '0.85rem',
+                              }}
+                            >
+                              <option value="">— Sin asignar —</option>
+                              {jugadores.map(j => (
+                                <option key={j.id} value={j.id}>{j.nombre}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </section>

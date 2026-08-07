@@ -6,6 +6,7 @@ create table if not exists calendar_events (
   date text not null,
   type text not null,
   custom_type text,
+  training_group text,
   place text not null,
   time text,
   description text,

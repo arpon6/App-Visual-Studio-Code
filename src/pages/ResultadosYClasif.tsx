@@ -746,7 +746,7 @@ function ResultadosYClasif() {
                   <tr
                     key={row.id}
                     style={{
-                      background: row.es_mi_equipo ? 'rgba(22,214,122,0.06)' : esOyonesaRow ? 'rgba(244,166,66,0.12)' : undefined,
+                      background: esOyonesaRow ? 'rgba(244,166,66,0.12)' : undefined,
                     }}
                   >
                   <td style={{ textAlign: 'center', padding: '14px 16px' }}>
@@ -769,8 +769,8 @@ function ResultadosYClasif() {
                   </td>
                   <td
                     style={{
-                      fontWeight: row.es_mi_equipo || esOyonesaRow ? 700 : 400,
-                      color: row.es_mi_equipo ? '#16d67a' : esOyonesaRow ? '#ffd08a' : '#fff',
+                      fontWeight: esOyonesaRow ? 700 : 400,
+                      color: esOyonesaRow ? '#ffd08a' : '#fff',
                       textTransform: 'uppercase',
                       letterSpacing: '0.04em',
                       fontSize: '0.88rem',

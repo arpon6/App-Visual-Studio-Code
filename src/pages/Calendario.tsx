@@ -18,12 +18,17 @@ interface Event {
   rival?: string;
   jornada?: string;
   matchType?: string;
+  trainingGroup?: TrainingGroup;
   pdfFile?: {
     name: string;
     data?: string;
     url?: string;
   };
 }
+
+const TRAINING_GROUP_OPTIONS = ['G1', 'G2', 'G3', 'G4'] as const;
+type TrainingGroup = typeof TRAINING_GROUP_OPTIONS[number];
+type TrainingGroupsByDate = Record<string, TrainingGroup>;
 
 const EMPTY_FORM = {
   type: 'partido' as 'partido' | 'entrenamiento' | 'otro',
@@ -93,6 +98,7 @@ function Calendario() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pdfUrl, setPdfUrl] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [trainingGroupsByDate, setTrainingGroupsByDate] = useState<TrainingGroupsByDate>({});
 
   useEffect(() => {
     loadEvents();
@@ -114,8 +120,20 @@ function Calendario() {
       rival: r.rival,
       jornada: r.jornada,
       matchType: r.match_type,
+      trainingGroup: typeof r.training_group === 'string' && TRAINING_GROUP_OPTIONS.includes(r.training_group as TrainingGroup)
+        ? (r.training_group as TrainingGroup)
+        : undefined,
       pdfFile: r.pdf_url ? { name: r.pdf_name || 'documento.pdf', url: r.pdf_url } : undefined,
     }));
+
+    const groupsByDate = saved.reduce<TrainingGroupsByDate>((acc, event) => {
+      if (event.type === 'entrenamiento' && event.trainingGroup) {
+        acc[event.date] = event.trainingGroup;
+      }
+      return acc;
+    }, {});
+
+    setTrainingGroupsByDate(groupsByDate);
     setSavedEvents(saved);
     localStorage.setItem('calendarEvents', JSON.stringify(saved));
     loadBirthdayEvents(saved, currentDate.getFullYear());
@@ -243,6 +261,7 @@ function Calendario() {
       rival: formData.type === 'partido' ? (finalRival || null) : null,
       jornada: formData.type === 'partido' ? (formData.jornada || null) : null,
       match_type: formData.type === 'partido' ? (formData.matchType || null) : null,
+      training_group: formData.type === 'entrenamiento' ? (trainingGroupsByDate[selectedDate] || null) : null,
       pdf_name: finalPdfName,
       pdf_url: finalPdfUrl,
       created_by: user.id,
@@ -339,10 +358,52 @@ function Calendario() {
     Array.from({ length: monthDays }, (_, i) => i + 1)
   ) as (number | undefined)[];
 
+  const getDateStrForDay = (day: number) => (
+    `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`
+  );
+
   const getEventsForDay = (day: number | undefined) => {
     if (!day) return [];
-    const dateStr = `${String(day).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
+    const dateStr = getDateStrForDay(day);
     return events.filter(evt => evt.date === dateStr);
+  };
+
+  const handleTrainingGroupChange = async (date: string, group: string) => {
+    if (isReadOnly) return;
+
+    const trainingGroup = group && TRAINING_GROUP_OPTIONS.includes(group as TrainingGroup)
+      ? (group as TrainingGroup)
+      : null;
+
+    const prevValue = trainingGroupsByDate[date];
+    setTrainingGroupsByDate(prev => {
+      const next = { ...prev };
+      if (!trainingGroup) {
+        delete next[date];
+      } else {
+        next[date] = trainingGroup;
+      }
+      return next;
+    });
+
+    const { error } = await supabase
+      .from('calendar_events')
+      .update({ training_group: trainingGroup })
+      .eq('date', date)
+      .eq('type', 'entrenamiento');
+
+    if (error) {
+      setTrainingGroupsByDate(prev => {
+        const next = { ...prev };
+        if (!prevValue) {
+          delete next[date];
+        } else {
+          next[date] = prevValue;
+        }
+        return next;
+      });
+      alert('No se pudo guardar el grupo en la nube. Aplica la migración SQL de training_group y vuelve a intentar.');
+    }
   };
 
   const handleExportPDF = async () => {
@@ -400,6 +461,8 @@ function Calendario() {
           <div className="calendar-grid">
             {calendarDays.map((day, idx) => {
               const dayEvents = getEventsForDay(day);
+              const dateStr = day ? getDateStrForDay(day) : '';
+              const hasTrainingEvent = dayEvents.some(evt => evt.type === 'entrenamiento');
               return (
                 <div
                   key={idx}
@@ -450,6 +513,24 @@ function Calendario() {
                           {dayEvents.length > 3 && <span className="more-events">+{dayEvents.length - 3}</span>}
                         </div>
                       )}
+                      {hasTrainingEvent && (
+                        <div className="training-group-row" onClick={(e) => e.stopPropagation()}>
+                          <span className="training-group-label">Grupo</span>
+                          <select
+                            className="training-group-select"
+                            value={trainingGroupsByDate[dateStr] || ''}
+                            onChange={(e) => handleTrainingGroupChange(dateStr, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={isReadOnly}
+                            title="Seleccionar grupo de entrenamiento"
+                          >
+                            <option value="">-</option>
+                            {TRAINING_GROUP_OPTIONS.map(group => (
+                              <option key={group} value={group}>{group}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -476,6 +557,7 @@ function Calendario() {
                   <div className="event-details">
                     <strong>{evt.place}</strong>
                     {evt.type === 'partido' && evt.rival && <p>⚔️ <strong>Rival:</strong> {evt.rival}</p>}
+                    {evt.type === 'entrenamiento' && trainingGroupsByDate[evt.date] && <p><strong>Grupo:</strong> {trainingGroupsByDate[evt.date]}</p>}
                     {evt.playerName && <p><em>📅 {evt.playerName}</em></p>}
                     {evt.description && <p>{evt.description}</p>}
                   </div>
