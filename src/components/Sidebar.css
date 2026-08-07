@@ -6,8 +6,8 @@
   min-height: 100vh;
   position: sticky;
   top: 0;
-  background: rgba(10, 15, 25, 0.96);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .sidebar-brand {
@@ -33,7 +33,35 @@
 }
 
 .sidebar-brand small {
-  color: #7f96bc;
+  color: var(--text-muted);
+}
+
+.sidebar-theme-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.sidebar-theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
+.sidebar-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex-shrink: 0;
 }
 
 .sidebar-nav {
@@ -48,7 +76,7 @@
   border: none;
   text-align: left;
   font-size: 0.98rem;
-  color: #d7e1ff;
+  color: var(--text);
   background: transparent;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
@@ -56,22 +84,22 @@
 
 .sidebar-item:hover,
 .sidebar-item.active {
-  color: #00ff8d;
-  background: rgba(0, 255, 141, 0.08);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
   transform: translateX(4px);
 }
 
 .sidebar-user {
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .sidebar-user small {
-  color: #7f96bc;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -79,18 +107,19 @@
 
 .sidebar-signout {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #7f96bc;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   border-radius: 10px;
   padding: 8px 12px;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
 }
 
 .sidebar-signout:hover {
   color: #ff6b6b;
   border-color: #ff6b6b;
+  background: var(--surface-2);
 }
 
 @media (max-width: 1080px) {

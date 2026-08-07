@@ -5,6 +5,10 @@ import Login from './pages/Login';
 import { APP_PAGE_KEYS, APP_PAGES, getHomeShortcutKeys, getVisiblePageKeys, isPageKey, type PageKey } from './lib/appPages';
 import './App.css';
 
+type ThemeMode = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'app_theme';
+
 function AppShell() {
   const { user, loading, signOut } = useAuth();
   const mainRef = useRef<HTMLElement | null>(null);
@@ -21,6 +25,19 @@ function AppShell() {
     }
   );
   const [focusMode, setFocusMode] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme === 'light' ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Si el almacenamiento no está disponible, seguimos con el tema en memoria.
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (!window.matchMedia('(max-width: 1080px)').matches) return;
@@ -68,6 +85,10 @@ function AppShell() {
     setActiveSection(section as PageKey);
   };
 
+  const handleToggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
+  };
+
   return (
     <div className={`app-shell${focusMode ? ' sidebar-hidden' : ''}`}>
       <Sidebar
@@ -76,6 +97,8 @@ function AppShell() {
         sections={visibleSections}
         userEmail={user.username}
         onSignOut={signOut}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
       <main ref={mainRef} className="app-main">
         {currentSection !== 'Inicio' && (

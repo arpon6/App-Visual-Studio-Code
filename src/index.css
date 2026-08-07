@@ -1,9 +1,53 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background-color: #08111d;
-  color: #e5ecff;
+  --page-bg: #071119;
+  --page-bg-accent-1: rgba(22, 214, 122, 0.16);
+  --page-bg-accent-2: rgba(45, 104, 255, 0.1);
+  --text: #e5ecff;
+  --text-muted: #7f96bc;
+  --surface-1: rgba(12, 22, 34, 0.96);
+  --surface-2: rgba(24, 36, 58, 0.9);
+  --surface-3: rgba(10, 18, 30, 0.95);
+  --surface-hover: rgba(13, 30, 49, 0.98);
+  --card-bg: rgba(12, 22, 34, 0.96);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --sidebar-bg: rgba(10, 15, 25, 0.96);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --accent: #90f4ae;
+  --accent-strong: #00ff8d;
+  --accent-soft: rgba(0, 255, 141, 0.08);
+  --accent-foreground: #08111d;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(4, 8, 18, 0.95);
+  background-color: var(--page-bg);
+  color: var(--text);
   font-synthesis: none;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --page-bg: #f3f6fb;
+  --page-bg-accent-1: rgba(34, 197, 94, 0.12);
+  --page-bg-accent-2: rgba(59, 130, 246, 0.12);
+  --text: #122033;
+  --text-muted: #5f6b84;
+  --surface-1: rgba(255, 255, 255, 0.95);
+  --surface-2: rgba(238, 243, 251, 0.95);
+  --surface-3: rgba(226, 234, 246, 0.95);
+  --surface-hover: rgba(226, 234, 246, 1);
+  --card-bg: rgba(255, 255, 255, 0.95);
+  --border: rgba(18, 32, 51, 0.12);
+  --border-strong: rgba(18, 32, 51, 0.2);
+  --sidebar-bg: rgba(255, 255, 255, 0.92);
+  --sidebar-border: rgba(18, 32, 51, 0.08);
+  --accent: #0f9b58;
+  --accent-strong: #0a7d44;
+  --accent-soft: rgba(15, 155, 88, 0.1);
+  --accent-foreground: #ffffff;
+  --shadow: rgba(15, 23, 42, 0.12);
+  --overlay-bg: rgba(241, 245, 249, 0.94);
 }
 
 * {
@@ -13,9 +57,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, rgba(22, 214, 122, 0.16), transparent 28%),
-    radial-gradient(circle at top right, rgba(45, 104, 255, 0.1), transparent 24%),
-    #071119;
+  background: radial-gradient(circle at top left, var(--page-bg-accent-1), transparent 28%),
+    radial-gradient(circle at top right, var(--page-bg-accent-2), transparent 24%),
+    var(--page-bg);
 }
 
 a {
@@ -35,5 +79,5 @@ textarea {
 }
 
 body, input, button, textarea, select {
-  color: inherit;
+  color: var(--text);
 }
