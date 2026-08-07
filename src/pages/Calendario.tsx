@@ -550,7 +550,6 @@ function Calendario() {
                       )}
                       {hasTrainingEvent && (
                         <div className="training-group-row" onClick={(e) => e.stopPropagation()}>
-                          <span className="training-group-label">Grupo</span>
                           <select
                             className="training-group-select"
                             value={getEffectiveTrainingGroupForDate(dateStr, trainingGroupsByDate[dateStr]) || ''}
@@ -592,7 +591,7 @@ function Calendario() {
                   <div className="event-details">
                     <strong>{evt.place}</strong>
                     {evt.type === 'partido' && evt.rival && <p>⚔️ <strong>Rival:</strong> {evt.rival}</p>}
-                    {evt.type === 'entrenamiento' && getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date]) && <p><strong>Grupo:</strong> {getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date])}</p>}
+                    {evt.type === 'entrenamiento' && getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date]) && <p><strong>{getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date])}</strong></p>}
                     {evt.playerName && <p><em>📅 {evt.playerName}</em></p>}
                     {evt.description && <p>{evt.description}</p>}
                   </div>

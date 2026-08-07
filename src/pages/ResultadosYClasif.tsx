@@ -777,9 +777,6 @@ function ResultadosYClasif() {
                     }}
                   >
                     {row.equipo}
-                    {esOyonesaRow && (
-                      <span style={{ marginLeft: '8px', color: '#ffd08a', fontSize: '0.78rem' }}>★</span>
-                    )}
                   </td>
                   {[row.pj, row.g, row.e, row.p, row.gf, row.gc].map((v, i) => (
                     <td key={i} style={{ textAlign: 'center', color: i === 1 ? '#4a9eff' : '#cdd4f1' }}>
