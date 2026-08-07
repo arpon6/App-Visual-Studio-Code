@@ -50,6 +50,46 @@
   --overlay-bg: rgba(241, 245, 249, 0.94);
 }
 
+:root[data-theme='light'] .app-main,
+:root[data-theme='light'] .sidebar-shell,
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .widget-box,
+:root[data-theme='light'] .chart-placeholder,
+:root[data-theme='light'] .notification-item,
+:root[data-theme='light'] .accordion-item,
+:root[data-theme='light'] .match-list-item,
+:root[data-theme='light'] .video-wrapper,
+:root[data-theme='light'] .cut-preview-overlay {
+  color: var(--text);
+}
+
+:root[data-theme='light'] .app-main :is(h1, h2, h3, h4, h5, h6, p, small, label, li, summary, strong, td, th),
+:root[data-theme='light'] .sidebar-shell :is(h1, h2, h3, h4, h5, h6, p, small, label, li, summary, strong, td, th),
+:root[data-theme='light'] .card :is(h1, h2, h3, h4, h5, h6, p, small, label, li, summary, strong, td, th) {
+  color: var(--text) !important;
+}
+
+:root[data-theme='light'] .app-main :is(h1, h2, h3, h4, h5, h6),
+:root[data-theme='light'] .sidebar-shell :is(h1, h2, h3, h4, h5, h6),
+:root[data-theme='light'] .card :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+:root[data-theme='light'] .card :is(input, select, textarea),
+:root[data-theme='light'] .widget-box :is(input, select, textarea),
+:root[data-theme='light'] .chart-placeholder :is(input, select, textarea) {
+  background: #fff !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+:root[data-theme='light'] .card :is(input::placeholder, textarea::placeholder),
+:root[data-theme='light'] .widget-box :is(input::placeholder, textarea::placeholder),
+:root[data-theme='light'] .chart-placeholder :is(input::placeholder, textarea::placeholder) {
+  color: var(--text-muted) !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -57,6 +97,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  line-height: 1.45;
   background: radial-gradient(circle at top left, var(--page-bg-accent-1), transparent 28%),
     radial-gradient(circle at top right, var(--page-bg-accent-2), transparent 24%),
     var(--page-bg);
