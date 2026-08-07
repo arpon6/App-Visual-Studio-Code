@@ -13,7 +13,7 @@ interface Documento {
 }
 
 const GRUPOS_COLS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4'] as const;
-const FILAS_POR_GRUPO = 8; // número de filas (slots) por grupo
+const FILAS_POR_GRUPO = 5; // número de filas (slots) por grupo
 type GruposMaterial = Record<string, (string | null)[]>; // grupo -> array de ids de jugador
 
 function OtrasInformaciones() {

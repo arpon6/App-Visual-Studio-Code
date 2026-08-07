@@ -24,11 +24,6 @@ function AppShell() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
-    try {
-      localStorage.removeItem('app_theme');
-    } catch {
-      // Si el almacenamiento no está disponible, seguimos con el tema fijo.
-    }
   }, []);
 
   useEffect(() => {
