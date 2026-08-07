@@ -57,6 +57,10 @@ function isMyTeam(name: string): boolean {
   return normalizeTeamName(name) === normalizeTeamName(MY_TEAM_NAME);
 }
 
+function isOyonesa(name: string): boolean {
+  return normalizeTeamName(name) === normalizeTeamName('Oyonesa');
+}
+
 function hasPlayedScore(p: Partido): boolean {
   return Number.isInteger(p.goles_local) && Number.isInteger(p.goles_visitante) && p.goles_local >= 0 && p.goles_visitante >= 0;
 }
@@ -583,8 +587,22 @@ function ResultadosYClasif() {
           {partidos.map(p => {
             const miLocal = esMiEquipoLocal(p);
             const color = scoreColor(p.goles_local, p.goles_visitante, miLocal);
+            const esPartidoOyonesa = isOyonesa(p.equipo_local) || isOyonesa(p.equipo_visitante);
+            const esOyonesaLocal = isOyonesa(p.equipo_local);
+            const esOyonesaVisitante = isOyonesa(p.equipo_visitante);
             return (
-              <div key={p.id} className="card" style={{ padding: '18px 20px', display: 'grid', gap: '12px' }}>
+              <div
+                key={p.id}
+                className="card"
+                style={{
+                  padding: '18px 20px',
+                  display: 'grid',
+                  gap: '12px',
+                  border: esPartidoOyonesa ? '1px solid rgba(244,166,66,0.45)' : undefined,
+                  background: esPartidoOyonesa ? 'linear-gradient(135deg, rgba(244,166,66,0.16), rgba(10,18,30,0.96))' : undefined,
+                  boxShadow: esPartidoOyonesa ? '0 0 0 1px rgba(244,166,66,0.18), 0 10px 24px rgba(244,166,66,0.14)' : undefined,
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7f96bc', fontSize: '0.8rem' }}>
                     {p.fecha
@@ -610,8 +628,38 @@ function ResultadosYClasif() {
                   </span>
                 </div>
 
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  {esPartidoOyonesa && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        background: 'rgba(244,166,66,0.2)',
+                        color: '#ffd08a',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      ★ Oyonesa
+                    </span>
+                  )}
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#cdd4f1', textAlign: 'center', textTransform: 'uppercase' }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: esOyonesaLocal ? '#ffd08a' : '#cdd4f1',
+                      fontWeight: esOyonesaLocal ? 800 : 400,
+                      textAlign: 'center',
+                      textTransform: 'uppercase',
+                    }}
+                  >
                     {p.equipo_local}
                   </div>
 
@@ -619,7 +667,15 @@ function ResultadosYClasif() {
                     {hasPlayedScore(p) ? `${p.goles_local}-${p.goles_visitante}` : '---'}
                   </div>
 
-                  <div style={{ fontSize: '0.8rem', color: '#cdd4f1', textAlign: 'center', textTransform: 'uppercase' }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: esOyonesaVisitante ? '#ffd08a' : '#cdd4f1',
+                      fontWeight: esOyonesaVisitante ? 800 : 400,
+                      textAlign: 'center',
+                      textTransform: 'uppercase',
+                    }}
+                  >
                     {p.equipo_visitante}
                   </div>
                 </div>
@@ -684,8 +740,15 @@ function ResultadosYClasif() {
                   </td>
                 </tr>
               )}
-              {clasif.map(row => (
-                <tr key={row.id} style={{ background: row.es_mi_equipo ? 'rgba(22,214,122,0.06)' : undefined }}>
+              {clasif.map(row => {
+                const esOyonesaRow = isOyonesa(row.equipo);
+                return (
+                  <tr
+                    key={row.id}
+                    style={{
+                      background: row.es_mi_equipo ? 'rgba(22,214,122,0.06)' : esOyonesaRow ? 'rgba(244,166,66,0.12)' : undefined,
+                    }}
+                  >
                   <td style={{ textAlign: 'center', padding: '14px 16px' }}>
                     <span
                       style={{
@@ -706,14 +769,17 @@ function ResultadosYClasif() {
                   </td>
                   <td
                     style={{
-                      fontWeight: row.es_mi_equipo ? 700 : 400,
-                      color: row.es_mi_equipo ? '#16d67a' : '#fff',
+                      fontWeight: row.es_mi_equipo || esOyonesaRow ? 700 : 400,
+                      color: row.es_mi_equipo ? '#16d67a' : esOyonesaRow ? '#ffd08a' : '#fff',
                       textTransform: 'uppercase',
                       letterSpacing: '0.04em',
                       fontSize: '0.88rem',
                     }}
                   >
                     {row.equipo}
+                    {esOyonesaRow && (
+                      <span style={{ marginLeft: '8px', color: '#ffd08a', fontSize: '0.78rem' }}>★</span>
+                    )}
                   </td>
                   {[row.pj, row.g, row.e, row.p, row.gf, row.gc].map((v, i) => (
                     <td key={i} style={{ textAlign: 'center', color: i === 1 ? '#4a9eff' : '#cdd4f1' }}>
@@ -729,8 +795,8 @@ function ResultadosYClasif() {
                         width: '36px',
                         height: '28px',
                         borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.07)',
-                        color: '#fff',
+                        background: esOyonesaRow ? 'rgba(244,166,66,0.22)' : 'rgba(255,255,255,0.07)',
+                        color: esOyonesaRow ? '#ffd08a' : '#fff',
                         fontWeight: 700,
                         fontSize: '0.88rem',
                       }}
@@ -739,7 +805,8 @@ function ResultadosYClasif() {
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
