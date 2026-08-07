@@ -179,6 +179,7 @@ function ResultadosYClasif() {
   const [uploadMsg, setUploadMsg] = useState('');
   const [detalleGolesLocal, setDetalleGolesLocal] = useState('');
   const [detalleGolesVisitante, setDetalleGolesVisitante] = useState('');
+  const [filtroJornada, setFiltroJornada] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -577,14 +578,36 @@ function ResultadosYClasif() {
       )}
 
       {tab === 'resultados' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>Jornada:</span>
+            <select
+              value={filtroJornada ?? ''}
+              onChange={e => setFiltroJornada(e.target.value === '' ? null : Number(e.target.value))}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(10,18,30,0.9)',
+                color: '#fff',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+              }}
+            >
+              <option value=''>Todas</option>
+              {Array.from({ length: 34 }, (_, i) => i + 1).map(j => (
+                <option key={j} value={j}>Jornada {j}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
           {partidos.length === 0 && (
             <div style={{ gridColumn: '1/-1', color: '#7f96bc', textAlign: 'center', padding: '40px' }}>
               No hay partidos. Pulsa "Generar liga" para crear el calendario completo.
             </div>
           )}
 
-          {partidos.map(p => {
+          {partidos.filter(p => filtroJornada === null || p.jornada === filtroJornada).map(p => {
             const miLocal = esMiEquipoLocal(p);
             const color = scoreColor(p.goles_local, p.goles_visitante, miLocal);
             const esPartidoOyonesa = isOyonesa(p.equipo_local) || isOyonesa(p.equipo_visitante);
@@ -604,7 +627,7 @@ function ResultadosYClasif() {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#7f96bc', fontSize: '0.8rem' }}>
+                  <span style={{ color: '#7f96bc', fontSize: '0.8rem' }}>
                     {p.fecha
                       ? new Date(p.fecha).toLocaleDateString('es-ES', {
                           day: '2-digit',
@@ -626,28 +649,6 @@ function ResultadosYClasif() {
                   >
                     JORNADA {p.jornada}
                   </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  {esPartidoOyonesa && (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        background: 'rgba(244,166,66,0.2)',
-                        color: '#ffd08a',
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.06em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      ★ Oyonesa
-                    </span>
-                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '10px' }}>
@@ -709,6 +710,7 @@ function ResultadosYClasif() {
             );
           })}
         </div>
+        </>
       )}
 
       {tab === 'clasificacion' && (
