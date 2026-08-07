@@ -82,6 +82,39 @@ const parseBirthDateParts = (value: string | null | undefined): { day: number; m
   return null;
 };
 
+const parseCalendarDateParts = (value: string | null | undefined): { day: number; month: number; year: number } | null => {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  return { day, month, year };
+};
+
+const getAutoTrainingGroupForDate = (date: string | null | undefined): TrainingGroup | null => {
+  const parts = parseCalendarDateParts(date);
+  if (!parts) return null;
+
+  const currentYear = new Date().getFullYear();
+  const seasonYear = parts.month >= 9 ? parts.year : parts.year - 1;
+  if (seasonYear < currentYear) return null;
+
+  const seasonStart = new Date(seasonYear, 8, 1);
+  const eventDate = new Date(parts.year, parts.month - 1, parts.day);
+  const diffDays = Math.floor((eventDate.getTime() - seasonStart.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return null;
+
+  return TRAINING_GROUP_OPTIONS[Math.floor(diffDays / 7) % TRAINING_GROUP_OPTIONS.length];
+};
+
+const getEffectiveTrainingGroupForDate = (date: string, manualGroup?: TrainingGroup | null): TrainingGroup | null => {
+  return manualGroup || getAutoTrainingGroupForDate(date);
+};
+
 function Calendario() {
   const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
@@ -261,7 +294,9 @@ function Calendario() {
       rival: formData.type === 'partido' ? (finalRival || null) : null,
       jornada: formData.type === 'partido' ? (formData.jornada || null) : null,
       match_type: formData.type === 'partido' ? (formData.matchType || null) : null,
-      training_group: formData.type === 'entrenamiento' ? (trainingGroupsByDate[selectedDate] || null) : null,
+      training_group: formData.type === 'entrenamiento'
+        ? (trainingGroupsByDate[selectedDate] || getAutoTrainingGroupForDate(selectedDate) || null)
+        : null,
       pdf_name: finalPdfName,
       pdf_url: finalPdfUrl,
       created_by: user.id,
@@ -518,7 +553,7 @@ function Calendario() {
                           <span className="training-group-label">Grupo</span>
                           <select
                             className="training-group-select"
-                            value={trainingGroupsByDate[dateStr] || ''}
+                            value={getEffectiveTrainingGroupForDate(dateStr, trainingGroupsByDate[dateStr]) || ''}
                             onChange={(e) => handleTrainingGroupChange(dateStr, e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             disabled={isReadOnly}
@@ -557,7 +592,7 @@ function Calendario() {
                   <div className="event-details">
                     <strong>{evt.place}</strong>
                     {evt.type === 'partido' && evt.rival && <p>⚔️ <strong>Rival:</strong> {evt.rival}</p>}
-                    {evt.type === 'entrenamiento' && trainingGroupsByDate[evt.date] && <p><strong>Grupo:</strong> {trainingGroupsByDate[evt.date]}</p>}
+                    {evt.type === 'entrenamiento' && getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date]) && <p><strong>Grupo:</strong> {getEffectiveTrainingGroupForDate(evt.date, trainingGroupsByDate[evt.date])}</p>}
                     {evt.playerName && <p><em>📅 {evt.playerName}</em></p>}
                     {evt.description && <p>{evt.description}</p>}
                   </div>
