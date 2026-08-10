@@ -16,7 +16,7 @@ interface WellnessResponse {
   created_at: string;
 }
 
-type WellnessTestType = 'pre_entrenamiento' | 'post_entrenamiento';
+type WellnessTestType = 'pre_entrenamiento' | 'post_entrenamiento' | 'partido';
 
 const WELLNESS_TEST_OPTIONS: { type: WellnessTestType; label: string; shortLabel: string }[] = [
   { type: 'pre_entrenamiento', label: 'PRE ENTRENAMIENTO', shortLabel: 'PRE' },
@@ -28,12 +28,15 @@ type WellnessStoredEntry = {
   fisico?: number | null;
   rpe?: number | null;
   comentario?: string | null;
+  estadoInicial?: number | null;
+  estadoFinal?: number | null;
   saved_at?: string;
 };
 
 type WellnessStoredPayload = {
   pre?: WellnessStoredEntry;
   post?: WellnessStoredEntry;
+  partido?: WellnessStoredEntry;
 };
 
 function getSupabaseProjectRef() {
@@ -71,7 +74,7 @@ function parseWellnessStoredPayload(response: WellnessResponse | null): Wellness
   return parseWellnessPayloadText(response.molestias?.trim());
 }
 
-function buildWellnessStoredPayload(current: WellnessStoredPayload, type: WellnessTestType, values: { animo?: number | null; fisico?: number | null; rpe?: number | null; comentario?: string | null }) {
+function buildWellnessStoredPayload(current: WellnessStoredPayload, type: WellnessTestType, values: { animo?: number | null; fisico?: number | null; rpe?: number | null; comentario?: string | null; estadoInicial?: number | null; estadoFinal?: number | null }) {
   const next: WellnessStoredPayload = { ...current };
   const entry: WellnessStoredEntry = {
     ...values,
@@ -80,15 +83,17 @@ function buildWellnessStoredPayload(current: WellnessStoredPayload, type: Wellne
 
   if (type === 'pre_entrenamiento') {
     next.pre = entry;
-  } else {
+  } else if (type === 'post_entrenamiento') {
     next.post = entry;
+  } else {
+    next.partido = entry;
   }
 
   return next;
 }
 
 function getWellnessDisplayState(payload: WellnessStoredPayload, type: WellnessTestType) {
-  const entry = type === 'pre_entrenamiento' ? payload.pre : payload.post;
+  const entry = type === 'pre_entrenamiento' ? payload.pre : type === 'post_entrenamiento' ? payload.post : payload.partido;
   return {
     exists: Boolean(entry),
     animo: payload.pre?.animo ?? 3,
@@ -104,7 +109,9 @@ function serializeWellnessPayload(payload: WellnessStoredPayload) {
 
 function hasStoredEntryForType(response: WellnessResponse, type: WellnessTestType) {
   const payload = parseWellnessStoredPayload(response);
-  return type === 'pre_entrenamiento' ? Boolean(payload.pre) : Boolean(payload.post);
+  if (type === 'pre_entrenamiento') return Boolean(payload.pre);
+  if (type === 'post_entrenamiento') return Boolean(payload.post);
+  return Boolean(payload.partido);
 }
 
 interface WellnessPoint {
@@ -411,6 +418,14 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const [statusMsg, setStatusMsg] = useState('');
   const [statusType, setStatusType] = useState<'error' | 'success'>('error');
   const [loadingExisting, setLoadingExisting] = useState(false);
+  const [matchInicio, setMatchInicio] = useState(3);
+  const [matchFin, setMatchFin] = useState(3);
+  const [matchComentario, setMatchComentario] = useState('');
+  const [matchSaving, setMatchSaving] = useState(false);
+  const [matchAlreadySent, setMatchAlreadySent] = useState(false);
+  const [matchStatusMsg, setMatchStatusMsg] = useState('');
+  const [matchStatusType, setMatchStatusType] = useState<'error' | 'success'>('error');
+  const [matchLoadingExisting, setMatchLoadingExisting] = useState(false);
 
   // Cargar eventos del calendario desde localStorage
   useEffect(() => {
@@ -420,11 +435,17 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     } catch { /* ignore */ }
   }, []);
 
-  // El wellness solo está disponible cuando hay entrenamiento
   const hasTrainingToday = useMemo(() => {
     const display = isoToDisplay(today);
     return calEvents.some(e => e.date === display && e.type === 'entrenamiento');
   }, [calEvents, today]);
+
+  const hasMatchToday = useMemo(() => {
+    const display = isoToDisplay(today);
+    return calEvents.some(e => e.date === display && e.type === 'partido');
+  }, [calEvents, today]);
+
+  const hasActivityToday = hasTrainingToday || hasMatchToday;
 
   useEffect(() => {
     void syncAllLocalWellnessToSupabase();
@@ -506,6 +527,80 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     void loadExisting();
   }, [hasTrainingToday, playerId, testType, today]);
 
+  useEffect(() => {
+    if (!hasMatchToday || !playerId) {
+      setMatchAlreadySent(false);
+      setMatchInicio(3);
+      setMatchFin(3);
+      setMatchComentario('');
+      return;
+    }
+
+    const loadExisting = async () => {
+      setMatchLoadingExisting(true);
+      setMatchStatusMsg('');
+      try {
+        const { data, error } = await supabase
+          .from('wellness_responses')
+          .select('*')
+          .eq('player_id', playerId)
+          .eq('event_date', today)
+          .eq('event_type', 'partido')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          const existing = data[0] as WellnessResponse;
+          const payload = parseWellnessStoredPayload(existing);
+          const entry = payload.partido;
+          if (entry) {
+            setMatchInicio(entry.estadoInicial ?? 3);
+            setMatchFin(entry.estadoFinal ?? 3);
+            setMatchComentario(entry.comentario?.trim() || '');
+            setMatchAlreadySent(true);
+            return;
+          }
+        }
+
+        const local = readLocalWellnessRecord(playerId, today, 'partido');
+        if (local) {
+          const payload = parseWellnessPayloadText(local.molestias?.trim());
+          const partidoEntry = payload.partido;
+          setMatchInicio(partidoEntry?.estadoInicial ?? 3);
+          setMatchFin(partidoEntry?.estadoFinal ?? 3);
+          setMatchComentario(partidoEntry?.comentario?.trim() || '');
+          setMatchAlreadySent(true);
+          return;
+        }
+
+        setMatchAlreadySent(false);
+        setMatchInicio(3);
+        setMatchFin(3);
+        setMatchComentario('');
+      } catch (err) {
+        console.error('Error cargando wellness de partido:', err);
+        const local = readLocalWellnessRecord(playerId, today, 'partido');
+        if (local) {
+          const payload = parseWellnessPayloadText(local.molestias?.trim());
+          const partidoEntry = payload.partido;
+          setMatchInicio(partidoEntry?.estadoInicial ?? 3);
+          setMatchFin(partidoEntry?.estadoFinal ?? 3);
+          setMatchComentario(partidoEntry?.comentario?.trim() || '');
+          setMatchAlreadySent(true);
+        } else {
+          setMatchAlreadySent(false);
+          setMatchInicio(3);
+          setMatchFin(3);
+          setMatchComentario('');
+        }
+      } finally {
+        setMatchLoadingExisting(false);
+      }
+    };
+
+    void loadExisting();
+  }, [hasMatchToday, playerId, today]);
+
   const handleSubmit = async () => {
     if (!hasTrainingToday || !playerId) return;
     setSaving(true);
@@ -563,24 +658,80 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(false);
   };
 
+  const handleMatchSubmit = async () => {
+    if (!hasMatchToday || !playerId) return;
+    setMatchSaving(true);
+    setMatchStatusMsg('');
+
+    const localRecord: LocalWellnessRecord = {
+      player_id: playerId,
+      event_date: today,
+      event_type: 'partido',
+      rpe: null,
+      animo: null,
+      fisico: null,
+      molestias: serializeWellnessPayload(buildWellnessStoredPayload(parseWellnessPayloadText(null), 'partido', {
+        estadoInicial: matchInicio,
+        estadoFinal: matchFin,
+        comentario: matchComentario.trim() || null,
+      })),
+      updated_at: new Date().toISOString(),
+    };
+
+    writeLocalWellnessResponse(localRecord);
+    const syncResult = await syncWellnessRecordToSupabase(localRecord);
+
+    setMatchAlreadySent(true);
+    if (syncResult.ok) {
+      setMatchStatusType('success');
+      setMatchStatusMsg('Formulario de partido guardado y sincronizado.');
+    } else {
+      setMatchStatusType('error');
+      setMatchStatusMsg(`Guardado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    }
+    setMatchSaving(false);
+  };
+
+  const handleMatchDelete = async () => {
+    if (!hasMatchToday || !playerId) return;
+    setMatchSaving(true);
+    setMatchStatusMsg('');
+
+    deleteLocalWellnessResponse(playerId, today, 'partido');
+    const syncResult = await deleteWellnessRecordFromSupabase(playerId, today, 'partido');
+    setMatchAlreadySent(false);
+    setMatchInicio(3);
+    setMatchFin(3);
+    setMatchComentario('');
+    if (syncResult.ok) {
+      setMatchStatusType('success');
+      setMatchStatusMsg('Formulario de partido eliminado y sincronizado.');
+    } else {
+      setMatchStatusType('error');
+      setMatchStatusMsg(`Eliminado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    }
+    setMatchSaving(false);
+  };
+
   const dayName = new Date(today + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  if (!hasTrainingToday) {
+  if (!hasActivityToday) {
     return (
       <div className="wellness-no-event card">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
         </svg>
-        <p>Hoy no hay entrenamiento programado.</p>
-        <small>Los tests Pre/Post solo aparecen cuando el calendario tiene un evento de entrenamiento.</small>
+        <p>Hoy no hay entrenamiento ni partido programado.</p>
+        <small>Los formularios de wellness aparecen cuando el calendario tiene un entrenamiento o un partido.</small>
       </div>
     );
   }
 
   return (
     <div className="wellness-two-col">
-      <div className="card wellness-form-card">
-        <div className="wellness-test-switch" role="tablist" aria-label="Tipo de test">
+      {hasTrainingToday && (
+        <div className="card wellness-form-card">
+          <div className="wellness-test-switch" role="tablist" aria-label="Tipo de test">
           {WELLNESS_TEST_OPTIONS.map(option => (
             <button
               key={option.type}
@@ -673,6 +824,77 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           )}
         </div>
       </div>
+      )}
+
+      {hasMatchToday && (
+        <div className="card wellness-form-card" style={{ marginTop: 16 }}>
+          <div className="wellness-form-title">
+            <div>
+              <h2>PARTIDO</h2>
+            </div>
+            <div className="wellness-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" /><path d="M8 9h8" /><path d="M8 15h8" />
+              </svg>
+            </div>
+          </div>
+          <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+          {matchLoadingExisting ? (
+            <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p>
+          ) : matchAlreadySent ? (
+            <p className="wellness-response-hint success">Ya has enviado tu formulario de partido de hoy. Puedes editarlo o eliminarlo.</p>
+          ) : null}
+
+          <div className="wellness-slider-group">
+            <div className="wellness-slider-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e676" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+              ESTADO FÍSICO AL INICIAR EL PARTIDO
+              <span className="wellness-slider-value val-fisico">{matchInicio}</span>
+            </div>
+            <WellnessSlider value={matchInicio} onChange={setMatchInicio} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" />
+          </div>
+
+          <div className="wellness-slider-group">
+            <div className="wellness-slider-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+              ESTADO FÍSICO AL FINALIZAR EL PARTIDO
+              <span className="wellness-slider-value val-animo">{matchFin}</span>
+            </div>
+            <WellnessSlider value={matchFin} onChange={setMatchFin} min={1} max={5} colorClass="animo" labelMin="BAJO" labelMax="ÓPTIMO" />
+          </div>
+
+          <div className="wellness-slider-group">
+            <div className="wellness-slider-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
+              OBSERVACIONES / ACLARACIONES
+            </div>
+            <textarea
+              className="wellness-textarea"
+              placeholder="Escribe cualquier aclaración o comentario del partido..."
+              value={matchComentario}
+              onChange={e => setMatchComentario(e.target.value)}
+            />
+          </div>
+
+          {matchStatusMsg && (
+            <p style={{ color: matchStatusType === 'error' ? '#ff7b7b' : '#9af5c3', fontSize: 13, marginBottom: 8 }}>
+              {matchStatusMsg}
+            </p>
+          )}
+
+          <div className="wellness-actions">
+            <button className="wellness-submit" onClick={handleMatchSubmit} disabled={matchSaving || matchLoadingExisting}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1 2-2V5a2 2 0 0 1 2-2h11" /></svg>
+              {matchSaving ? 'GUARDANDO...' : matchAlreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR PARTIDO'}
+            </button>
+            {matchAlreadySent && (
+              <button className="wellness-delete" onClick={handleMatchDelete} disabled={matchSaving || matchLoadingExisting}>
+                ELIMINAR PARTIDO
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="wellness-info-card">
         <div className="wellness-info-section">

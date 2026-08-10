@@ -2,7 +2,7 @@ create table if not exists wellness_responses (
   id uuid primary key default gen_random_uuid(),
   player_id uuid references plantilla(id) on delete cascade,
   event_date date not null,
-  event_type text not null, -- 'pre_entrenamiento' | 'post_entrenamiento'
+  event_type text not null, -- 'pre_entrenamiento' | 'post_entrenamiento' | 'partido'
   rpe integer check (rpe between 1 and 10),
   animo integer check (animo between 1 and 10),
   fisico integer check (fisico between 1 and 10),

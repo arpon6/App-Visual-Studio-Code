@@ -727,27 +727,35 @@ function CortadorDeVideo() {
             </>
           )}
           {isFullscreen && (
-            <div className="fullscreen-overlay">
-              <div className="fullscreen-timeline" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenTime)}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(1, fullscreenDuration)}
-                  step={0.1}
-                  value={Math.max(0, Math.min(fullscreenTime, fullscreenDuration || 0))}
-                  onChange={(e) => seekToTime(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenDuration)}</span>
+            <>
+              <div className="fullscreen-seek-controls" aria-label="Controles de navegación rápida en pantalla completa">
+                <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(-20)} title="Retroceder 20 segundos">⏪ -20s</button>
+                <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10 segundos">◀ -10s</button>
+                <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(10)} title="Avanzar 10 segundos">+10s ▶</button>
+                <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(20)} title="Avanzar 20 segundos">+20s ⏩</button>
               </div>
-              {categories.map((cat) => (
-                <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)} style={{ padding: '6px 8px', fontSize: '12px', minWidth: 100 }}>
-                  <span className="fsc-label">{cat.label}</span>
-                  {cat.shortcut && <span className="fsc-shortcut">{cat.shortcut}</span>}
-                </button>
-              ))}
-            </div>
+              <div className="fullscreen-overlay">
+                <div className="fullscreen-timeline" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenTime)}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(1, fullscreenDuration)}
+                    step={0.1}
+                    value={Math.max(0, Math.min(fullscreenTime, fullscreenDuration || 0))}
+                    onChange={(e) => seekToTime(Number(e.target.value))}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ color: '#fff', fontSize: 12 }}>{formatDuration(fullscreenDuration)}</span>
+                </div>
+                {categories.map((cat) => (
+                  <button key={cat.id} type="button" className="fullscreen-cut-btn" onClick={() => createCutForCategory(cat.id)} style={{ padding: '6px 8px', fontSize: '12px', minWidth: 100 }}>
+                    <span className="fsc-label">{cat.label}</span>
+                    {cat.shortcut && <span className="fsc-shortcut">{cat.shortcut}</span>}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
         <div className="video-form" style={{ marginTop: 12 }}>

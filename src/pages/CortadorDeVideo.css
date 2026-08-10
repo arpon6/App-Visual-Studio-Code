@@ -324,6 +324,51 @@
   pointer-events: all;
 }
 
+.cortador-video-page .fullscreen-seek-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 11;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 120px);
+  pointer-events: all;
+}
+
+.cortador-video-page .fullscreen-seek-btn {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(8, 14, 26, 0.78);
+  color: #f4f7ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 11px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.cortador-video-page .fullscreen-seek-btn:hover,
+.cortador-video-page .fullscreen-seek-btn:active {
+  background: rgba(0, 255, 141, 0.18);
+  border-color: rgba(0, 255, 141, 0.35);
+  color: #00ff8d;
+}
+
+@media (max-width: 760px) {
+  .cortador-video-page .fullscreen-seek-controls {
+    gap: 6px;
+    max-width: calc(100% - 16px);
+  }
+
+  .cortador-video-page .fullscreen-seek-btn {
+    padding: 6px 9px;
+    font-size: 0.72rem;
+  }
+}
+
 .cortador-video-page .fullscreen-btn {
   position: absolute;
   top: 10px;
