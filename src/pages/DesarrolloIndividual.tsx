@@ -105,6 +105,12 @@ function DesarrolloIndividual() {
         return ids?.includes(playerId);
       });
     }
+    if (user.role === 'entrenador') {
+      return allCortes.filter((cut) => {
+        const ids = getCutPlayerIds(cut);
+        return !!ids?.length;
+      });
+    }
     return allCortes;
   }, [allCortes, user]);
 
