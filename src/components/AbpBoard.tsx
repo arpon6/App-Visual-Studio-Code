@@ -141,11 +141,31 @@ function HalfFieldLines() {
 function ArrowDefs() {
   return (
     <defs>
-      <marker id="abp-arrow-ball" markerWidth="8" markerHeight="8" refX="7.1" refY="4" orient="auto">
-        <path d="M0,0.7 L0,7.3 L8,4 z" fill="#3dffba" />
+      <marker
+        id="abp-arrow-ball"
+        viewBox="0 0 10 8"
+        markerUnits="userSpaceOnUse"
+        markerWidth="8"
+        markerHeight="8"
+        refX="8"
+        refY="4"
+        orient="auto"
+        overflow="visible"
+      >
+        <path d="M 0 0 L 10 4 L 0 8 z" fill="#3dffba" />
       </marker>
-      <marker id="abp-arrow-player" markerWidth="8" markerHeight="8" refX="7.1" refY="4" orient="auto">
-        <path d="M0,0.7 L0,7.3 L8,4 z" fill="#3d99ff" />
+      <marker
+        id="abp-arrow-player"
+        viewBox="0 0 10 8"
+        markerUnits="userSpaceOnUse"
+        markerWidth="8"
+        markerHeight="8"
+        refX="8"
+        refY="4"
+        orient="auto"
+        overflow="visible"
+      >
+        <path d="M 0 0 L 10 4 L 0 8 z" fill="#3d99ff" />
       </marker>
     </defs>
   );
