@@ -138,36 +138,22 @@ function HalfFieldLines() {
   );
 }
 
+function getArrowHeadPoints(x1: number, y1: number, x2: number, y2: number, size = 2.8, width = 1.2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const baseX = x2 - ux * size;
+  const baseY = y2 - uy * size;
+  const perpX = -uy * width;
+  const perpY = ux * width;
+  return `${x2},${y2} ${baseX + perpX},${baseY + perpY} ${baseX - perpX},${baseY - perpY}`;
+}
+
 function ArrowDefs() {
   return (
-    <defs>
-      <marker
-        id="abp-arrow-ball"
-        viewBox="0 0 10 8"
-        markerUnits="userSpaceOnUse"
-        markerWidth="8"
-        markerHeight="8"
-        refX="8"
-        refY="4"
-        orient="auto"
-        overflow="visible"
-      >
-        <path d="M 0 0 L 10 4 L 0 8 z" fill="#3dffba" />
-      </marker>
-      <marker
-        id="abp-arrow-player"
-        viewBox="0 0 10 8"
-        markerUnits="userSpaceOnUse"
-        markerWidth="8"
-        markerHeight="8"
-        refX="8"
-        refY="4"
-        orient="auto"
-        overflow="visible"
-      >
-        <path d="M 0 0 L 10 4 L 0 8 z" fill="#3d99ff" />
-      </marker>
-    </defs>
+    <defs />
   );
 }
 
@@ -488,31 +474,44 @@ function SingleAbpBoard({ board, allPlayers, onChange, readOnly }: SingleBoardPr
           <ArrowDefs />
 
           {/* Flechas */}
-          {board.arrows.map(a => (
-            <line key={a.id}
-              x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2}
-              stroke={a.type === 'ball' ? '#3dffba' : '#3d99ff'}
-              strokeWidth="0.65"
-              strokeLinecap="round"
-              strokeDasharray={a.type === 'player' ? '2.4 1.7' : undefined}
-              markerEnd={`url(#abp-arrow-${a.type})`}
-              style={{ cursor: 'pointer' }}
-              onClick={() => onChange({ ...board, arrows: board.arrows.filter(x => x.id !== a.id) })}
-            />
-          ))}
+          {board.arrows.map(a => {
+            const stroke = a.type === 'ball' ? '#3dffba' : '#3d99ff';
+            const head = getArrowHeadPoints(a.x1, a.y1, a.x2, a.y2, 2.6, 1.35);
+            return (
+              <g
+                key={a.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => onChange({ ...board, arrows: board.arrows.filter(x => x.id !== a.id) })}
+              >
+                <line
+                  x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2}
+                  stroke={stroke}
+                  strokeWidth="0.65"
+                  strokeLinecap="round"
+                  strokeDasharray={a.type === 'player' ? '2.4 1.7' : undefined}
+                />
+                <polygon points={head} fill={stroke} stroke={stroke} strokeWidth="0.08" />
+              </g>
+            );
+          })}
 
-          {drawingArrow && (
-            <line
-              x1={drawingArrow.x1} y1={drawingArrow.y1}
-              x2={drawingArrow.x2} y2={drawingArrow.y2}
-              stroke={tool === 'arrow-ball' ? '#3dffba' : '#3d99ff'}
-              strokeWidth="0.65"
-              strokeLinecap="round"
-              strokeDasharray={tool === 'arrow-player' ? '2.4 1.7' : undefined}
-              markerEnd={`url(#abp-arrow-${tool === 'arrow-ball' ? 'ball' : 'player'})`}
-              opacity="0.65" pointerEvents="none"
-            />
-          )}
+          {drawingArrow && (() => {
+            const color = tool === 'arrow-ball' ? '#3dffba' : '#3d99ff';
+            const head = getArrowHeadPoints(drawingArrow.x1, drawingArrow.y1, drawingArrow.x2, drawingArrow.y2, 2.6, 1.35);
+            return (
+              <g opacity="0.65" pointerEvents="none">
+                <line
+                  x1={drawingArrow.x1} y1={drawingArrow.y1}
+                  x2={drawingArrow.x2} y2={drawingArrow.y2}
+                  stroke={color}
+                  strokeWidth="0.65"
+                  strokeLinecap="round"
+                  strokeDasharray={tool === 'arrow-player' ? '2.4 1.7' : undefined}
+                />
+                <polygon points={head} fill={color} stroke={color} strokeWidth="0.08" />
+              </g>
+            );
+          })()}
         </svg>
 
         {/* Drag handles para focos */}
