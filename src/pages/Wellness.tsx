@@ -23,6 +23,11 @@ const WELLNESS_TEST_OPTIONS: { type: WellnessTestType; label: string; shortLabel
   { type: 'post_entrenamiento', label: 'POST ENTRENAMIENTO', shortLabel: 'POST' },
 ];
 
+const WELLNESS_DASHBOARD_TEST_OPTIONS: { type: WellnessTestType; label: string; shortLabel: string }[] = [
+  ...WELLNESS_TEST_OPTIONS,
+  { type: 'partido', label: 'PARTIDO', shortLabel: 'PARTIDO' },
+];
+
 type WellnessStoredEntry = {
   animo?: number | null;
   fisico?: number | null;
@@ -99,6 +104,8 @@ function getWellnessDisplayState(payload: WellnessStoredPayload, type: WellnessT
     animo: payload.pre?.animo ?? 3,
     fisico: payload.pre?.fisico ?? 3,
     rpe: payload.post?.rpe ?? 3,
+    estadoInicial: payload.partido?.estadoInicial ?? 3,
+    estadoFinal: payload.partido?.estadoFinal ?? 3,
     comentario: entry?.comentario || '',
   };
 }
@@ -1128,7 +1135,7 @@ function WellnessDashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div className="wellness-test-switch" role="tablist" aria-label="Filtro de test">
-            {WELLNESS_TEST_OPTIONS.map(option => (
+            {WELLNESS_DASHBOARD_TEST_OPTIONS.map(option => (
               <button
                 key={option.type}
                 type="button"
@@ -1210,6 +1217,12 @@ function WellnessDashboard() {
                       <th>ESTADO ANÍMICO</th>
                       <th>ACLARACIÓN</th>
                     </>
+                  ) : testType === 'partido' ? (
+                    <>
+                      <th>ESTADO INICIAL</th>
+                      <th>ESTADO FINAL</th>
+                      <th>OBSERVACIÓN / ACLARACIÓN</th>
+                    </>
                   ) : (
                     <>
                       <th>ESFUERZO PERCIBIDO</th>
@@ -1234,6 +1247,12 @@ function WellnessDashboard() {
                         <td><span className="wellness-dot dot-fisico">{response.displayState.fisico ?? '-'}</span></td>
                         <td><span className="wellness-dot dot-animo">{response.displayState.animo ?? '-'}</span></td>
                         <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin aclaración'}</span></td>
+                      </>
+                    ) : testType === 'partido' ? (
+                      <>
+                        <td><span className="wellness-dot dot-fisico">{response.displayState.estadoInicial ?? '-'}</span></td>
+                        <td><span className="wellness-dot dot-animo">{response.displayState.estadoFinal ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin observación'}</span></td>
                       </>
                     ) : (
                       <>
