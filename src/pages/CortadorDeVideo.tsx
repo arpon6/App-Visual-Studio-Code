@@ -200,6 +200,7 @@ function CortadorDeVideo() {
   const [cutName, setCutName] = useState('');
   const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
   const [playingCutId, setPlayingCutId] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeCutRef = useRef<Cut | null>(null);
 
@@ -313,6 +314,11 @@ function CortadorDeVideo() {
       ? localVideoRef.current.currentTime
       : (ytPlayerRef.current?.getCurrentTime?.() ?? lastKnownTimeRef.current);
     seekToTime(Math.max(0, (cur || 0) + delta));
+  };
+
+  const changePlaybackRate = (rate: number) => {
+    setPlaybackRate(rate);
+    if (localVideoRef.current) localVideoRef.current.playbackRate = rate;
   };
 
   // Canvas drawing for annotations (simple implementation)
@@ -720,6 +726,8 @@ function CortadorDeVideo() {
                 <button type="button" className="seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10s">◀ −10s</button>
                 <button type="button" className="seek-btn" onClick={() => seekBy(10)} title="Avanzar 10s">+10s ▶</button>
                 <button type="button" className="seek-btn" onClick={() => seekBy(20)} title="Avanzar 20s">+20s ⏩</button>
+                <button type="button" className={`seek-btn${playbackRate === 1.5 ? ' active' : ''}`} onClick={() => changePlaybackRate(1.5)} title="Ver a velocidad 1,5x">1,5x</button>
+                <button type="button" className={`seek-btn${playbackRate === 2 ? ' active' : ''}`} onClick={() => changePlaybackRate(2)} title="Ver a velocidad 2x">2x</button>
               </div>
               <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
                 {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}

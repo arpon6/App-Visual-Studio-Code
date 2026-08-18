@@ -31,6 +31,12 @@
   color: #00ff8d;
 }
 
+.cortador-video-page .seek-btn.active {
+  background: rgba(0, 255, 141, 0.18);
+  border-color: #00ff8d;
+  color: #00ff8d;
+}
+
 .cortador-video-page .video-form-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

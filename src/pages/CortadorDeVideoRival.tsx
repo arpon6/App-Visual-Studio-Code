@@ -159,6 +159,7 @@ function CortadorDeVideoRival() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   const playerRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -325,6 +326,11 @@ function CortadorDeVideoRival() {
     } else if (ytPlayerRef.current) {
       ytPlayerRef.current.seekTo(newTime, true);
     }
+  };
+
+  const changePlaybackRate = (rate: number) => {
+    setPlaybackRate(rate);
+    if (localVideoRef.current) localVideoRef.current.playbackRate = rate;
   };
 
   const createCutForCategory = (categoryId: string) => {
@@ -641,6 +647,8 @@ function CortadorDeVideoRival() {
                   <button type="button" className="seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10s">◀ −10s</button>
                   <button type="button" className="seek-btn" onClick={() => seekBy(10)} title="Avanzar 10s">+10s ▶</button>
                   <button type="button" className="seek-btn" onClick={() => seekBy(20)} title="Avanzar 20s">+20s ⏩</button>
+                  <button type="button" className={`seek-btn${playbackRate === 1.5 ? ' active' : ''}`} onClick={() => changePlaybackRate(1.5)} title="Ver a velocidad 1,5x">1,5x</button>
+                  <button type="button" className={`seek-btn${playbackRate === 2 ? ' active' : ''}`} onClick={() => changePlaybackRate(2)} title="Ver a velocidad 2x">2x</button>
                 </div>
                 <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
                   {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}
