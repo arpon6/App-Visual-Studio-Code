@@ -317,8 +317,9 @@ function CortadorDeVideo() {
   };
 
   const changePlaybackRate = (rate: number) => {
-    setPlaybackRate(rate);
-    if (localVideoRef.current) localVideoRef.current.playbackRate = rate;
+    const nextRate = playbackRate === rate ? 1 : rate;
+    setPlaybackRate(nextRate);
+    if (localVideoRef.current) localVideoRef.current.playbackRate = nextRate;
   };
 
   // Canvas drawing for annotations (simple implementation)
@@ -726,8 +727,8 @@ function CortadorDeVideo() {
                 <button type="button" className="seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10s">◀ −10s</button>
                 <button type="button" className="seek-btn" onClick={() => seekBy(10)} title="Avanzar 10s">+10s ▶</button>
                 <button type="button" className="seek-btn" onClick={() => seekBy(20)} title="Avanzar 20s">+20s ⏩</button>
-                <button type="button" className={`seek-btn${playbackRate === 1.5 ? ' active' : ''}`} onClick={() => changePlaybackRate(1.5)} title="Ver a velocidad 1,5x">1,5x</button>
-                <button type="button" className={`seek-btn${playbackRate === 2 ? ' active' : ''}`} onClick={() => changePlaybackRate(2)} title="Ver a velocidad 2x">2x</button>
+                <button type="button" className={`seek-btn${playbackRate === 1.5 ? ' active' : ''}`} onClick={() => changePlaybackRate(1.5)} title="Ver a velocidad 1,5x (vuelve a pulsar para restaurar)">1,5x</button>
+                <button type="button" className={`seek-btn${playbackRate === 2 ? ' active' : ''}`} onClick={() => changePlaybackRate(2)} title="Ver a velocidad 2x (vuelve a pulsar para restaurar)">2x</button>
               </div>
               <button type="button" className="fullscreen-btn" onClick={toggleFullscreen} title="Pantalla completa">
                 {isFullscreen ? '✕ Salir' : '⛶ Pantalla completa'}
@@ -741,6 +742,8 @@ function CortadorDeVideo() {
                 <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(-10)} title="Retroceder 10 segundos">◀ -10s</button>
                 <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(10)} title="Avanzar 10 segundos">+10s ▶</button>
                 <button type="button" className="fullscreen-seek-btn" onClick={() => seekBy(20)} title="Avanzar 20 segundos">+20s ⏩</button>
+                <button type="button" className={`fullscreen-seek-btn${playbackRate === 1.5 ? ' active' : ''}`} onClick={() => changePlaybackRate(1.5)} title="Ver a velocidad 1,5x (vuelve a pulsar para restaurar)">1,5x</button>
+                <button type="button" className={`fullscreen-seek-btn${playbackRate === 2 ? ' active' : ''}`} onClick={() => changePlaybackRate(2)} title="Ver a velocidad 2x (vuelve a pulsar para restaurar)">2x</button>
               </div>
               <div className="fullscreen-overlay">
                 <div className="fullscreen-timeline" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>

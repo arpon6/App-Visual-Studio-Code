@@ -357,7 +357,8 @@
 }
 
 .cortador-video-page .fullscreen-seek-btn:hover,
-.cortador-video-page .fullscreen-seek-btn:active {
+.cortador-video-page .fullscreen-seek-btn:active,
+.cortador-video-page .fullscreen-seek-btn.active {
   background: rgba(0, 255, 141, 0.18);
   border-color: rgba(0, 255, 141, 0.35);
   color: #00ff8d;
