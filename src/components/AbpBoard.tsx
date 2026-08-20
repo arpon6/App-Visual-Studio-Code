@@ -63,22 +63,25 @@ function getYoutubeEmbedUrl(url: string): string | null {
   }
 }
 
-function defaultBoard(name: string): AbpBoardState {
+function defaultBoard(name: string, includeGoalkeeper = true): AbpBoardState {
+  const outfieldPlayers: AbpPlayer[] = [
+    { id: uid(), x: 20, y: 75, player: null },
+    { id: uid(), x: 40, y: 75, player: null },
+    { id: uid(), x: 60, y: 75, player: null },
+    { id: uid(), x: 80, y: 75, player: null },
+    { id: uid(), x: 20, y: 55, player: null },
+    { id: uid(), x: 40, y: 55, player: null },
+    { id: uid(), x: 60, y: 55, player: null },
+    { id: uid(), x: 80, y: 55, player: null },
+    { id: uid(), x: 35, y: 28, player: null },
+    { id: uid(), x: 65, y: 28, player: null },
+  ];
+
   return {
     name,
-    players: [
-      { id: uid(), x: 50, y: 92, player: null, isGk: true },
-      { id: uid(), x: 20, y: 75, player: null },
-      { id: uid(), x: 40, y: 75, player: null },
-      { id: uid(), x: 60, y: 75, player: null },
-      { id: uid(), x: 80, y: 75, player: null },
-      { id: uid(), x: 20, y: 55, player: null },
-      { id: uid(), x: 40, y: 55, player: null },
-      { id: uid(), x: 60, y: 55, player: null },
-      { id: uid(), x: 80, y: 55, player: null },
-      { id: uid(), x: 35, y: 28, player: null },
-      { id: uid(), x: 65, y: 28, player: null },
-    ],
+    players: includeGoalkeeper
+      ? [{ id: uid(), x: 50, y: 92, player: null, isGk: true }, ...outfieldPlayers]
+      : outfieldPlayers,
     arrows: [],
     focuses: [],
     blocks: [],
@@ -86,10 +89,12 @@ function defaultBoard(name: string): AbpBoardState {
   };
 }
 
-function normalizeBoard(board: Partial<AbpBoardState>): AbpBoardState {
+function normalizeBoard(board: Partial<AbpBoardState>, includeGoalkeeper = true): AbpBoardState {
   return {
     name: typeof board.name === 'string' && board.name.trim() ? board.name : 'Sin nombre',
-    players: Array.isArray(board.players) ? board.players : defaultBoard('Pizarra 1').players,
+    players: Array.isArray(board.players)
+      ? (includeGoalkeeper ? board.players : board.players.filter(player => !player.isGk))
+      : defaultBoard('Pizarra 1', includeGoalkeeper).players,
     arrows: Array.isArray(board.arrows) ? board.arrows : [],
     focuses: Array.isArray(board.focuses) ? board.focuses : [],
     blocks: Array.isArray(board.blocks) ? board.blocks : [],
@@ -97,21 +102,21 @@ function normalizeBoard(board: Partial<AbpBoardState>): AbpBoardState {
   };
 }
 
-function normalizeBoards(boards: unknown): AbpBoardState[] {
-  if (!Array.isArray(boards) || boards.length === 0) return [defaultBoard('Pizarra 1')];
-  return boards.map((board) => normalizeBoard(board as Partial<AbpBoardState>));
+function normalizeBoards(boards: unknown, includeGoalkeeper = true): AbpBoardState[] {
+  if (!Array.isArray(boards) || boards.length === 0) return [defaultBoard('Pizarra 1', includeGoalkeeper)];
+  return boards.map((board) => normalizeBoard(board as Partial<AbpBoardState>, includeGoalkeeper));
 }
 
-function loadBoards(storageKey: string): AbpBoardState[] {
+function loadBoards(storageKey: string, includeGoalkeeper = true): AbpBoardState[] {
   try {
     const raw = localStorage.getItem(storageKey);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0)
-        return normalizeBoards(parsed);
+        return normalizeBoards(parsed, includeGoalkeeper);
     }
   } catch { /* ignorar */ }
-  return [defaultBoard('Pizarra 1')];
+  return [defaultBoard('Pizarra 1', includeGoalkeeper)];
 }
 
 async function fetchBoards(storageTitle: string): Promise<AbpBoardState[] | null> {
@@ -617,6 +622,7 @@ interface AbpSectionProps {
   storageKey: string;
   supabaseTitle: string;
   players: Player[];
+  includeGoalkeeper?: boolean;
   readOnly?: boolean;
 }
 
@@ -658,8 +664,8 @@ function RepoPicker({ repoStorageKeys, onImport, onClose }: RepoPickerProps) {
   );
 }
 
-export function AbpSection({ title, badge, storageKey, supabaseTitle, players, repoStorageKeys, readOnly }: AbpSectionProps & { repoStorageKeys?: string[]; readOnly?: boolean }) {
-  const [boards, setBoards] = useState<AbpBoardState[]>(() => loadBoards(storageKey));
+export function AbpSection({ title, badge, storageKey, supabaseTitle, players, repoStorageKeys, includeGoalkeeper = true, readOnly }: AbpSectionProps & { repoStorageKeys?: string[]; readOnly?: boolean }) {
+  const [boards, setBoards] = useState<AbpBoardState[]>(() => loadBoards(storageKey, includeGoalkeeper));
   const [activeIdx, setActiveIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -673,8 +679,9 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
     const syncFromRemote = async () => {
       const remoteBoards = await fetchBoards(supabaseTitle);
       if (!isMounted || !remoteBoards) return;
-      setBoards(remoteBoards);
-      localStorage.setItem(storageKey, JSON.stringify(remoteBoards));
+      const normalizedBoards = normalizeBoards(remoteBoards, includeGoalkeeper);
+      setBoards(normalizedBoards);
+      localStorage.setItem(storageKey, JSON.stringify(normalizedBoards));
     };
 
     void syncFromRemote();
@@ -690,10 +697,10 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
       isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [storageKey, supabaseTitle]);
+  }, [includeGoalkeeper, storageKey, supabaseTitle]);
 
   const persist = useCallback((next: AbpBoardState[]) => {
-    const normalized = normalizeBoards(next);
+    const normalized = normalizeBoards(next, includeGoalkeeper);
     setBoards(normalized);
     localStorage.setItem(storageKey, JSON.stringify(normalized));
     setSaved(false);
@@ -710,7 +717,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }, 1500);
-  }, [storageKey, supabaseTitle]);
+  }, [includeGoalkeeper, storageKey, supabaseTitle]);
 
   const updateBoard = (idx: number, b: AbpBoardState) => {
     const next = boards.map((old, i) => i === idx ? b : old);
@@ -719,7 +726,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
   };
 
   const addBoard = () => {
-    const next = [...boards, defaultBoard(`Pizarra ${boards.length + 1}`)];
+    const next = [...boards, defaultBoard(`Pizarra ${boards.length + 1}`, includeGoalkeeper)];
     setBoards(next);
     setActiveIdx(next.length - 1);
     persist(next);
@@ -759,7 +766,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
   };
 
   const importFromRepo = (board: AbpBoardState) => {
-    const imported = { ...board, name: board.name + ' (importada)' };
+    const imported = normalizeBoard({ ...board, name: board.name + ' (importada)' }, includeGoalkeeper);
     const next = [...boards, imported];
     setBoards(next);
     setActiveIdx(next.length - 1);
@@ -896,7 +903,7 @@ export function AbpContainer() {
 
   const playTypeOptions: { key: 'corner' | 'falta_lateral' | 'falta_frontal'; label: string }[] = [
     { key: 'corner', label: 'Córner' },
-    { key: 'falta_lateral', label: 'Falta lateral' },
+    { key: 'falta_lateral', label: 'Falta frontolateral' },
     { key: 'falta_frontal', label: 'Falta frontal' },
   ];
 
@@ -958,6 +965,7 @@ export function AbpContainer() {
           storageKey={getTypedKey('abp_ofensivo', offensiveType)}
           supabaseTitle={getTypedKey('abp_ofensivo', offensiveType)}
           players={players}
+          includeGoalkeeper={false}
           repoStorageKeys={['abp_repo_ofensivo', 'abp_repo_defensivo']}
         />
       </div>

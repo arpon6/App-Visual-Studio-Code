@@ -13,7 +13,7 @@ function RepositorioABP() {
 
   const playTypeOptions: { key: 'corner' | 'falta_lateral' | 'falta_frontal'; label: string }[] = [
     { key: 'corner', label: 'Córner' },
-    { key: 'falta_lateral', label: 'Falta lateral' },
+    { key: 'falta_lateral', label: 'Falta frontolateral' },
     { key: 'falta_frontal', label: 'Falta frontal' },
   ];
 
@@ -82,6 +82,7 @@ function RepositorioABP() {
         storageKey={getTypedKey('abp_repo_ofensivo', offensiveType)}
         supabaseTitle={getTypedKey('abp_repo_ofensivo', offensiveType)}
         players={players}
+        includeGoalkeeper={false}
         readOnly={isReadOnly}
       />
 
