@@ -115,6 +115,25 @@ const getEffectiveTrainingGroupForDate = (date: string, manualGroup?: TrainingGr
   return manualGroup || getAutoTrainingGroupForDate(date);
 };
 
+const formatCalendarDate = (date: Date) => (
+  `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`
+);
+
+const getSeasonTrainingDates = (seasonStartYear: number): string[] => {
+  const dates: string[] = [];
+  const start = new Date(seasonStartYear, 8, 1);
+  const end = new Date(seasonStartYear + 1, 4, 31);
+
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+    const weekday = date.getDay();
+    if (weekday === 2 || weekday === 4 || weekday === 5) {
+      dates.push(formatCalendarDate(date));
+    }
+  }
+
+  return dates;
+};
+
 function Calendario() {
   const { user } = useAuth();
   const isReadOnly = user?.role === 'jugador';
@@ -340,6 +359,52 @@ function Calendario() {
     }
   };
 
+  const handleGenerateSeasonTrainings = async () => {
+    if (!user) {
+      alert('Error: No tienes una sesión activa. Por favor, inicia sesión de nuevo.');
+      return;
+    }
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    const seasonStartYear = currentMonth >= 5 ? currentYear : currentYear - 1;
+    const seasonLabel = `${seasonStartYear}-${String(seasonStartYear + 1).slice(-2)}`;
+    const dates = getSeasonTrainingDates(seasonStartYear);
+    const existingTrainingDates = new Set(
+      savedEvents
+        .filter(event => event.type === 'entrenamiento')
+        .map(event => event.date)
+    );
+    const datesToCreate = dates.filter(date => !existingTrainingDates.has(date));
+
+    if (datesToCreate.length === 0) {
+      alert(`Ya existen todos los entrenamientos de la temporada ${seasonLabel}.`);
+      return;
+    }
+
+    if (!confirm(`Se crearán ${datesToCreate.length} entrenamientos de la temporada ${seasonLabel} a las 19:30 en Oion Arena. ¿Continuar?`)) {
+      return;
+    }
+
+    const rows = datesToCreate.map(date => ({
+      date,
+      type: 'entrenamiento',
+      place: 'Oion Arena',
+      time: '19:30',
+      training_group: getAutoTrainingGroupForDate(date),
+      created_by: user.id,
+    }));
+    const { error } = await supabase.from('calendar_events').insert(rows);
+
+    if (error) {
+      alert('Error al generar los entrenamientos: ' + error.message);
+      return;
+    }
+
+    await loadEvents();
+    alert(`Se han creado ${rows.length} entrenamientos para la temporada ${seasonLabel}.`);
+  };
+
   const handleEditEvent = (event: Event) => {
     setSelectedDate(event.date);
     const rivalIsCustom = !!event.rival && !LEAGUE_TEAMS.includes(event.rival) && event.rival !== 'Por determinar';
@@ -492,6 +557,11 @@ function Calendario() {
             <h2 className="month-label">{monthName}</h2>
             <button className="nav-btn" onClick={handleNextMonth}>→</button>
             <button className="nav-btn export-btn" onClick={handleExportPDF} title="Descargar PDF del mes">⬇ PDF</button>
+            {!isReadOnly && (
+              <button className="nav-btn" onClick={handleGenerateSeasonTrainings} title="Generar entrenamientos de septiembre a mayo">
+                Generar entrenamientos
+              </button>
+            )}
           </div>
 
           <div className="calendar-weekdays">
