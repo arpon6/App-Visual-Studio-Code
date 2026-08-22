@@ -244,6 +244,11 @@ function CortadorDeVideo() {
       return next;
     });
   };
+  // Referencia siempre actualizada: el listener de atajos de teclado solo se vuelve a registrar
+  // cuando cambia videoMode, así que debe leer setCuts/cutName por ref para no escribir cortes
+  // en la key del partido anterior tras cambiar de partido sin tocar el modo de vídeo.
+  const setCutsRef = useRef(setCuts);
+  setCutsRef.current = setCuts;
   const setCategories = (fn: Category[] | ((prev: Category[]) => Category[])) => {
     setCategoriesState(prev => {
       const next = typeof fn === 'function' ? fn(prev) : fn;
@@ -275,6 +280,8 @@ function CortadorDeVideo() {
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
   const [cutName, setCutName] = useState('');
+  const cutNameRef = useRef(cutName);
+  cutNameRef.current = cutName;
   const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
   const [playingCutId, setPlayingCutId] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -575,13 +582,13 @@ function CortadorDeVideo() {
       const cut: Cut = {
         id: `${category.id}-${Date.now()}`,
         categoryId: category.id,
-        label: cutName.trim() || `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        label: cutNameRef.current.trim() || `${category.label} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         start, end,
         createdAt: new Date().toISOString(),
         player_id: null,
         player_ids: null,
       };
-      setCuts((prev) => [cut, ...prev]);
+      setCutsRef.current((prev) => [cut, ...prev]);
       setStatusMessage(`Corte guardado en ${category.label}: ${formatDuration(start)} → ${formatDuration(end)}`);
       setCutName('');
     };
