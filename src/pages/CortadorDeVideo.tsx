@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './CortadorDeVideo.css';
 import { usePlantilla } from '../lib/usePlantilla';
 import { useSharedState } from '../lib/useSharedState';
+import { supabase } from '../lib/supabaseClient';
 
 declare global {
   interface Window {
@@ -149,10 +150,9 @@ function CortadorDeVideo() {
   const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : 'analisis_main_video';
   const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : 'analisis_cuts';
 
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>(videoStateKey, '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>(cutsStateKey, []);
+  const [, setSharedVideoUrl] = useSharedState<string>(videoStateKey, '');
+  const [, setSharedCuts] = useSharedState<Cut[]>(cutsStateKey, []);
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
-  const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
   const saved = useMemo(loadState, []);
   const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
@@ -162,21 +162,33 @@ function CortadorDeVideo() {
   const [categories, setCategoriesState] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [cuts, setCutsState] = useState<Cut[]>([]);
 
-  const loadedKeyRef = useRef<string | null>(null);
+  // Se hace fetch directo (en vez de depender del valor leido por useSharedState) para evitar
+  // condiciones de carrera al cambiar de partido: useSharedState no resetea su valor de forma
+  // sincronizada con el cambio de key, así que un partido nuevo podía heredar momentáneamente
+  // los cortes del partido anterior.
   useEffect(() => {
-    if (sharedLoading || loadedKeyRef.current === cutsStateKey) return;
-    loadedKeyRef.current = cutsStateKey;
-    if (sharedVideoUrl) {
-      setVideoUrlState(sharedVideoUrl);
-      const id = extractYouTubeVideoId(sharedVideoUrl);
-      setVideoId(id);
-    } else {
-      setVideoUrlState('');
-      setVideoId(null);
-    }
-    setCutsState(sharedCuts || []);
-    if (sharedCategories.length) setCategoriesState(sharedCategories);
-  }, [sharedLoading, sharedVideoUrl, sharedCuts, sharedCategories, cutsStateKey]);
+    let cancelled = false;
+    setCutsState([]);
+    setVideoUrlState('');
+    setVideoId(null);
+
+    Promise.all([
+      supabase.from('shared_state').select('value').eq('key', videoStateKey).maybeSingle(),
+      supabase.from('shared_state').select('value').eq('key', cutsStateKey).maybeSingle(),
+    ]).then(([videoRes, cutsRes]) => {
+      if (cancelled) return;
+      const url = typeof videoRes.data?.value === 'string' ? videoRes.data.value : '';
+      setVideoUrlState(url);
+      setVideoId(url ? extractYouTubeVideoId(url) : null);
+      setCutsState(Array.isArray(cutsRes.data?.value) ? (cutsRes.data.value as Cut[]) : []);
+    });
+
+    return () => { cancelled = true; };
+  }, [videoStateKey, cutsStateKey]);
+
+  useEffect(() => {
+    if (!loadingCats && sharedCategories.length) setCategoriesState(sharedCategories);
+  }, [loadingCats, sharedCategories]);
 
   const handleSelectMatch = (id: string) => {
     setActiveMatchId(id);

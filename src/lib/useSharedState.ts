@@ -5,13 +5,22 @@ export function useSharedState<T>(key: string, defaultValue: T): [T, (val: T | (
   const [value, setValue] = useState<T>(defaultValue);
   const [loading, setLoading] = useState(true);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Se guarda en un ref porque no debe disparar el efecto de carga al cambiar entre renders.
+  const defaultValueRef = useRef(defaultValue);
+  defaultValueRef.current = defaultValue;
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     supabase.from('shared_state').select('value').eq('key', key).maybeSingle()
       .then(({ data }) => {
-        if (data?.value !== undefined) setValue(data.value as T);
+        if (cancelled) return;
+        // Si la key no existe todavia (p.ej. partido nuevo), hay que volver al valor por defecto
+        // en vez de dejar el valor de la key anterior.
+        setValue(data?.value !== undefined ? (data.value as T) : defaultValueRef.current);
         setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [key]);
 
   const set = (val: T | ((prev: T) => T)) => {
