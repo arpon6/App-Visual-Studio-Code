@@ -36,6 +36,10 @@ interface AppUserInfo {
   player_id: string | null;
 }
 
+type MatchInfo = { id: string; name: string; createdAt: string };
+
+const MATCHES_KEY = 'cortador_propio_matches';
+
 const TACTICAL_CATEGORIES = [
   { id: 'abp-ofensivo', label: 'ABP OFENSIVO' },
   { id: 'abp-defensivo', label: 'ABP DEFENSIVO' },
@@ -78,9 +82,11 @@ const getCutPlayerIds = (cut: VideoCorte): string[] | null => {
 function DesarrolloIndividual() {
   const { user } = useAuth();
   const jugadores = usePlantilla();
-  const [analysisCuts] = useSharedState<VideoCorte[]>('analisis_cuts', []);
+  const [matches] = useSharedState<MatchInfo[]>(MATCHES_KEY, []);
+  const [selectedMatchId, setSelectedMatchId] = useState<string>('all');
+  const [matchCutsMap, setMatchCutsMap] = useState<Record<string, VideoCorte[]>>({});
+  const [matchVideoMap, setMatchVideoMap] = useState<Record<string, string>>({});
   const [analysisCutsRival] = useSharedState<VideoCorte[]>('analisis_cuts_rival', []);
-  const [mainVideoUrl, setMainVideoUrl] = useSharedState<string>('analisis_main_video', '');
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -88,13 +94,49 @@ function DesarrolloIndividual() {
   const [cutMessageText, setCutMessageText] = useState('');
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  const allCortes = useMemo(
-    () => [
-      ...(Array.isArray(analysisCuts) ? analysisCuts : []),
-      ...(Array.isArray(analysisCutsRival) ? analysisCutsRival : []),
-    ],
-    [analysisCuts, analysisCutsRival],
-  );
+  useEffect(() => {
+    const loadCutsByMatch = async () => {
+      const [{ data: cutRows }, { data: videoRows }] = await Promise.all([
+        supabase.from('shared_state').select('key, value').like('key', 'analisis_cuts%'),
+        supabase.from('shared_state').select('key, value').like('key', 'analisis_main_video%'),
+      ]);
+
+      const cutsMap: Record<string, VideoCorte[]> = {};
+      (cutRows || []).forEach((row) => {
+        if (row.key === 'analisis_cuts') {
+          cutsMap.general = Array.isArray(row.value) ? row.value as VideoCorte[] : [];
+        } else if (row.key.startsWith('analisis_cuts_match_')) {
+          const matchId = row.key.slice('analisis_cuts_match_'.length);
+          cutsMap[matchId] = Array.isArray(row.value) ? row.value as VideoCorte[] : [];
+        }
+      });
+
+      const videoMap: Record<string, string> = {};
+      (videoRows || []).forEach((row) => {
+        if (row.key === 'analisis_main_video') {
+          videoMap.general = typeof row.value === 'string' ? row.value : '';
+        } else if (row.key.startsWith('analisis_main_video_match_')) {
+          const matchId = row.key.slice('analisis_main_video_match_'.length);
+          videoMap[matchId] = typeof row.value === 'string' ? row.value : '';
+        }
+      });
+
+      setMatchCutsMap(cutsMap);
+      setMatchVideoMap(videoMap);
+    };
+
+    loadCutsByMatch();
+  }, []);
+
+  const activeVideoUrl = selectedMatchId === 'all' ? (matchVideoMap.general || '') : (matchVideoMap[selectedMatchId] || '');
+
+  const allCortes = useMemo(() => {
+    const scoped = selectedMatchId === 'all'
+      ? Object.values(matchCutsMap).flat()
+      : (matchCutsMap[selectedMatchId] || []);
+    const rival = selectedMatchId === 'all' ? (Array.isArray(analysisCutsRival) ? analysisCutsRival : []) : [];
+    return [...scoped, ...rival];
+  }, [matchCutsMap, selectedMatchId, analysisCutsRival]);
 
   const visibleCortes = useMemo(() => {
     if (!user) return [];
@@ -169,7 +211,7 @@ function DesarrolloIndividual() {
   };
 
   const getCutEmbedUrl = (cut: VideoCorte) => {
-    const embed = mainVideoUrl ? toEmbedUrl(mainVideoUrl) : undefined;
+    const embed = activeVideoUrl ? toEmbedUrl(activeVideoUrl) : undefined;
     if (!embed) return undefined;
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
   };
@@ -290,7 +332,6 @@ function DesarrolloIndividual() {
     const src = URL.createObjectURL(file);
     setLocalVideoFile(file);
     setLocalVideoSrc(src);
-    setMainVideoUrl('');
   };
 
   useEffect(() => {
@@ -491,6 +532,17 @@ function DesarrolloIndividual() {
             </small>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={selectedMatchId}
+              onChange={(e) => setSelectedMatchId(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
+            >
+              <option value="all">Todos los partidos</option>
+              <option value="general">General (sin partido)</option>
+              {matches.map((match) => (
+                <option key={match.id} value={match.id}>{match.name}</option>
+              ))}
+            </select>
             <button type="button" className="secondary-button" onClick={downloadAllCuts} disabled={exporting || !localVideoSrc || visibleCortes.length === 0}>
               Descargar todos
             </button>

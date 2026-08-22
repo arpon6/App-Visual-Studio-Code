@@ -81,6 +81,10 @@ const TACTICAL_CATEGORIES: { id: string; label: string }[] = [
 
 const STAFF_MESSAGE_ROLES: UserRole[] = ['entrenador', 'SUPER_ADMIN'];
 
+type OwnMatchInfo = { id: string; name: string; createdAt: string };
+
+const OWN_MATCHES_KEY = 'cortador_propio_matches';
+
 const previousMatches: PreviousMatch[] = [
   {
     opponent: 'VS UD LOGROÑÉS B',
@@ -114,7 +118,10 @@ function AnalisisDePartido() {
   const [usersLoaded, setUsersLoaded] = useState(false);
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
-  const [analysisCutsRaw] = useSharedState<AnalysisCut[] | Record<string, AnalysisCut[]>>('analisis_cuts', []);
+  const [ownMatches] = useSharedState<OwnMatchInfo[]>(OWN_MATCHES_KEY, []);
+  const [selectedOwnMatchId, setSelectedOwnMatchId] = useState<string>('all');
+  const [ownMatchCutsMap, setOwnMatchCutsMap] = useState<Record<string, AnalysisCut[]>>({});
+  const [ownMatchVideoMap, setOwnMatchVideoMap] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useSharedState<ChatMessage[]>('analisis_chat', []);
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
@@ -153,11 +160,51 @@ function AnalisisDePartido() {
     loadUsers();
   }, []);
 
+  useEffect(() => {
+    const loadCutsByMatch = async () => {
+      const [{ data: cutRows }, { data: videoRows }] = await Promise.all([
+        supabase.from('shared_state').select('key, value').like('key', 'analisis_cuts%'),
+        supabase.from('shared_state').select('key, value').like('key', 'analisis_main_video%'),
+      ]);
+
+      const toCutArray = (value: unknown): AnalysisCut[] => {
+        if (Array.isArray(value)) return value as AnalysisCut[];
+        if (value && typeof value === 'object') return Object.values(value as Record<string, AnalysisCut[]>).flat();
+        return [];
+      };
+
+      const cutsMap: Record<string, AnalysisCut[]> = {};
+      (cutRows || []).forEach((row) => {
+        if (row.key === 'analisis_cuts') {
+          cutsMap.general = toCutArray(row.value);
+        } else if (row.key.startsWith('analisis_cuts_match_')) {
+          const matchId = row.key.slice('analisis_cuts_match_'.length);
+          cutsMap[matchId] = toCutArray(row.value);
+        }
+      });
+
+      const videoMap: Record<string, string> = {};
+      (videoRows || []).forEach((row) => {
+        if (row.key === 'analisis_main_video') {
+          videoMap.general = typeof row.value === 'string' ? row.value : '';
+        } else if (row.key.startsWith('analisis_main_video_match_')) {
+          const matchId = row.key.slice('analisis_main_video_match_'.length);
+          videoMap[matchId] = typeof row.value === 'string' ? row.value : '';
+        }
+      });
+
+      setOwnMatchCutsMap(cutsMap);
+      setOwnMatchVideoMap(videoMap);
+    };
+
+    loadCutsByMatch();
+  }, []);
+
   const allCuts = useMemo<AnalysisCut[]>(() => {
-    return Array.isArray(analysisCutsRaw)
-      ? analysisCutsRaw
-      : Object.values(analysisCutsRaw).flat();
-  }, [analysisCutsRaw]);
+    return selectedOwnMatchId === 'all'
+      ? Object.values(ownMatchCutsMap).flat()
+      : (ownMatchCutsMap[selectedOwnMatchId] || []);
+  }, [ownMatchCutsMap, selectedOwnMatchId]);
 
   const visibleCuts = useMemo<AnalysisCut[]>(() => {
     return allCuts.filter((cut) => {
@@ -450,7 +497,8 @@ function AnalisisDePartido() {
   };
 
   const getCutEmbedUrl = (cut: AnalysisCut) => {
-    const source = mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
+    const ownMatchVideo = selectedOwnMatchId !== 'all' ? ownMatchVideoMap[selectedOwnMatchId] : undefined;
+    const source = ownMatchVideo || mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
     const embed = toEmbedUrl(source);
     if (!embed) return undefined;
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
@@ -687,6 +735,17 @@ function AnalisisDePartido() {
             <small>Revisa los registros tácticos guardados en el último encuentro</small>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={selectedOwnMatchId}
+              onChange={(e) => setSelectedOwnMatchId(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
+            >
+              <option value="all">Todos los partidos</option>
+              <option value="general">General (sin partido)</option>
+              {ownMatches.map((match) => (
+                <option key={match.id} value={match.id}>{match.name}</option>
+              ))}
+            </select>
             <button
               type="button"
               className="secondary-button"

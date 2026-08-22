@@ -131,10 +131,26 @@ function loadState(): SavedState {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {} as SavedState; }
 }
 
+type MatchInfo = { id: string; name: string; createdAt: string };
+
+const MATCHES_KEY = 'cortador_propio_matches';
+const ACTIVE_MATCH_LOCAL_KEY = 'cortador_propio_active_match_id';
+
+function loadActiveMatchId(): string {
+  try { return localStorage.getItem(ACTIVE_MATCH_LOCAL_KEY) || ''; } catch { return ''; }
+}
+
 function CortadorDeVideo() {
   const jugadores = usePlantilla();
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('analisis_main_video', '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('analisis_cuts', []);
+  const [matches, setMatches] = useSharedState<MatchInfo[]>(MATCHES_KEY, []);
+  const [activeMatchId, setActiveMatchId] = useState<string>(loadActiveMatchId);
+  const [newMatchName, setNewMatchName] = useState('');
+
+  const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : 'analisis_main_video';
+  const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : 'analisis_cuts';
+
+  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>(videoStateKey, '');
+  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>(cutsStateKey, []);
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
   const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
@@ -146,18 +162,45 @@ function CortadorDeVideo() {
   const [categories, setCategoriesState] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [cuts, setCutsState] = useState<Cut[]>([]);
 
-  const sharedLoadedRef = useRef(false);
+  const loadedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (sharedLoading || sharedLoadedRef.current) return;
-    sharedLoadedRef.current = true;
+    if (sharedLoading || loadedKeyRef.current === cutsStateKey) return;
+    loadedKeyRef.current = cutsStateKey;
     if (sharedVideoUrl) {
       setVideoUrlState(sharedVideoUrl);
       const id = extractYouTubeVideoId(sharedVideoUrl);
-      if (id) setVideoId(id);
+      setVideoId(id);
+    } else {
+      setVideoUrlState('');
+      setVideoId(null);
     }
-    if (sharedCuts.length) setCutsState(sharedCuts);
+    setCutsState(sharedCuts || []);
     if (sharedCategories.length) setCategoriesState(sharedCategories);
-  }, [sharedLoading, sharedVideoUrl, sharedCuts, sharedCategories]);
+  }, [sharedLoading, sharedVideoUrl, sharedCuts, sharedCategories, cutsStateKey]);
+
+  const handleSelectMatch = (id: string) => {
+    setActiveMatchId(id);
+    try { localStorage.setItem(ACTIVE_MATCH_LOCAL_KEY, id); } catch { /* ignore */ }
+  };
+
+  const handleCreateMatch = () => {
+    const name = newMatchName.trim();
+    if (!name) return;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const newMatch: MatchInfo = { id, name, createdAt: new Date().toISOString() };
+    setMatches((prev) => [newMatch, ...prev]);
+    setNewMatchName('');
+    handleSelectMatch(id);
+  };
+
+  const handleDeleteMatch = (id: string) => {
+    const match = matches.find((m) => m.id === id);
+    if (!match) return;
+    const confirmed = window.confirm(`¿Eliminar el partido «${match.name}» de la lista? (los cortes guardados no se podrán volver a abrir desde el desplegable)`);
+    if (!confirmed) return;
+    setMatches((prev) => prev.filter((m) => m.id !== id));
+    if (activeMatchId === id) handleSelectMatch('');
+  };
 
   const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
@@ -668,6 +711,48 @@ function CortadorDeVideo() {
         }}>
           {focusMode ? '✕ Salir del modo foco' : '⛶ Modo foco'}
         </button>
+      </div>
+
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="section-header">
+          <div>
+            <small>Partido</small>
+            <h2>Selecciona de qué partido son estos cortes</h2>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            value={activeMatchId}
+            onChange={(e) => handleSelectMatch(e.target.value)}
+            style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', minWidth: 220 }}
+          >
+            <option value="">General (sin partido)</option>
+            {matches.map((match) => (
+              <option key={match.id} value={match.id}>{match.name}</option>
+            ))}
+          </select>
+          {activeMatchId && (
+            <button type="button" className="secondary-button" onClick={() => handleDeleteMatch(activeMatchId)}>
+              Eliminar partido
+            </button>
+          )}
+          <input
+            type="text"
+            placeholder="Nombre del nuevo partido..."
+            value={newMatchName}
+            onChange={(e) => setNewMatchName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreateMatch(); }}
+            style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', flex: '1 1 220px', minWidth: 200 }}
+          />
+          <button type="button" className="primary-button" onClick={handleCreateMatch} disabled={!newMatchName.trim()}>
+            + Nuevo partido
+          </button>
+        </div>
+        <p className="empty-text" style={{ marginTop: 8 }}>
+          {activeMatchId
+            ? `Estás guardando cortes del partido «${matches.find((m) => m.id === activeMatchId)?.name || ''}».`
+            : 'Estás guardando cortes en «General (sin partido)». Crea un partido para separar los cortes de otros encuentros.'}
+        </p>
       </div>
 
       <div className="editor-main-grid">
