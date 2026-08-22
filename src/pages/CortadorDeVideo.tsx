@@ -151,10 +151,29 @@ function CortadorDeVideo() {
 
   const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : 'analisis_main_video';
   const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : 'analisis_cuts';
+  // Refs siempre actualizadas: cualquier closure obsoleta (p.ej. un listener registrado antes de
+  // cambiar de partido) debe guardar en el partido REALMENTE activo, nunca en el de cuando se creó
+  // esa closure. Por eso persistCuts/persistVideoUrl leen `.current` en vez de recibir la key por parametro.
+  const cutsStateKeyRef = useRef(cutsStateKey);
+  cutsStateKeyRef.current = cutsStateKey;
+  const videoStateKeyRef = useRef(videoStateKey);
+  videoStateKeyRef.current = videoStateKey;
 
-  const [, setSharedVideoUrl] = useSharedState<string>(videoStateKey, '');
-  const [, setSharedCuts] = useSharedState<Cut[]>(cutsStateKey, []);
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_propio_categories', DEFAULT_CATEGORIES);
+
+  // Debounce independiente por key (en vez de reutilizar el ref interno de useSharedState, que es
+  // compartido entre partidos al ser la misma instancia de hook) para que un guardado pendiente de
+  // un partido nunca cancele ni se mezcle con el de otro.
+  const saveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const persistValue = (key: string, value: unknown) => {
+    if (saveTimeoutsRef.current[key]) clearTimeout(saveTimeoutsRef.current[key]);
+    saveTimeoutsRef.current[key] = setTimeout(() => {
+      delete saveTimeoutsRef.current[key];
+      supabase.from('shared_state')
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+        .then(({ error }) => { if (error) console.error('shared_state upsert error:', key, error); });
+    }, 500);
+  };
 
   const saved = useMemo(loadState, []);
   const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
@@ -236,11 +255,11 @@ function CortadorDeVideo() {
     handleCancelRenameMatch();
   };
 
-  const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
+  const setVideoUrl = (v: string) => { setVideoUrlState(v); persistValue(videoStateKeyRef.current, v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
     setCutsState(prev => {
       const next = typeof fn === 'function' ? (fn as (prev: Cut[]) => Cut[])(prev) : fn;
-      setSharedCuts(next);
+      persistValue(cutsStateKeyRef.current, next);
       return next;
     });
   };
