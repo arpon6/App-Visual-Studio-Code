@@ -504,6 +504,8 @@ function AnalisisDePartido() {
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
   };
 
+  const selectedOwnMatchVideoUrl = selectedOwnMatchId !== 'all' ? (ownMatchVideoMap[selectedOwnMatchId] || '') : '';
+
   const getYouTubeWatchUrl = (url: string) => {
     const id = getYouTubeId(url);
     return id ? `https://www.youtube.com/watch?v=${id}` : url;
@@ -757,6 +759,24 @@ function AnalisisDePartido() {
             <span className="badge">{TACTICAL_CATEGORIES.reduce((acc, cat) => acc + (analysisCuts[cat.id]?.length ?? 0), 0)} cortes</span>
           </div>
         </div>
+
+        {selectedOwnMatchId !== 'all' && (
+          selectedOwnMatchVideoUrl ? (
+            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#0b1220', marginBottom: '1rem' }}>
+              <iframe
+                title={`Vídeo del partido ${selectedOwnMatchId === 'general' ? 'general' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}`}
+                src={toEmbedUrl(selectedOwnMatchVideoUrl)}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ width: '100%', height: 320, border: 'none' }}
+              />
+            </div>
+          ) : (
+            <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+              Este partido todavía no tiene una URL de vídeo guardada desde el Editor de vídeo propio.
+            </p>
+          )
+        )}
 
         <div className="accordion-list">
           {TACTICAL_CATEGORIES.map((category, index) => {

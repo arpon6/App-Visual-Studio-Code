@@ -146,6 +146,8 @@ function CortadorDeVideo() {
   const [matches, setMatches] = useSharedState<MatchInfo[]>(MATCHES_KEY, []);
   const [activeMatchId, setActiveMatchId] = useState<string>(loadActiveMatchId);
   const [newMatchName, setNewMatchName] = useState('');
+  const [renamingMatchId, setRenamingMatchId] = useState<string | null>(null);
+  const [renameMatchValue, setRenameMatchValue] = useState('');
 
   const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : 'analisis_main_video';
   const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : 'analisis_cuts';
@@ -212,6 +214,26 @@ function CortadorDeVideo() {
     if (!confirmed) return;
     setMatches((prev) => prev.filter((m) => m.id !== id));
     if (activeMatchId === id) handleSelectMatch('');
+  };
+
+  const handleStartRenameMatch = (id: string) => {
+    const match = matches.find((m) => m.id === id);
+    if (!match) return;
+    setRenamingMatchId(id);
+    setRenameMatchValue(match.name);
+  };
+
+  const handleCancelRenameMatch = () => {
+    setRenamingMatchId(null);
+    setRenameMatchValue('');
+  };
+
+  const handleSaveRenameMatch = () => {
+    const name = renameMatchValue.trim();
+    if (!name || !renamingMatchId) { handleCancelRenameMatch(); return; }
+    const id = renamingMatchId;
+    setMatches((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
+    handleCancelRenameMatch();
   };
 
   const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
@@ -743,10 +765,36 @@ function CortadorDeVideo() {
               <option key={match.id} value={match.id}>{match.name}</option>
             ))}
           </select>
-          {activeMatchId && (
-            <button type="button" className="secondary-button" onClick={() => handleDeleteMatch(activeMatchId)}>
-              Eliminar partido
-            </button>
+          {activeMatchId && renamingMatchId !== activeMatchId && (
+            <>
+              <button type="button" className="secondary-button" onClick={() => handleStartRenameMatch(activeMatchId)}>
+                Renombrar partido
+              </button>
+              <button type="button" className="secondary-button" onClick={() => handleDeleteMatch(activeMatchId)}>
+                Eliminar partido
+              </button>
+            </>
+          )}
+          {activeMatchId && renamingMatchId === activeMatchId && (
+            <>
+              <input
+                type="text"
+                autoFocus
+                value={renameMatchValue}
+                onChange={(e) => setRenameMatchValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveRenameMatch();
+                  if (e.key === 'Escape') handleCancelRenameMatch();
+                }}
+                style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', minWidth: 200 }}
+              />
+              <button type="button" className="primary-button" onClick={handleSaveRenameMatch} disabled={!renameMatchValue.trim()}>
+                Guardar
+              </button>
+              <button type="button" className="secondary-button" onClick={handleCancelRenameMatch}>
+                Cancelar
+              </button>
+            </>
           )}
           <input
             type="text"
