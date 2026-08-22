@@ -92,6 +92,7 @@ function DesarrolloIndividual() {
   const [exporting, setExporting] = useState(false);
   const [analysisChat, setAnalysisChat] = useSharedState<ChatMessage[]>('analisis_chat', []);
   const [cutMessageText, setCutMessageText] = useState('');
+  const [playTokens, setPlayTokens] = useState<Record<string, number>>({});
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -210,10 +211,10 @@ function DesarrolloIndividual() {
     return match ? `https://www.youtube.com/embed/${match[1]}` : url;
   };
 
-  const getCutEmbedUrl = (cut: VideoCorte) => {
+  const getCutEmbedUrl = (cut: VideoCorte, autoplay: boolean) => {
     const embed = activeVideoUrl ? toEmbedUrl(activeVideoUrl) : undefined;
     if (!embed) return undefined;
-    return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
+    return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=${autoplay ? 1 : 0}`;
   };
 
   const getYouTubeWatchUrl = (url: string) => {
@@ -568,7 +569,8 @@ function DesarrolloIndividual() {
 
                   <div style={{ display: 'grid', gap: 12 }}>
                     {categoryCuts.map((corte) => {
-                      const embedUrl = getCutEmbedUrl(corte);
+                      const playToken = playTokens[corte.id] || 0;
+                      const embedUrl = getCutEmbedUrl(corte, playToken > 0);
                       const messages = visibleChatMessages.filter((msg) => msg.relatedCutId === corte.id);
                       return (
                         <div key={corte.id} style={{ background: '#131b2f', borderRadius: 10, padding: '1rem', display: 'grid', gap: 12 }}>
@@ -586,6 +588,7 @@ function DesarrolloIndividual() {
                           {embedUrl ? (
                             <div style={{ borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
                               <iframe
+                                key={`${corte.id}-${playToken}`}
                                 title={`Corte ${corte.id}`}
                                 src={embedUrl}
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -598,6 +601,14 @@ function DesarrolloIndividual() {
                           )}
 
                           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={!embedUrl}
+                              onClick={() => setPlayTokens((prev) => ({ ...prev, [corte.id]: (prev[corte.id] || 0) + 1 }))}
+                            >
+                              Reproducir corte
+                            </button>
                             <button type="button" className="secondary-button" onClick={() => downloadCut(corte)} disabled={exporting || !localVideoSrc}>
                               Descargar MP4
                             </button>

@@ -138,6 +138,7 @@ function AnalisisDePartido() {
   const [cutMessageText, setCutMessageText] = useState('');
   const [playingCut, setPlayingCut] = useState<AnalysisCut | null>(null);
   const [playingEmbedUrl, setPlayingEmbedUrl] = useState<string | null>(null);
+  const [playToken, setPlayToken] = useState(0);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
@@ -814,6 +815,8 @@ function AnalisisDePartido() {
                                 const src = `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`;
                                 setPlayingEmbedUrl(src);
                                 setPlayingCut(cut);
+                                // fuerza el remontaje del iframe aunque sea el mismo corte recién reproducido
+                                setPlayToken((t) => t + 1);
                               }}>
                                 Reproducir corte
                               </button>
@@ -983,7 +986,7 @@ function AnalisisDePartido() {
               </div>
             </div>
             <div style={{ position: 'relative', paddingTop: '56.25%' }}>
-              <iframe title={`Corte ${playingCut.id}`} src={playingEmbedUrl} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }} />
+              <iframe key={`${playingCut.id}-${playToken}`} title={`Corte ${playingCut.id}`} src={playingEmbedUrl} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }} />
             </div>
           </div>
         </div>

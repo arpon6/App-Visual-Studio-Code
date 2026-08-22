@@ -303,6 +303,7 @@ function CortadorDeVideo() {
   cutNameRef.current = cutName;
   const [fullscreenPreviewId, setFullscreenPreviewId] = useState<string | null>(null);
   const [playingCutId, setPlayingCutId] = useState<string | null>(null);
+  const [cutPlayToken, setCutPlayToken] = useState<Record<string, number>>({});
   const [playbackRate, setPlaybackRate] = useState(1);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeCutRef = useRef<Cut | null>(null);
@@ -743,6 +744,8 @@ function CortadorDeVideo() {
   const handlePlayCut = (cut: Cut) => {
     activeCutRef.current = cut;
     setPlayingCutId(cut.id);
+    // fuerza el remontaje del elemento de vista previa aunque sea el mismo corte recién terminado
+    setCutPlayToken((prev) => ({ ...prev, [cut.id]: (prev[cut.id] || 0) + 1 }));
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
       localVideoRef.current.play();
@@ -1104,7 +1107,7 @@ function CortadorDeVideo() {
                         <div style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
                           {videoMode === 'file' && localVideoSrc ? (
                             <video
-                              key={`preview-${cut.id}`}
+                              key={`preview-${cut.id}-${cutPlayToken[cut.id] || 0}`}
                               src={localVideoSrc}
                               controls
                               autoPlay
@@ -1114,6 +1117,7 @@ function CortadorDeVideo() {
                             />
                           ) : videoMode === 'url' && videoId ? (
                             <iframe
+                              key={`iframe-${cut.id}-${cutPlayToken[cut.id] || 0}`}
                               title={`Corte ${cut.id}`}
                               src={`https://www.youtube.com/embed/${videoId}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`}
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

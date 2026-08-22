@@ -151,6 +151,7 @@ function CortadorDeVideoRival() {
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
   const [playingCutId, setPlayingCutId] = useState<string | null>(null);
+  const [cutPlayToken, setCutPlayToken] = useState<Record<string, number>>({});
   const [playerReady, setPlayerReady] = useState(false);
   const [playerError, setPlayerError] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState(DEFAULT_CATEGORIES[0].id);
@@ -404,6 +405,8 @@ function CortadorDeVideoRival() {
   const handlePlayCut = (cut: Cut) => {
     // activamos modo previsualización en la lista; el reproductor principal seguirá funcionando
     setPlayingCutId(cut.id);
+    // fuerza el remontaje del elemento de vista previa aunque sea el mismo corte recién terminado
+    setCutPlayToken((prev) => ({ ...prev, [cut.id]: (prev[cut.id] || 0) + 1 }));
     if (videoMode === 'file' && localVideoRef.current) {
       localVideoRef.current.currentTime = cut.start;
       localVideoRef.current.play();
@@ -796,7 +799,7 @@ function CortadorDeVideoRival() {
                         <div style={{ marginTop: 12, borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
                           {videoMode === 'file' && localVideoSrc ? (
                             <video
-                              key={`preview-${cut.id}`}
+                              key={`preview-${cut.id}-${cutPlayToken[cut.id] || 0}`}
                               src={localVideoSrc}
                               controls
                               autoPlay
@@ -806,6 +809,7 @@ function CortadorDeVideoRival() {
                             />
                           ) : videoMode === 'url' && videoId ? (
                             <iframe
+                              key={`iframe-${cut.id}-${cutPlayToken[cut.id] || 0}`}
                               title={`Corte ${cut.id}`}
                               src={`https://www.youtube.com/embed/${videoId}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`}
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
