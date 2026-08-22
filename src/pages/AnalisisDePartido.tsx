@@ -676,10 +676,21 @@ function AnalisisDePartido() {
       </div>
 
       <div className="card video-card" style={{ marginBottom: '1.5rem' }}>
-        <div className="section-header">
+        <div className="section-header" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <h2>Partido Completo</h2>
+          <select
+            value={selectedOwnMatchId}
+            onChange={(e) => setSelectedOwnMatchId(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
+          >
+            <option value="all">Vídeo general (Partido Completo)</option>
+            <option value="general">General (sin partido)</option>
+            {ownMatches.map((match) => (
+              <option key={match.id} value={match.id}>{match.name}</option>
+            ))}
+          </select>
         </div>
-        {!isReadOnly && (
+        {!isReadOnly && selectedOwnMatchId === 'all' && (
           <>
             <input
               type="text"
@@ -703,22 +714,39 @@ function AnalisisDePartido() {
             />
           </>
         )}
-        {localVideoSrc && (
+        {localVideoSrc && selectedOwnMatchId === 'all' && (
           <div className="video-wrapper" style={{ marginBottom: '1rem' }}>
             <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%' }} />
           </div>
         )}
-        {mainVideoUrl && (
-          <div className="video-wrapper">
-            <iframe
-              title="Partido completo"
-              src={toEmbedUrl(mainVideoUrl)}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
+        {selectedOwnMatchId === 'all' ? (
+          mainVideoUrl && (
+            <div className="video-wrapper">
+              <iframe
+                title="Partido completo"
+                src={toEmbedUrl(mainVideoUrl)}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          )
+        ) : (
+          selectedOwnMatchVideoUrl ? (
+            <div className="video-wrapper">
+              <iframe
+                title={`Vídeo del partido ${selectedOwnMatchId === 'general' ? 'general' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}`}
+                src={toEmbedUrl(selectedOwnMatchVideoUrl)}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <p style={{ color: '#9ca3af' }}>
+              Este partido todavía no tiene una URL de vídeo guardada desde el Editor de vídeo propio.
+            </p>
+          )
         )}
-        {!isReadOnly && (
+        {!isReadOnly && selectedOwnMatchId === 'all' && (
           <button
             type="button"
             onClick={sendToArchive}
@@ -737,17 +765,6 @@ function AnalisisDePartido() {
             <small>Revisa los registros tácticos guardados en el último encuentro</small>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              value={selectedOwnMatchId}
-              onChange={(e) => setSelectedOwnMatchId(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
-            >
-              <option value="all">Todos los partidos</option>
-              <option value="general">General (sin partido)</option>
-              {ownMatches.map((match) => (
-                <option key={match.id} value={match.id}>{match.name}</option>
-              ))}
-            </select>
             <button
               type="button"
               className="secondary-button"
@@ -761,21 +778,9 @@ function AnalisisDePartido() {
         </div>
 
         {selectedOwnMatchId !== 'all' && (
-          selectedOwnMatchVideoUrl ? (
-            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#0b1220', marginBottom: '1rem' }}>
-              <iframe
-                title={`Vídeo del partido ${selectedOwnMatchId === 'general' ? 'general' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}`}
-                src={toEmbedUrl(selectedOwnMatchVideoUrl)}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                style={{ width: '100%', height: 320, border: 'none' }}
-              />
-            </div>
-          ) : (
-            <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-              Este partido todavía no tiene una URL de vídeo guardada desde el Editor de vídeo propio.
-            </p>
-          )
+          <p style={{ color: '#7f96bc', fontSize: '0.85rem', marginTop: -4 }}>
+            Mostrando cortes de: {selectedOwnMatchId === 'general' ? 'General (sin partido)' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}
+          </p>
         )}
 
         <div className="accordion-list">
