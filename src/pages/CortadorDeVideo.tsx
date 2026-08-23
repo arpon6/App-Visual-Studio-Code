@@ -149,8 +149,8 @@ function CortadorDeVideo() {
   const [renamingMatchId, setRenamingMatchId] = useState<string | null>(null);
   const [renameMatchValue, setRenameMatchValue] = useState('');
 
-  const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : 'analisis_main_video';
-  const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : 'analisis_cuts';
+  const videoStateKey = activeMatchId ? `analisis_main_video_match_${activeMatchId}` : '';
+  const cutsStateKey = activeMatchId ? `analisis_cuts_match_${activeMatchId}` : '';
   // Refs siempre actualizadas: cualquier closure obsoleta (p.ej. un listener registrado antes de
   // cambiar de partido) debe guardar en el partido REALMENTE activo, nunca en el de cuando se creó
   // esa closure. Por eso persistCuts/persistVideoUrl leen `.current` en vez de recibir la key por parametro.
@@ -193,6 +193,8 @@ function CortadorDeVideo() {
     setVideoUrlState('');
     setVideoId(null);
 
+    if (!activeMatchId) return () => { cancelled = true; };
+
     Promise.all([
       supabase.from('shared_state').select('value').eq('key', videoStateKey).maybeSingle(),
       supabase.from('shared_state').select('value').eq('key', cutsStateKey).maybeSingle(),
@@ -215,6 +217,11 @@ function CortadorDeVideo() {
     setActiveMatchId(id);
     try { localStorage.setItem(ACTIVE_MATCH_LOCAL_KEY, id); } catch { /* ignore */ }
   };
+
+  useEffect(() => {
+    if (activeMatchId && matches.some((match) => match.id === activeMatchId)) return;
+    if (matches.length > 0) handleSelectMatch(matches[0].id);
+  }, [activeMatchId, matches]);
 
   const handleCreateMatch = () => {
     const name = newMatchName.trim();
@@ -255,11 +262,11 @@ function CortadorDeVideo() {
     handleCancelRenameMatch();
   };
 
-  const setVideoUrl = (v: string) => { setVideoUrlState(v); persistValue(videoStateKeyRef.current, v); };
+  const setVideoUrl = (v: string) => { setVideoUrlState(v); if (videoStateKeyRef.current) persistValue(videoStateKeyRef.current, v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
     setCutsState(prev => {
       const next = typeof fn === 'function' ? (fn as (prev: Cut[]) => Cut[])(prev) : fn;
-      persistValue(cutsStateKeyRef.current, next);
+      if (cutsStateKeyRef.current) persistValue(cutsStateKeyRef.current, next);
       return next;
     });
   };
@@ -789,7 +796,7 @@ function CortadorDeVideo() {
             onChange={(e) => handleSelectMatch(e.target.value)}
             style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', minWidth: 220 }}
           >
-            <option value="">General (sin partido)</option>
+            <option value="" disabled>Selecciona o crea un partido</option>
             {matches.map((match) => (
               <option key={match.id} value={match.id}>{match.name}</option>
             ))}
@@ -840,11 +847,11 @@ function CortadorDeVideo() {
         <p className="empty-text" style={{ marginTop: 8 }}>
           {activeMatchId
             ? `Estás guardando cortes del partido «${matches.find((m) => m.id === activeMatchId)?.name || ''}».`
-            : 'Estás guardando cortes en «General (sin partido)». Crea un partido para separar los cortes de otros encuentros.'}
+            : 'Crea un partido y selecciónalo antes de cargar el vídeo y hacer cortes.'}
         </p>
       </div>
 
-      <div className="editor-main-grid">
+      <div className="editor-main-grid" style={!activeMatchId ? { pointerEvents: 'none', opacity: 0.5 } : undefined}>
         <div className="card cortador-card">
         <div className="section-header">
           <div>

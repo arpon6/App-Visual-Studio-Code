@@ -119,14 +119,12 @@ function AnalisisDePartido() {
   const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
   const [ownMatches] = useSharedState<OwnMatchInfo[]>(OWN_MATCHES_KEY, []);
-  const [selectedOwnMatchId, setSelectedOwnMatchId] = useState<string>('all');
+  const [selectedOwnMatchId, setSelectedOwnMatchId] = useState<string>('');
   const [ownMatchCutsMap, setOwnMatchCutsMap] = useState<Record<string, AnalysisCut[]>>({});
   const [ownMatchVideoMap, setOwnMatchVideoMap] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useSharedState<ChatMessage[]>('analisis_chat', []);
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
-  const [mainVideoUrl, setMainVideoUrlState] = useSharedState<string>('analisis_main_video', '');
-  const [mainOpponent, setMainOpponentState] = useSharedState<string>('analisis_main_opponent', '');
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -143,9 +141,6 @@ function AnalisisDePartido() {
   const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
-  const setMainVideoUrl = (val: string) => setMainVideoUrlState(val);
-  const setMainOpponent = (val: string) => setMainOpponentState(val);
-
   useEffect(() => {
     const loadUsers = async () => {
       try {
@@ -176,9 +171,7 @@ function AnalisisDePartido() {
 
       const cutsMap: Record<string, AnalysisCut[]> = {};
       (cutRows || []).forEach((row) => {
-        if (row.key === 'analisis_cuts') {
-          cutsMap.general = toCutArray(row.value);
-        } else if (row.key.startsWith('analisis_cuts_match_')) {
+        if (row.key.startsWith('analisis_cuts_match_')) {
           const matchId = row.key.slice('analisis_cuts_match_'.length);
           cutsMap[matchId] = toCutArray(row.value);
         }
@@ -186,9 +179,7 @@ function AnalisisDePartido() {
 
       const videoMap: Record<string, string> = {};
       (videoRows || []).forEach((row) => {
-        if (row.key === 'analisis_main_video') {
-          videoMap.general = typeof row.value === 'string' ? row.value : '';
-        } else if (row.key.startsWith('analisis_main_video_match_')) {
+        if (row.key.startsWith('analisis_main_video_match_')) {
           const matchId = row.key.slice('analisis_main_video_match_'.length);
           videoMap[matchId] = typeof row.value === 'string' ? row.value : '';
         }
@@ -201,10 +192,13 @@ function AnalisisDePartido() {
     loadCutsByMatch();
   }, []);
 
+  useEffect(() => {
+    if (selectedOwnMatchId && ownMatches.some((match) => match.id === selectedOwnMatchId)) return;
+    setSelectedOwnMatchId(ownMatches[0]?.id || '');
+  }, [ownMatches, selectedOwnMatchId]);
+
   const allCuts = useMemo<AnalysisCut[]>(() => {
-    return selectedOwnMatchId === 'all'
-      ? Object.values(ownMatchCutsMap).flat()
-      : (ownMatchCutsMap[selectedOwnMatchId] || []);
+    return ownMatchCutsMap[selectedOwnMatchId] || [];
   }, [ownMatchCutsMap, selectedOwnMatchId]);
 
   const visibleCuts = useMemo<AnalysisCut[]>(() => {
@@ -445,21 +439,6 @@ function AnalisisDePartido() {
     }
   };
 
-  const sendToArchive = () => {
-    if (!mainVideoUrl || !mainOpponent) return;
-    const newMatch: PreviousMatch = {
-      opponent: mainOpponent.toUpperCase(),
-      result: '',
-      date: new Date().toISOString().split('T')[0],
-      status: 'Finalizado',
-      score: '',
-      videoUrl: toEmbedUrl(mainVideoUrl),
-    };
-    setMatchesState([newMatch, ...matches]);
-    setMainVideoUrlState('');
-    setMainOpponentState('');
-  };
-
   const deleteArchivedMatch = (matchIndex: number) => {
     const matchToDelete = matches[matchIndex];
     if (!matchToDelete) return;
@@ -498,14 +477,13 @@ function AnalisisDePartido() {
   };
 
   const getCutEmbedUrl = (cut: AnalysisCut) => {
-    const ownMatchVideo = selectedOwnMatchId !== 'all' ? ownMatchVideoMap[selectedOwnMatchId] : undefined;
-    const source = ownMatchVideo || mainVideoUrl || matches[selectedMatchIndex]?.videoUrl || '';
+    const source = ownMatchVideoMap[selectedOwnMatchId] || '';
     const embed = toEmbedUrl(source);
     if (!embed) return undefined;
     return `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&rel=0&autoplay=0`;
   };
 
-  const selectedOwnMatchVideoUrl = selectedOwnMatchId !== 'all' ? (ownMatchVideoMap[selectedOwnMatchId] || '') : '';
+  const selectedOwnMatchVideoUrl = ownMatchVideoMap[selectedOwnMatchId] || '';
 
   const getYouTubeWatchUrl = (url: string) => {
     const id = getYouTubeId(url);
@@ -623,7 +601,6 @@ function AnalisisDePartido() {
     const src = URL.createObjectURL(file);
     setLocalVideoFile(file);
     setLocalVideoSrc(src);
-    setMainVideoUrl('');
   };
 
   useEffect(() => {
@@ -684,58 +661,16 @@ function AnalisisDePartido() {
             onChange={(e) => setSelectedOwnMatchId(e.target.value)}
             style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
           >
-            <option value="all">Vídeo general (Partido Completo)</option>
-            <option value="general">General (sin partido)</option>
+            <option value="" disabled>Selecciona un partido</option>
             {ownMatches.map((match) => (
               <option key={match.id} value={match.id}>{match.name}</option>
             ))}
           </select>
         </div>
-        {!isReadOnly && selectedOwnMatchId === 'all' && (
-          <>
-            <input
-              type="text"
-              placeholder="Rival (ej: VS UD LOGROÑÉS B)..."
-              value={mainOpponent}
-              onChange={e => setMainOpponent(e.target.value)}
-              style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
-            />
-            <input
-              type="text"
-              placeholder="Pega aquí la URL de YouTube..."
-              value={mainVideoUrl}
-              onChange={e => setMainVideoUrl(e.target.value)}
-              style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
-            />
-            <input
-              type="file"
-              accept="video/*"
-              onChange={handleLocalVideoFileChange}
-              style={{ width: '100%', marginBottom: '0.75rem', padding: '0.4rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
-            />
-          </>
-        )}
-        {localVideoSrc && selectedOwnMatchId === 'all' && (
-          <div className="video-wrapper" style={{ marginBottom: '1rem' }}>
-            <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%' }} />
-          </div>
-        )}
-        {selectedOwnMatchId === 'all' ? (
-          mainVideoUrl && (
+        {selectedOwnMatchVideoUrl ? (
             <div className="video-wrapper">
               <iframe
-                title="Partido completo"
-                src={toEmbedUrl(mainVideoUrl)}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          )
-        ) : (
-          selectedOwnMatchVideoUrl ? (
-            <div className="video-wrapper">
-              <iframe
-                title={`Vídeo del partido ${selectedOwnMatchId === 'general' ? 'general' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}`}
+                title={`Vídeo del partido ${ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}`}
                 src={toEmbedUrl(selectedOwnMatchVideoUrl)}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
@@ -745,17 +680,6 @@ function AnalisisDePartido() {
             <p style={{ color: '#9ca3af' }}>
               Este partido todavía no tiene una URL de vídeo guardada desde el Editor de vídeo propio.
             </p>
-          )
-        )}
-        {!isReadOnly && selectedOwnMatchId === 'all' && (
-          <button
-            type="button"
-            onClick={sendToArchive}
-            disabled={!mainVideoUrl || !mainOpponent}
-            style={{ marginTop: '0.75rem', padding: '0.5rem 1rem', background: mainVideoUrl && mainOpponent ? '#3b82f6' : '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: mainVideoUrl && mainOpponent ? 'pointer' : 'not-allowed', fontWeight: 600 }}
-          >
-            Enviar a partidos anteriores
-          </button>
         )}
       </div>
 
@@ -778,9 +702,9 @@ function AnalisisDePartido() {
           </div>
         </div>
 
-        {selectedOwnMatchId !== 'all' && (
+        {selectedOwnMatchId && (
           <p style={{ color: '#7f96bc', fontSize: '0.85rem', marginTop: -4 }}>
-            Mostrando cortes de: {selectedOwnMatchId === 'general' ? 'General (sin partido)' : ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}
+            Mostrando cortes de: {ownMatches.find((m) => m.id === selectedOwnMatchId)?.name || ''}
           </p>
         )}
 
@@ -809,7 +733,7 @@ function AnalisisDePartido() {
                             </div>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                               <button type="button" className="secondary-button" onClick={() => {
-                                const source = mainVideoUrl || (matches[selectedMatchIndex] && matches[selectedMatchIndex].videoUrl) || '';
+                                const source = ownMatchVideoMap[selectedOwnMatchId] || '';
                                 const embed = toEmbedUrl(source);
                                 if (!embed) { alert('No hay vídeo asociado a este análisis.'); return; }
                                 const src = `${embed}?start=${Math.floor(cut.start)}&end=${Math.floor(cut.end)}&autoplay=1&rel=0`;

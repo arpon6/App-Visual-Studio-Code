@@ -676,6 +676,7 @@ function EditorDeImagenes() {
   const [width, setWidth] = useState(4);
   const [opacity, setOpacity] = useState(1);
   const [status, setStatus] = useState('');
+  const [zoomedBoardId, setZoomedBoardId] = useState<string | null>(null);
 
   const canvasRegistry = useRef<Record<string, HTMLCanvasElement | null>>({});
 
@@ -688,6 +689,9 @@ function EditorDeImagenes() {
         ...boards.filter((board) => board.id !== activeBoardId),
       ]
     : boards;
+  // Los jugadores solo deben ver las ediciones que ya tienen una imagen publicada.
+  const displayBoards = canEdit ? orderedBoards : boards.filter((board) => !!board.background);
+  const zoomedBoard = zoomedBoardId ? boards.find((board) => board.id === zoomedBoardId) || null : null;
 
   const applySharedState = (next: EditorState) => {
     setSharedRawState({
@@ -770,6 +774,22 @@ function EditorDeImagenes() {
     }
   };
 
+  const downloadBoardImage = (boardId: string, name: string) => {
+    const canvas = canvasRegistry.current[boardId];
+    if (!canvas) return;
+    try {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.png`;
+      link.click();
+    } catch {
+      setStatus('No se pudo descargar la imagen. Si viene de una URL externa, verifica CORS.');
+    }
+  };
+
+  const openZoom = (boardId: string) => setZoomedBoardId(boardId);
+  const closeZoom = () => setZoomedBoardId(null);
+
   const duplicateBoard = () => {
     if (!canEdit || !activeBoard) return;
     const duplicated: EditorBoard = {
@@ -828,110 +848,114 @@ function EditorDeImagenes() {
         </div>
       </div>
 
-      <div className="card editor-imagenes-controls">
-        <div className="editor-imagenes-row">
-          <label>
-            URL de imagen ({activeBoard?.name || 'Sin seleccion'})
-            <input
-              type="text"
-              value={imageUrlInput}
-              onChange={(event) => setImageUrlInput(event.target.value)}
-              placeholder="https://..."
-              disabled={!canEdit}
-            />
-          </label>
-          <button type="button" onClick={applyImageUrl} disabled={!canEdit || !activeBoard}>Cargar URL</button>
-          <label className="file-upload-btn">
-            Cargar archivo
-            <input type="file" accept="image/*" onChange={handleFileUpload} disabled={!canEdit || !activeBoard} />
-          </label>
-        </div>
+      {canEdit && (
+        <div className="card editor-imagenes-controls">
+          <div className="editor-imagenes-row">
+            <label>
+              URL de imagen ({activeBoard?.name || 'Sin seleccion'})
+              <input
+                type="text"
+                value={imageUrlInput}
+                onChange={(event) => setImageUrlInput(event.target.value)}
+                placeholder="https://..."
+                disabled={!canEdit}
+              />
+            </label>
+            <button type="button" onClick={applyImageUrl} disabled={!canEdit || !activeBoard}>Cargar URL</button>
+            <label className="file-upload-btn">
+              Cargar archivo
+              <input type="file" accept="image/*" onChange={handleFileUpload} disabled={!canEdit || !activeBoard} />
+            </label>
+          </div>
 
-        <div className="editor-imagenes-row editor-imagenes-style-row">
-          <label>
-            Color principal
-            <input type="color" value={primaryColor} onChange={(event) => setPrimaryColor(event.target.value)} disabled={!canEdit} />
-          </label>
-          <label>
-            Relleno
-            <input type="text" value={fillColor} onChange={(event) => setFillColor(event.target.value)} disabled={!canEdit} />
-          </label>
-          <label>
-            Grosor {width}
-            <input type="range" min={1} max={16} value={width} onChange={(event) => setWidth(Number(event.target.value))} disabled={!canEdit} />
-          </label>
-          <label>
-            Transparencia {Math.round(opacity * 100)}%
-            <input type="range" min={10} max={100} value={Math.round(opacity * 100)} onChange={(event) => setOpacity(Number(event.target.value) / 100)} disabled={!canEdit} />
-          </label>
-        </div>
+          <div className="editor-imagenes-row editor-imagenes-style-row">
+            <label>
+              Color principal
+              <input type="color" value={primaryColor} onChange={(event) => setPrimaryColor(event.target.value)} disabled={!canEdit} />
+            </label>
+            <label>
+              Relleno
+              <input type="text" value={fillColor} onChange={(event) => setFillColor(event.target.value)} disabled={!canEdit} />
+            </label>
+            <label>
+              Grosor {width}
+              <input type="range" min={1} max={16} value={width} onChange={(event) => setWidth(Number(event.target.value))} disabled={!canEdit} />
+            </label>
+            <label>
+              Transparencia {Math.round(opacity * 100)}%
+              <input type="range" min={10} max={100} value={Math.round(opacity * 100)} onChange={(event) => setOpacity(Number(event.target.value) / 100)} disabled={!canEdit} />
+            </label>
+          </div>
 
-        <div className="editor-imagenes-row editor-imagenes-tools-row">
-          {([
-            ['move', 'Mover'],
-            ['scale', 'Escalar'],
-            ['arrow', 'Flecha'],
-            ['line', 'Linea'],
-            ['free', 'Libre'],
-            ['rect', 'Rectangulo'],
-            ['circle', 'Circulo'],
-            ['text', 'Texto'],
-            ['badge', 'Numero'],
-            ['erase', 'Borrar'],
-          ] as [Tool, string][]).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={tool === value ? 'active' : ''}
-              onClick={() => setTool(value)}
-              disabled={!canEdit}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          <div className="editor-imagenes-row editor-imagenes-tools-row">
+            {([
+              ['move', 'Mover'],
+              ['scale', 'Escalar'],
+              ['arrow', 'Flecha'],
+              ['line', 'Linea'],
+              ['free', 'Libre'],
+              ['rect', 'Rectangulo'],
+              ['circle', 'Circulo'],
+              ['text', 'Texto'],
+              ['badge', 'Numero'],
+              ['erase', 'Borrar'],
+            ] as [Tool, string][]).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={tool === value ? 'active' : ''}
+                onClick={() => setTool(value)}
+                disabled={!canEdit}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <div className="editor-imagenes-row editor-imagenes-dorsales-row">
-          <span>1-11:</span>
-          {Array.from({ length: 11 }, (_, index) => index + 1).map((number) => (
-            <button
-              key={number}
-              type="button"
-              draggable={canEdit}
-              onDragStart={(event) => handleNumberDragStart(event, number)}
-              disabled={!canEdit}
-            >
-              {number}
-            </button>
-          ))}
-          <small>Arrastra un numero al lienzo que quieras editar.</small>
-        </div>
+          <div className="editor-imagenes-row editor-imagenes-dorsales-row">
+            <span>1-11:</span>
+            {Array.from({ length: 11 }, (_, index) => index + 1).map((number) => (
+              <button
+                key={number}
+                type="button"
+                draggable={canEdit}
+                onDragStart={(event) => handleNumberDragStart(event, number)}
+                disabled={!canEdit}
+              >
+                {number}
+              </button>
+            ))}
+            <small>Arrastra un numero al lienzo que quieras editar.</small>
+          </div>
 
-        <div className="editor-imagenes-row editor-imagenes-actions-row">
-          <button type="button" onClick={undo} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Deshacer</button>
-          <button type="button" onClick={clearAll} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Limpiar</button>
-          <button type="button" onClick={clearImage} disabled={!canEdit || !activeBoard || !activeBoard.background}>Quitar imagen</button>
-          <button type="button" onClick={exportPng} disabled={!activeBoard}>Exportar PNG</button>
-          <button type="button" onClick={duplicateBoard} disabled={!canEdit || !activeBoard}>Duplicar edicion actual</button>
-        </div>
+          <div className="editor-imagenes-row editor-imagenes-actions-row">
+            <button type="button" onClick={undo} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Deshacer</button>
+            <button type="button" onClick={clearAll} disabled={!canEdit || !activeBoard || activeBoard.annotations.length === 0}>Limpiar</button>
+            <button type="button" onClick={clearImage} disabled={!canEdit || !activeBoard || !activeBoard.background}>Quitar imagen</button>
+            <button type="button" onClick={exportPng} disabled={!activeBoard}>Exportar PNG</button>
+            <button type="button" onClick={duplicateBoard} disabled={!canEdit || !activeBoard}>Duplicar edicion actual</button>
+          </div>
 
-        {!canEdit && (
+          {(status || lastUpdateText) && (
+            <p className="editor-imagenes-status">
+              {status}
+              {status && lastUpdateText ? ' - ' : ''}
+              {lastUpdateText ? `Ultima actualizacion: ${lastUpdateText}${sharedState.updatedBy ? ` por ${sharedState.updatedBy}` : ''}` : ''}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!canEdit && (
+        <div className="card editor-imagenes-controls">
           <p className="editor-imagenes-readonly-msg">
-            Vista de solo lectura. Solo los roles entrenador y directivo pueden editar.
+            Vista de solo lectura. Aqui veras las imagenes que los entrenadores han publicado. Puedes ampliarlas y descargarlas.
           </p>
-        )}
-
-        {(status || lastUpdateText) && (
-          <p className="editor-imagenes-status">
-            {status}
-            {status && lastUpdateText ? ' - ' : ''}
-            {lastUpdateText ? `Ultima actualizacion: ${lastUpdateText}${sharedState.updatedBy ? ` por ${sharedState.updatedBy}` : ''}` : ''}
-          </p>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="editor-imagenes-stacked">
-        {orderedBoards.map((board) => {
+        {canEdit && displayBoards.map((board) => {
           const boardNumber = boards.findIndex((item) => item.id === board.id) + 1;
 
           return (
@@ -983,7 +1007,64 @@ function EditorDeImagenes() {
           </div>
           );
         })}
+
+        {!canEdit && displayBoards.length === 0 && (
+          <div className="card editor-board-block">
+            <p className="editor-imagenes-readonly-msg">
+              Todavia no hay imagenes publicadas por el cuerpo tecnico.
+            </p>
+          </div>
+        )}
+
+        {!canEdit && displayBoards.map((board) => (
+          <div key={board.id} className="card editor-board-block">
+            <div className="section-header editor-board-block-header">
+              <h2>{board.name}</h2>
+              <div className="editor-board-inline-actions">
+                <button type="button" onClick={() => openZoom(board.id)}>Ampliar</button>
+                <button type="button" onClick={() => downloadBoardImage(board.id, board.name)}>Descargar</button>
+              </div>
+            </div>
+
+            <BoardCanvasEditor
+              board={board}
+              isActive={false}
+              canEdit={false}
+              loadingShared={loadingShared}
+              tool={tool}
+              primaryColor={primaryColor}
+              fillColor={fillColor}
+              width={width}
+              opacity={opacity}
+              onActivate={() => {}}
+              onUpdateAnnotations={() => {}}
+              onSetStatus={setStatus}
+              onRegisterCanvas={(canvas) => {
+                canvasRegistry.current[board.id] = canvas;
+              }}
+            />
+          </div>
+        ))}
       </div>
+
+      {zoomedBoard && (
+        <div className="editor-imagenes-lightbox" role="dialog" aria-modal="true" onClick={closeZoom}>
+          <div className="editor-imagenes-lightbox-content" onClick={(event) => event.stopPropagation()}>
+            <div className="editor-imagenes-lightbox-header">
+              <strong>{zoomedBoard.name}</strong>
+              <div className="editor-board-inline-actions">
+                <button type="button" onClick={() => downloadBoardImage(zoomedBoard.id, zoomedBoard.name)}>Descargar</button>
+                <button type="button" onClick={closeZoom}>Cerrar</button>
+              </div>
+            </div>
+            <img
+              src={canvasRegistry.current[zoomedBoard.id]?.toDataURL('image/png') || zoomedBoard.background || ''}
+              alt={zoomedBoard.name}
+              className="editor-imagenes-lightbox-img"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

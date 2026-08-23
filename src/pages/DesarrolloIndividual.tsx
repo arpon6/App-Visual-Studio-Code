@@ -83,10 +83,9 @@ function DesarrolloIndividual() {
   const { user } = useAuth();
   const jugadores = usePlantilla();
   const [matches] = useSharedState<MatchInfo[]>(MATCHES_KEY, []);
-  const [selectedMatchId, setSelectedMatchId] = useState<string>('all');
+  const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [matchCutsMap, setMatchCutsMap] = useState<Record<string, VideoCorte[]>>({});
   const [matchVideoMap, setMatchVideoMap] = useState<Record<string, string>>({});
-  const [analysisCutsRival] = useSharedState<VideoCorte[]>('analisis_cuts_rival', []);
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -129,15 +128,16 @@ function DesarrolloIndividual() {
     loadCutsByMatch();
   }, []);
 
-  const activeVideoUrl = selectedMatchId === 'all' ? (matchVideoMap.general || '') : (matchVideoMap[selectedMatchId] || '');
+  useEffect(() => {
+    if (selectedMatchId && matches.some((match) => match.id === selectedMatchId)) return;
+    setSelectedMatchId(matches[0]?.id || '');
+  }, [matches, selectedMatchId]);
+
+  const activeVideoUrl = matchVideoMap[selectedMatchId] || '';
 
   const allCortes = useMemo(() => {
-    const scoped = selectedMatchId === 'all'
-      ? Object.values(matchCutsMap).flat()
-      : (matchCutsMap[selectedMatchId] || []);
-    const rival = selectedMatchId === 'all' ? (Array.isArray(analysisCutsRival) ? analysisCutsRival : []) : [];
-    return [...scoped, ...rival];
-  }, [matchCutsMap, selectedMatchId, analysisCutsRival]);
+    return matchCutsMap[selectedMatchId] || [];
+  }, [matchCutsMap, selectedMatchId]);
 
   const visibleCortes = useMemo(() => {
     if (!user) return [];
@@ -538,8 +538,7 @@ function DesarrolloIndividual() {
               onChange={(e) => setSelectedMatchId(e.target.value)}
               style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
             >
-              <option value="all">Todos los partidos</option>
-              <option value="general">General (sin partido)</option>
+                <option value="" disabled>Selecciona un partido</option>
               {matches.map((match) => (
                 <option key={match.id} value={match.id}>{match.name}</option>
               ))}

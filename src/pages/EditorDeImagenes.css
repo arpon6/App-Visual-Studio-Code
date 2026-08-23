@@ -240,6 +240,43 @@
   flex: 1;
 }
 
+.editor-imagenes-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 8, 16, 0.88);
+  padding: 24px;
+}
+
+.editor-imagenes-lightbox-content {
+  display: grid;
+  gap: 12px;
+  max-width: min(95vw, 1400px);
+  max-height: 95vh;
+}
+
+.editor-imagenes-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #ecf2ff;
+}
+
+.editor-imagenes-lightbox-img {
+  max-width: 95vw;
+  max-height: 82vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: #0a1322;
+}
+
 @media (max-width: 860px) {
   .editor-imagenes-row input[type='text'] {
     min-width: 100%;
