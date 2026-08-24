@@ -48,15 +48,6 @@ type AppUserInfo = {
   player_id: string | null;
 };
 
-type PreviousMatch = {
-  opponent: string;
-  result: string;
-  date: string;
-  status: string;
-  score: string;
-  videoUrl: string;
-};
-
 const TACTICAL_CATEGORIES: { id: string; label: string }[] = [
   { id: 'abp-ofensivo', label: 'ABP OFENSIVO' },
   { id: 'abp-defensivo', label: 'ABP DEFENSIVO' },
@@ -85,25 +76,6 @@ type OwnMatchInfo = { id: string; name: string; createdAt: string };
 
 const OWN_MATCHES_KEY = 'cortador_propio_matches';
 
-const previousMatches: PreviousMatch[] = [
-  {
-    opponent: 'VS UD LOGROÑÉS B',
-    result: '4-0',
-    date: '2024-04-14',
-    status: 'Finalizado',
-    score: '4-0',
-    videoUrl: 'https://www.youtube.com/embed/fVm28-cNLM0',
-  },
-  {
-    opponent: 'VS CLUB RIVERO',
-    result: '2-1',
-    date: '2024-04-08',
-    status: 'Finalizado',
-    score: '2-1',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-  },
-];
-
 function AnalisisDePartido() {
   const { user } = useAuth();
   const jugadores = usePlantilla();
@@ -116,15 +88,12 @@ function AnalisisDePartido() {
   };
   const [users, setUsers] = useState<AppUserInfo[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
-  const isReadOnly = user?.role === 'jugador';
   const [activeCutIndex, setActiveCutIndex] = useState<number | null>(0);
   const [ownMatches] = useSharedState<OwnMatchInfo[]>(OWN_MATCHES_KEY, []);
   const [selectedOwnMatchId, setSelectedOwnMatchId] = useState<string>('');
   const [ownMatchCutsMap, setOwnMatchCutsMap] = useState<Record<string, AnalysisCut[]>>({});
   const [ownMatchVideoMap, setOwnMatchVideoMap] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useSharedState<ChatMessage[]>('analisis_chat', []);
-  const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
-  const [matches, setMatchesState] = useSharedState<PreviousMatch[]>('analisis_matches', previousMatches);
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -140,7 +109,6 @@ function AnalisisDePartido() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const sendingMessageIdsRef = useRef<Set<string>>(new Set());
 
-  const setMatches = (val: PreviousMatch[]) => setMatchesState(val);
   useEffect(() => {
     const loadUsers = async () => {
       try {
@@ -192,10 +160,14 @@ function AnalisisDePartido() {
     loadCutsByMatch();
   }, []);
 
+  const sortedOwnMatches = useMemo<OwnMatchInfo[]>(() => {
+    return [...ownMatches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [ownMatches]);
+
   useEffect(() => {
     if (selectedOwnMatchId && ownMatches.some((match) => match.id === selectedOwnMatchId)) return;
-    setSelectedOwnMatchId(ownMatches[0]?.id || '');
-  }, [ownMatches, selectedOwnMatchId]);
+    setSelectedOwnMatchId(sortedOwnMatches[0]?.id || '');
+  }, [ownMatches, sortedOwnMatches, selectedOwnMatchId]);
 
   const allCuts = useMemo<AnalysisCut[]>(() => {
     return ownMatchCutsMap[selectedOwnMatchId] || [];
@@ -439,23 +411,6 @@ function AnalisisDePartido() {
     }
   };
 
-  const deleteArchivedMatch = (matchIndex: number) => {
-    const matchToDelete = matches[matchIndex];
-    if (!matchToDelete) return;
-
-    const confirmed = window.confirm(`¿Seguro que quieres eliminar el partido ${matchToDelete.opponent}?`);
-    if (!confirmed) return;
-
-    const nextMatches = matches.filter((_, index) => index !== matchIndex);
-    setMatches(nextMatches);
-    setSelectedMatchIndex((currentIndex) => {
-      if (nextMatches.length === 0) return 0;
-      if (currentIndex === matchIndex) return Math.min(matchIndex, nextMatches.length - 1);
-      if (currentIndex > matchIndex) return currentIndex - 1;
-      return Math.min(currentIndex, nextMatches.length - 1);
-    });
-  };
-
   const toEmbedUrl = (url: string) => {
     const match = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
     return match ? `https://www.youtube.com/embed/${match[1]}` : url;
@@ -680,7 +635,7 @@ function AnalisisDePartido() {
             style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
           >
             <option value="" disabled>Selecciona un partido</option>
-            {ownMatches.map((match) => (
+            {sortedOwnMatches.map((match) => (
               <option key={match.id} value={match.id}>{match.name}</option>
             ))}
           </select>
@@ -842,81 +797,6 @@ function AnalisisDePartido() {
             );
           })}
         </div>
-      </div>
-
-      <div className="card previous-matches-card">
-          <div className="section-header">
-            <div>
-              <h2>Partidos anteriores</h2>
-              <small>Selecciona un partido para ver el análisis</small>
-            </div>
-          </div>
-
-          <div className="match-list" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            {matches.map((match, index) => (
-              <div key={index} style={{ background: '#1a1a2e', borderRadius: '8px', padding: '0.5rem' }}>
-                <button
-                  type="button"
-                  className={`match-list-item ${selectedMatchIndex === index ? 'active' : ''}`}
-                  onClick={() => setSelectedMatchIndex(index)}
-                >
-                  <div>
-                    <span>{match.status}</span>
-                    <strong>{match.opponent}</strong>
-                    <small>{match.date}</small>
-                  </div>
-                  <div className="match-score">{match.score}</div>
-                </button>
-                {!isReadOnly && (
-                  <>
-                    <input
-                      type="text"
-                      placeholder="Nombre del rival..."
-                      value={match.opponent}
-                      onChange={e => {
-                        const updated = [...matches];
-                        updated[index] = { ...updated[index], opponent: e.target.value };
-                        setMatches(updated);
-                      }}
-                      style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.25rem' }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="URL YouTube del partido..."
-                      value={match.videoUrl.includes('embed/') ? '' : match.videoUrl}
-                      onChange={e => {
-                        const updated = [...matches];
-                        updated[index] = { ...updated[index], videoUrl: toEmbedUrl(e.target.value) };
-                        setMatches(updated);
-                      }}
-                      style={{ width: '100%', padding: '0.4rem 0.5rem', background: '#1a1a2e', border: '1px solid #333', borderRadius: '4px', color: '#fff', fontSize: '0.8rem', marginBottom: '0.5rem' }}
-                    />
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => deleteArchivedMatch(index)}
-                      style={{ width: '100%', marginBottom: '0.5rem', background: '#7f1d1d', borderColor: '#b91c1c', color: '#fff' }}
-                    >
-                      Eliminar partido
-                    </button>
-                  </>
-                )}
-                {match.videoUrl && (() => {
-                  const id = getYouTubeId(match.videoUrl);
-                  return id ? (
-                    <a href={`https://www.youtube.com/watch?v=${id}`} target="_blank" rel="noreferrer" style={{ display: 'block', position: 'relative', borderRadius: '6px', overflow: 'hidden', marginBottom: '0.5rem' }}>
-                      <img src={`https://img.youtube.com/vi/${id}/hqdefault.jpg`} alt={match.opponent} style={{ width: '100%', display: 'block', borderRadius: '6px' }} />
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: 48, height: 48, background: 'rgba(255,0,0,0.85)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ borderLeft: '18px solid #fff', borderTop: '11px solid transparent', borderBottom: '11px solid transparent', marginLeft: 5 }} />
-                        </div>
-                      </div>
-                    </a>
-                  ) : null;
-                })()}
-              </div>
-            ))}
-          </div>
       </div>
       {playingCut && playingEmbedUrl && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>

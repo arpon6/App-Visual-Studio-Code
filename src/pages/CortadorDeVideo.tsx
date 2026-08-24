@@ -13,8 +13,15 @@ declare global {
 
 type Category = { id: string; label: string; shortcut: string };
 type Annotation = any;
-type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null; player_ids?: string[] | null; annotations?: Annotation[] };
+type Cut = { id: string; categoryId: string; label: string; start: number; end: number; createdAt: string; player_id?: string | null; player_ids?: string[] | null; player_positions?: string[] | null; annotations?: Annotation[] };
 type SavedState = { videoMode: VideoMode };
+
+const PLAYER_POSITION_OPTIONS = [
+  { value: 'Portero', label: 'Porteros' },
+  { value: 'Defensa', label: 'Defensas' },
+  { value: 'Centrocampista', label: 'Centrocampistas' },
+  { value: 'Delantero', label: 'Delanteros' },
+];
 
 const getCutPlayerIds = (cut: Cut): string[] | null => {
   if (cut.player_ids && cut.player_ids.length > 0) return cut.player_ids;
@@ -657,6 +664,18 @@ function CortadorDeVideo() {
       ...c,
       player_ids: playerIds,
       player_id: playerIds && playerIds.length === 1 ? playerIds[0] : null,
+      player_positions: null,
+    } : c));
+  };
+
+  const handleAssignPositions = (cutId: string, positions: string[]) => {
+    const playerIds = jugadores
+      .filter((jugador) => positions.includes(jugador.posicion))
+      .map((jugador) => jugador.id);
+    handleAssignPlayers(cutId, playerIds.length > 0 ? playerIds : null);
+    setCuts(prev => prev.map(c => c.id === cutId ? {
+      ...c,
+      player_positions: positions.length > 0 ? positions : null,
     } : c));
   };
 
@@ -1087,6 +1106,22 @@ function CortadorDeVideo() {
                           Reproducir corte
                         </button>
                         <div style={{ minWidth: 240, display: 'grid', gap: 6 }}>
+                          <label style={{ color: '#9ca3af', fontSize: '0.85rem', margin: 0 }}>Asignar por posición</label>
+                          <select
+                            multiple
+                            size={PLAYER_POSITION_OPTIONS.length}
+                            value={cut.player_positions || []}
+                            onChange={(e) => {
+                              const positions = Array.from(e.target.selectedOptions).map((option) => option.value);
+                              handleAssignPositions(cut.id, positions);
+                            }}
+                            title="Selecciona una o más posiciones"
+                            style={{ minWidth: 240, background: '#111827', border: '1px solid #334155', borderRadius: 8, color: '#fff', padding: '0.75rem', appearance: 'none' }}
+                          >
+                            {PLAYER_POSITION_OPTIONS.map((position) => (
+                              <option key={position.value} value={position.value}>{position.label}</option>
+                            ))}
+                          </select>
                           <label style={{ color: '#9ca3af', fontSize: '0.85rem', margin: 0 }}>Asignar a jugador(es)</label>
                           <select
                             multiple

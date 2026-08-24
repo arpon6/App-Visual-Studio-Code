@@ -128,10 +128,14 @@ function DesarrolloIndividual() {
     loadCutsByMatch();
   }, []);
 
+  const sortedMatches = useMemo<MatchInfo[]>(() => {
+    return [...matches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [matches]);
+
   useEffect(() => {
     if (selectedMatchId && matches.some((match) => match.id === selectedMatchId)) return;
-    setSelectedMatchId(matches[0]?.id || '');
-  }, [matches, selectedMatchId]);
+    setSelectedMatchId(sortedMatches[0]?.id || '');
+  }, [matches, sortedMatches, selectedMatchId]);
 
   const activeVideoUrl = matchVideoMap[selectedMatchId] || '';
 
@@ -539,7 +543,7 @@ function DesarrolloIndividual() {
               style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
             >
                 <option value="" disabled>Selecciona un partido</option>
-              {matches.map((match) => (
+              {sortedMatches.map((match) => (
                 <option key={match.id} value={match.id}>{match.name}</option>
               ))}
             </select>
