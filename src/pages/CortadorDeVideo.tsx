@@ -312,6 +312,7 @@ function CortadorDeVideo() {
   const [editingCutId, setEditingCutId] = useState<string | null>(null);
   const [editStartValue, setEditStartValue] = useState<number | null>(null);
   const [editEndValue, setEditEndValue] = useState<number | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [cutName, setCutName] = useState('');
   const cutNameRef = useRef(cutName);
   cutNameRef.current = cutName;
@@ -1142,7 +1143,7 @@ function CortadorDeVideo() {
                             Toda la plantilla
                           </button>
                         </div>
-                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
+                        <button type="button" className="secondary-button" onClick={() => { setEditingCutId(cut.id); setEditStartValue(cut.start); setEditEndValue(cut.end); setEditingCategoryId(cut.categoryId); setEditingAnnotations(cut.annotations || []); }}>Editar</button>
                         <button type="button" className="delete-button" onClick={() => handleDeleteCut(cut, category.label)}>Borrar</button>
                       </div>
                       {playingCutId === cut.id && (
@@ -1188,11 +1189,17 @@ function CortadorDeVideo() {
                   return (
                     <div style={{ marginTop: 8, padding: '0.5rem', background: '#0f172a', borderRadius: 8 }}>
                       <div style={{ display: 'grid', gap: '0.5rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                           <label style={{ color: '#fff', minWidth: 70 }}>Inicio</label>
                           <input type="text" value={formatDuration(start)} onChange={(e) => setEditStartValue(parseDuration(e.target.value))} style={{ width: 120 }} />
                           <label style={{ color: '#fff', minWidth: 50 }}>Fin</label>
                           <input type="text" value={formatDuration(end)} onChange={(e) => setEditEndValue(parseDuration(e.target.value))} style={{ width: 120 }} />
+                          <label style={{ color: '#fff', minWidth: 80 }}>Categoría</label>
+                          <select value={editingCategoryId ?? c.categoryId} onChange={(e) => setEditingCategoryId(e.target.value)} style={{ width: 220, background: '#111827', border: '1px solid #334155', borderRadius: 8, color: '#fff', padding: '0.45rem' }}>
+                            {categories.map((category) => (
+                              <option key={category.id} value={category.id}>{category.label}</option>
+                            ))}
+                          </select>
                         </div>
 
                         <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Arrastra las barras para ajustar Inico/Fin (doble control).</div>
@@ -1220,14 +1227,14 @@ function CortadorDeVideo() {
                             const s = Math.max(0, Math.min(editStartValue, editEndValue - 0.1));
                             const e = Math.max(s + 0.1, editEndValue);
                             const editedId = editingCutId;
-                            setCuts(prev => prev.map(x => x.id === editedId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)), annotations: editingAnnotations } : x));
-                            setEditingCutId(null); setEditStartValue(null); setEditEndValue(null);
+                            setCuts(prev => prev.map(x => x.id === editedId ? { ...x, start: Number(s.toFixed(2)), end: Number(e.toFixed(2)), categoryId: editingCategoryId || x.categoryId, annotations: editingAnnotations } : x));
+                            setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); setEditingCategoryId(null);
                             // refresh preview immediately
                             if (editedId) {
                               setFullscreenPreviewId(null);
                             }
                           }}>Guardar</button>
-                          <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); }}>Cancelar</button>
+                          <button type="button" className="secondary-button" onClick={() => { setEditingCutId(null); setEditStartValue(null); setEditEndValue(null); setEditingCategoryId(null); }}>Cancelar</button>
                           <button type="button" className="secondary-button" onClick={() => {
                             // Play preview between start and end
                             if (videoMode === 'file' && localVideoRef.current) {
