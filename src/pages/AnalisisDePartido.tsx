@@ -653,6 +653,24 @@ function AnalisisDePartido() {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="section-header">
+          <div>
+            <h2>Vídeo local para MP4</h2>
+            <small style={{ color: '#7f96bc' }}>Carga un vídeo local para exportar los cortes a MP4.</small>
+          </div>
+        </div>
+        <input
+          type="file"
+          accept="video/*"
+          onChange={handleLocalVideoFileChange}
+          style={{ width: '100%', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #444', background: '#1a1a2e', color: '#fff' }}
+        />
+        {localVideoSrc && (
+          <video ref={localVideoRef} src={localVideoSrc} controls style={{ width: '100%', borderRadius: 10, background: '#000' }} />
+        )}
+      </div>
+
       <div className="card video-card" style={{ marginBottom: '1.5rem' }}>
         <div className="section-header" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <h2>Partido Completo</h2>
