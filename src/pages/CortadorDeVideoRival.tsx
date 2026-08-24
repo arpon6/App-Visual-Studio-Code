@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './CortadorDeVideo.css';
 import { usePlantilla } from '../lib/usePlantilla';
 import { useSharedState } from '../lib/useSharedState';
+import { supabase } from '../lib/supabaseClient';
 
 declare global {
   interface Window {
@@ -30,20 +31,20 @@ function openIDB(): Promise<IDBDatabase> {
   });
 }
 
-async function saveFileToIDB(file: File) {
+async function saveFileToIDB(file: File, key = IDB_KEY) {
   const db = await openIDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(file, IDB_KEY);
+    tx.objectStore(IDB_STORE).put(file, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-async function loadFileFromIDB(): Promise<File | null> {
+async function loadFileFromIDB(key = IDB_KEY): Promise<File | null> {
   const db = await openIDB();
   return new Promise((resolve) => {
-    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(IDB_KEY);
+    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key);
     req.onsuccess = () => resolve(req.result ?? null);
     req.onerror = () => resolve(null);
   });
@@ -104,13 +105,23 @@ function loadState(): SavedState {
 }
 
 type VideoMode = 'url' | 'file';
+type MatchInfo = { id: string; name: string; createdAt: string };
+
+const MATCHES_KEY = 'cortador_rival_matches';
+const ACTIVE_MATCH_LOCAL_KEY = 'cortador_rival_active_match_id';
+
+function loadActiveMatchId(): string {
+  try { return localStorage.getItem(ACTIVE_MATCH_LOCAL_KEY) || ''; } catch { return ''; }
+}
 
 function CortadorDeVideoRival() {
   const jugadores = usePlantilla();
-  const [sharedVideoUrl, setSharedVideoUrl, loadingUrl] = useSharedState<string>('cortador_rival_videoUrl', '');
-  const [sharedCuts, setSharedCuts, loadingCuts] = useSharedState<Cut[]>('cortador_rival_cuts', []);
+  const [matches, setMatches, loadingMatches] = useSharedState<MatchInfo[]>(MATCHES_KEY, []);
+  const [activeMatchId, setActiveMatchId] = useState<string>(loadActiveMatchId);
+  const [newMatchName, setNewMatchName] = useState('');
+  const [renamingMatchId, setRenamingMatchId] = useState<string | null>(null);
+  const [renameMatchValue, setRenameMatchValue] = useState('');
   const [sharedCategories, setSharedCategories, loadingCats] = useSharedState<Category[]>('cortador_rival_categories', DEFAULT_CATEGORIES);
-  const sharedLoading = loadingUrl || loadingCuts || loadingCats;
 
   const saved = useMemo(loadState, []);
   const [videoMode, setVideoMode] = useState<VideoMode>(saved.videoMode || 'url');
@@ -120,20 +131,115 @@ function CortadorDeVideoRival() {
   const [categories, setCategoriesState] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [cuts, setCutsState] = useState<Cut[]>([]);
 
-  const sharedLoadedRef = useRef(false);
-  useEffect(() => {
-    if (sharedLoading || sharedLoadedRef.current) return;
-    sharedLoadedRef.current = true;
-    if (sharedVideoUrl) { setVideoUrlState(sharedVideoUrl); setVideoId(extractYouTubeVideoId(sharedVideoUrl)); }
-    if (sharedCuts.length) setCutsState(sharedCuts);
-    if (sharedCategories.length) setCategoriesState(sharedCategories);
-  }, [sharedLoading]);
+  const videoStateKey = activeMatchId ? `cortador_rival_video_match_${activeMatchId}` : '';
+  const cutsStateKey = activeMatchId ? `cortador_rival_cuts_match_${activeMatchId}` : '';
+  const videoStateKeyRef = useRef(videoStateKey);
+  const cutsStateKeyRef = useRef(cutsStateKey);
+  videoStateKeyRef.current = videoStateKey;
+  cutsStateKeyRef.current = cutsStateKey;
+  const saveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const persistValue = (key: string, value: unknown) => {
+    if (saveTimeoutsRef.current[key]) clearTimeout(saveTimeoutsRef.current[key]);
+    saveTimeoutsRef.current[key] = setTimeout(() => {
+      delete saveTimeoutsRef.current[key];
+      supabase.from('shared_state')
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+        .then(({ error }) => { if (error) console.error('shared_state upsert error:', key, error); });
+    }, 500);
+  };
 
-  const setVideoUrl = (v: string) => { setVideoUrlState(v); setSharedVideoUrl(v); };
+  useEffect(() => {
+    let cancelled = false;
+    setCutsState([]);
+    setVideoUrlState('');
+    setVideoId(null);
+    if (!activeMatchId) return () => { cancelled = true; };
+    Promise.all([
+      supabase.from('shared_state').select('value').eq('key', videoStateKey).maybeSingle(),
+      supabase.from('shared_state').select('value').eq('key', cutsStateKey).maybeSingle(),
+    ]).then(([videoRes, cutsRes]) => {
+      if (cancelled) return;
+      const url = typeof videoRes.data?.value === 'string' ? videoRes.data.value : '';
+      setVideoUrlState(url);
+      setVideoId(url ? extractYouTubeVideoId(url) : null);
+      setCutsState(Array.isArray(cutsRes.data?.value) ? cutsRes.data.value as Cut[] : []);
+    });
+    return () => { cancelled = true; };
+  }, [activeMatchId, videoStateKey, cutsStateKey]);
+
+  useEffect(() => {
+    if (!loadingCats && sharedCategories.length) setCategoriesState(sharedCategories);
+  }, [loadingCats, sharedCategories]);
+
+  const legacyMigrationRef = useRef(false);
+  useEffect(() => {
+    if (loadingMatches || legacyMigrationRef.current || matches.length > 0) return;
+    legacyMigrationRef.current = true;
+    Promise.all([
+      supabase.from('shared_state').select('value').eq('key', 'cortador_rival_videoUrl').maybeSingle(),
+      supabase.from('shared_state').select('value').eq('key', 'cortador_rival_cuts').maybeSingle(),
+    ]).then(([videoRes, cutsRes]) => {
+      const legacyUrl = typeof videoRes.data?.value === 'string' ? videoRes.data.value : '';
+      const legacyCuts = Array.isArray(cutsRes.data?.value) ? cutsRes.data.value as Cut[] : [];
+      if (!legacyUrl && legacyCuts.length === 0) return;
+      const legacyMatch: MatchInfo = { id: `legacy-${Date.now()}`, name: 'Análisis rival anterior', createdAt: new Date().toISOString() };
+      setMatches([legacyMatch]);
+      if (legacyUrl) persistValue(`cortador_rival_video_match_${legacyMatch.id}`, legacyUrl);
+      if (legacyCuts.length) persistValue(`cortador_rival_cuts_match_${legacyMatch.id}`, legacyCuts);
+      handleSelectMatch(legacyMatch.id);
+    });
+  }, [loadingMatches, matches.length]);
+
+  const handleSelectMatch = (id: string) => {
+    setActiveMatchId(id);
+    try { localStorage.setItem(ACTIVE_MATCH_LOCAL_KEY, id); } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (activeMatchId && matches.some((match) => match.id === activeMatchId)) return;
+    if (matches.length > 0) handleSelectMatch(matches[0].id);
+  }, [activeMatchId, matches]);
+
+  const handleCreateMatch = () => {
+    const name = newMatchName.trim();
+    if (!name) return;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setMatches((prev) => [{ id, name, createdAt: new Date().toISOString() }, ...prev]);
+    setNewMatchName('');
+    handleSelectMatch(id);
+  };
+
+  const handleStartRenameMatch = (id: string) => {
+    const match = matches.find((item) => item.id === id);
+    if (!match) return;
+    setRenamingMatchId(id);
+    setRenameMatchValue(match.name);
+  };
+
+  const handleCancelRenameMatch = () => {
+    setRenamingMatchId(null);
+    setRenameMatchValue('');
+  };
+
+  const handleSaveRenameMatch = () => {
+    const name = renameMatchValue.trim();
+    if (!name || !renamingMatchId) { handleCancelRenameMatch(); return; }
+    setMatches((prev) => prev.map((match) => match.id === renamingMatchId ? { ...match, name } : match));
+    handleCancelRenameMatch();
+  };
+
+  const handleDeleteMatch = (id: string) => {
+    const match = matches.find((item) => item.id === id);
+    if (!match || !window.confirm(`¿Eliminar el partido «${match.name}» de la lista?`)) return;
+    setMatches((prev) => prev.filter((item) => item.id !== id));
+    if (activeMatchId === id) handleSelectMatch('');
+  };
+
+  const setVideoUrl = (v: string) => { setVideoUrlState(v); if (videoStateKeyRef.current) persistValue(videoStateKeyRef.current, v); };
   const setCuts = (fn: Cut[] | ((prev: Cut[]) => Cut[])) => {
     setCutsState(prev => {
       const next = typeof fn === 'function' ? fn(prev) : fn;
-      setSharedCuts(next);
+      if (cutsStateKeyRef.current) persistValue(cutsStateKeyRef.current, next);
       return next;
     });
   };
@@ -184,17 +290,21 @@ function CortadorDeVideoRival() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ videoMode }));
   }, [videoMode]);
 
-  // Load persisted local video from IndexedDB on mount
+  // Load the local video belonging to the selected match.
   useEffect(() => {
-    if (saved.videoMode !== 'file') return;
-    loadFileFromIDB().then((file) => {
+    setLocalVideoSrc(null);
+    if (videoMode !== 'file' || !activeMatchId) return;
+    loadFileFromIDB(activeMatchId).then((file) => {
+      if (!file) return loadFileFromIDB();
+      return file;
+    }).then((file) => {
       if (!file) return;
       const src = URL.createObjectURL(file);
       setLocalVideoSrc(src);
       setPlayerReady(true);
       setStatusMessage(`Vídeo cargado: ${file.name}`);
     });
-  }, []);
+  }, [activeMatchId, videoMode]);
 
   // Create YouTube player
   useEffect(() => {
@@ -377,7 +487,7 @@ function CortadorDeVideoRival() {
     setLocalVideoSrc(src);
     setPlayerReady(true);
     setStatusMessage(`Vídeo cargado: ${file.name}`);
-    saveFileToIDB(file);
+    if (activeMatchId) saveFileToIDB(file, activeMatchId);
   };
 
   const handleAddCategory = () => {
@@ -590,7 +700,60 @@ function CortadorDeVideoRival() {
         </button>
       </div>
 
-      <div className="editor-main-grid">
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="section-header">
+          <div>
+            <small>Partido rival</small>
+            <h2>Selecciona de qué partido son estos cortes</h2>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            value={activeMatchId}
+            onChange={(e) => handleSelectMatch(e.target.value)}
+            style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', minWidth: 220 }}
+          >
+            <option value="" disabled>Selecciona o crea un partido</option>
+            {matches.map((match) => <option key={match.id} value={match.id}>{match.name}</option>)}
+          </select>
+          {activeMatchId && renamingMatchId !== activeMatchId && (
+            <>
+              <button type="button" className="secondary-button" onClick={() => handleStartRenameMatch(activeMatchId)}>Renombrar partido</button>
+              <button type="button" className="secondary-button" onClick={() => handleDeleteMatch(activeMatchId)}>Eliminar partido</button>
+            </>
+          )}
+          {activeMatchId && renamingMatchId === activeMatchId && (
+            <>
+              <input
+                type="text"
+                autoFocus
+                value={renameMatchValue}
+                onChange={(e) => setRenameMatchValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRenameMatch(); if (e.key === 'Escape') handleCancelRenameMatch(); }}
+                style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', minWidth: 200 }}
+              />
+              <button type="button" className="primary-button" onClick={handleSaveRenameMatch} disabled={!renameMatchValue.trim()}>Guardar</button>
+              <button type="button" className="secondary-button" onClick={handleCancelRenameMatch}>Cancelar</button>
+            </>
+          )}
+          <input
+            type="text"
+            placeholder="Nombre del nuevo partido..."
+            value={newMatchName}
+            onChange={(e) => setNewMatchName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreateMatch(); }}
+            style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc', flex: '1 1 220px', minWidth: 200 }}
+          />
+          <button type="button" className="primary-button" onClick={handleCreateMatch} disabled={!newMatchName.trim()}>+ Nuevo partido</button>
+        </div>
+        <p className="empty-text" style={{ marginTop: 8 }}>
+          {activeMatchId
+            ? `Estás guardando cortes del partido «${matches.find((match) => match.id === activeMatchId)?.name || ''}».`
+            : 'Crea un partido y selecciónalo antes de cargar el vídeo y hacer cortes.'}
+        </p>
+      </div>
+
+      <div className="editor-main-grid" style={!activeMatchId ? { pointerEvents: 'none', opacity: 0.5 } : undefined}>
         <div className="card cortador-card">
           <div className="section-header">
             <div>
@@ -626,7 +789,18 @@ function CortadorDeVideoRival() {
                 </div>
               </>
             ) : (
-              <input type="file" accept="video/*" onChange={handleFileChange} style={{ color: '#f4f7ff' }} />
+              <div style={{ display: 'grid', gap: 8 }}>
+                <input type="file" accept="video/*" onChange={handleFileChange} style={{ color: '#f4f7ff' }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="text" placeholder="URL pública del vídeo (https://...)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} style={{ flex: 1, padding: '0.45rem', borderRadius: 8, border: '1px solid #334155', background: '#081025', color: '#fff' }} />
+                  <button type="button" className="secondary-button" onClick={() => {
+                    if (!videoUrl) { setStatusMessage('Introduce una URL válida.'); return; }
+                    setLocalVideoSrc(videoUrl);
+                    setPlayerReady(true);
+                    setStatusMessage('Vídeo cargado desde URL.');
+                  }}>Cargar desde URL</button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -679,6 +853,17 @@ function CortadorDeVideoRival() {
                 </div>
               </>
             )}
+          </div>
+
+          <div className="video-form" style={{ marginTop: 12 }}>
+            <label style={{ color: '#d1d5db', marginBottom: 6 }}>Nombre del corte</label>
+            <input
+              type="text"
+              value={cutName}
+              placeholder="Pon un nombre descriptivo al corte..."
+              onChange={(e) => setCutName(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#f8fafc' }}
+            />
           </div>
 
           <div className="video-helpers">

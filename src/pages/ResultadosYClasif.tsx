@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { DEFAULT_MATCH_TYPE, LEAGUE_TEAMS, MY_TEAM_NAME } from '../lib/leagueTeams';
 import { CALENDARIO_LIGA_2026_27 } from '../lib/leagueFixtures';
+import { getYouTubeEmbedUrl } from '../lib/youtube';
 
 interface Partido {
   id: string;
@@ -14,6 +15,7 @@ interface Partido {
   equipo_visitante: string;
   competicion?: string;
   acta_url?: string;
+  video_url?: string;
 }
 
 interface ClasifRow {
@@ -42,6 +44,7 @@ const emptyPartido = (): Omit<Partido, 'id'> => ({
   equipo_visitante: '',
   competicion: DEFAULT_MATCH_TYPE,
   acta_url: '',
+  video_url: '',
 });
 
 function normalizeTeamName(name: string): string {
@@ -180,6 +183,8 @@ function ResultadosYClasif() {
   const [detalleGolesLocal, setDetalleGolesLocal] = useState('');
   const [detalleGolesVisitante, setDetalleGolesVisitante] = useState('');
   const [filtroJornada, setFiltroJornada] = useState<number | null>(null);
+  const [detalleVideoUrl, setDetalleVideoUrl] = useState('');
+  const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -305,6 +310,18 @@ function ResultadosYClasif() {
       setUploadMsg('Error al subir el archivo.');
     }
     setActaFile(null);
+    setSaving(false);
+  };
+
+  const handleGuardarVideoDetalle = async () => {
+    if (!detalle) return;
+    setSaving(true);
+    await supabase
+      .from('resultados_partidos')
+      .update({ video_url: detalleVideoUrl || null })
+      .eq('id', detalle.id);
+    setDetalle({ ...detalle, video_url: detalleVideoUrl || undefined });
+    await fetchAll();
     setSaving(false);
   };
 
@@ -546,6 +563,17 @@ function ResultadosYClasif() {
             </div>
           </label>
 
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.82rem', color: '#7f96bc' }}>
+            🎥 URL del vídeo (YouTube)
+            <input
+              type="url"
+              value={formPartido.video_url}
+              onChange={e => setFormPartido(f => ({ ...f, video_url: e.target.value }))}
+              placeholder="https://www.youtube.com/watch?v=..."
+              style={inputStyle}
+            />
+          </label>
+
           {normalizeTeamName(formPartido.equipo_local) === normalizeTeamName(formPartido.equipo_visitante) && (
             <div style={{ color: '#f44242', fontSize: '0.82rem' }}>
               El equipo local y visitante no pueden ser el mismo.
@@ -686,6 +714,7 @@ function ResultadosYClasif() {
                     setDetalle(p);
                     setDetalleGolesLocal(hasPlayedScore(p) ? String(p.goles_local) : '');
                     setDetalleGolesVisitante(hasPlayedScore(p) ? String(p.goles_visitante) : '');
+                    setDetalleVideoUrl(p.video_url || '');
                     setActaFile(null);
                     setUploadMsg('');
                   }}
@@ -706,6 +735,29 @@ function ResultadosYClasif() {
                 >
                   DETALLES &gt;
                 </button>
+
+                {p.video_url && (
+                  <button
+                    onClick={() => setVideoModalUrl(p.video_url || null)}
+                    title="Ver vídeo del partido"
+                    style={{
+                      justifySelf: 'start',
+                      background: 'rgba(244,66,66,0.1)',
+                      border: '1px solid rgba(244,66,66,0.25)',
+                      color: '#ff8a8a',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    🎥 Ver vídeo
+                  </button>
+                )}
               </div>
             );
           })}
@@ -881,6 +933,68 @@ function ResultadosYClasif() {
               </a>
             )}
 
+            {detalle.video_url && getYouTubeEmbedUrl(detalle.video_url) && (
+              <button
+                onClick={() => setVideoModalUrl(detalle.video_url || null)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(244,66,66,0.12)',
+                  color: '#ff8a8a',
+                  border: '1px solid rgba(244,66,66,0.28)',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  justifySelf: 'start',
+                }}
+              >
+                🎥 Ver vídeo del partido
+              </button>
+            )}
+
+            {!isReadOnly && (
+              <div
+                style={{
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  padding: '16px',
+                  display: 'grid',
+                  gap: '12px',
+                  background: 'rgba(10,18,30,0.6)',
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>🎥 URL del vídeo (YouTube)</p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="url"
+                    value={detalleVideoUrl}
+                    onChange={e => setDetalleVideoUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
+                  />
+                  <button
+                    onClick={handleGuardarVideoDetalle}
+                    disabled={saving}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: saving ? '#555' : '#16d67a',
+                      color: '#071119',
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div
               style={{
                 borderRadius: '12px',
@@ -1026,6 +1140,51 @@ function ResultadosYClasif() {
               >
                 Eliminar partido
               </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {videoModalUrl && (
+        <div
+          onClick={() => setVideoModalUrl(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="card"
+            style={{ width: '100%', maxWidth: '720px', padding: '20px', display: 'grid', gap: '14px' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '1rem' }}>🎥 Vídeo del partido</h2>
+              <button
+                onClick={() => setVideoModalUrl(null)}
+                style={{ background: 'none', border: 'none', color: '#7f96bc', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+            {getYouTubeEmbedUrl(videoModalUrl) ? (
+              <div style={{ position: 'relative', paddingTop: '56.25%', width: '100%' }}>
+                <iframe
+                  src={getYouTubeEmbedUrl(videoModalUrl) || ''}
+                  title="Vídeo del partido"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', borderRadius: '10px' }}
+                />
+              </div>
+            ) : (
+              <p style={{ color: '#f4c842' }}>La URL de vídeo no es válida.</p>
             )}
           </div>
         </div>

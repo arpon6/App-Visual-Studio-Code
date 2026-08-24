@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { DEFAULT_MATCH_TYPE, LEAGUE_TEAMS } from '../lib/leagueTeams';
+import { getYouTubeEmbedUrl } from '../lib/youtube';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Calendario.css';
@@ -19,6 +20,7 @@ interface Event {
   jornada?: string;
   matchType?: string;
   trainingGroup?: TrainingGroup;
+  videoUrl?: string;
   pdfFile?: {
     name: string;
     data?: string;
@@ -40,6 +42,7 @@ const EMPTY_FORM = {
   rivalCustom: '',
   jornada: '-',
   matchType: DEFAULT_MATCH_TYPE,
+  videoUrl: '',
 };
 
 const normalizeEventType = (value: string | null | undefined): string => {
@@ -151,6 +154,7 @@ function Calendario() {
   const [pdfUrl, setPdfUrl] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [trainingGroupsByDate, setTrainingGroupsByDate] = useState<TrainingGroupsByDate>({});
+  const [videoEvent, setVideoEvent] = useState<Event | null>(null);
 
   useEffect(() => {
     loadEvents();
@@ -175,6 +179,7 @@ function Calendario() {
       trainingGroup: typeof r.training_group === 'string' && TRAINING_GROUP_OPTIONS.includes(r.training_group as TrainingGroup)
         ? (r.training_group as TrainingGroup)
         : undefined,
+      videoUrl: r.video_url || undefined,
       pdfFile: r.pdf_url ? { name: r.pdf_name || 'documento.pdf', url: r.pdf_url } : undefined,
     }));
 
@@ -316,6 +321,7 @@ function Calendario() {
       training_group: formData.type === 'entrenamiento'
         ? (trainingGroupsByDate[selectedDate] || getAutoTrainingGroupForDate(selectedDate) || null)
         : null,
+      video_url: formData.type === 'partido' ? (formData.videoUrl || null) : null,
       pdf_name: finalPdfName,
       pdf_url: finalPdfUrl,
       created_by: user.id,
@@ -418,6 +424,7 @@ function Calendario() {
       rivalCustom: rivalIsCustom ? (event.rival || '') : '',
       jornada: event.jornada || '-',
       matchType: event.matchType || DEFAULT_MATCH_TYPE,
+      videoUrl: event.videoUrl || '',
     });
     setSelectedFile(null);
     setPdfUrl(event.pdfFile?.url || '');
@@ -429,6 +436,11 @@ function Calendario() {
     if (!event.pdfFile) return;
     const src = event.pdfFile.url || event.pdfFile.data;
     if (src) window.open(src, '_blank');
+  };
+
+  const openVideo = (event: Event) => {
+    if (!event.videoUrl) return;
+    setVideoEvent(event);
   };
 
   const getEventTypeLabel = (event: Event): string => {
@@ -613,6 +625,13 @@ function Calendario() {
                                 {evt.place && evt.type !== 'cumpleaños' && <span className="event-label-place">{evt.place}</span>}
                                 {evt.pdfFile && <span className="event-label-pdf">📄</span>}
                               </span>
+                              {evt.videoUrl && (
+                                <span
+                                  className="event-label-video"
+                                  onClick={(e) => { e.stopPropagation(); openVideo(evt); }}
+                                  title="Ver vídeo"
+                                >🎥</span>
+                              )}
                               {!isReadOnly && evt.type !== 'cumpleaños' && (
                                 <span
                                   className="event-label-delete"
@@ -679,6 +698,11 @@ function Calendario() {
                     {evt.pdfFile && (
                       <button className="action-btn pdf-btn" onClick={() => openPDF(evt)}>
                         📄 {evt.pdfFile.name}
+                      </button>
+                    )}
+                    {evt.videoUrl && (
+                      <button className="action-btn video-btn" onClick={() => openVideo(evt)}>
+                        🎥 Ver vídeo
                       </button>
                     )}
                     {!isReadOnly && evt.type !== 'cumpleaños' && (
@@ -785,6 +809,16 @@ function Calendario() {
                     </select>
                   </div>
                 </div>
+                <div className="form-group">
+                  <label htmlFor="videoUrl">🎥 URL del vídeo (YouTube)</label>
+                  <input
+                    id="videoUrl"
+                    type="url"
+                    value={formData.videoUrl}
+                    onChange={e => setFormData({ ...formData, videoUrl: e.target.value })}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                  />
+                </div>
               </>
             )}
 
@@ -866,6 +900,30 @@ function Calendario() {
               <button className="btn-save" onClick={handleAddEvent}>
                 {editingEventId ? 'Actualizar' : 'Crear'} Evento
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {videoEvent && (
+        <div className="modal-overlay" onClick={() => setVideoEvent(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '720px' }}>
+            <h2>🎥 Vídeo {videoEvent.rival ? `vs ${videoEvent.rival}` : ''}</h2>
+            {getYouTubeEmbedUrl(videoEvent.videoUrl || '') ? (
+              <div style={{ position: 'relative', paddingTop: '56.25%', width: '100%' }}>
+                <iframe
+                  src={getYouTubeEmbedUrl(videoEvent.videoUrl || '') || ''}
+                  title="Vídeo del partido"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', borderRadius: '10px' }}
+                />
+              </div>
+            ) : (
+              <p>La URL de vídeo no es válida.</p>
+            )}
+            <div className="modal-buttons">
+              <button className="btn-cancel" onClick={() => setVideoEvent(null)}>Cerrar</button>
             </div>
           </div>
         </div>
