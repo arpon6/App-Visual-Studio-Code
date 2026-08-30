@@ -3,10 +3,12 @@ import { AuthProvider, useAuth } from './lib/AuthContext';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import { APP_PAGE_KEYS, APP_PAGES, getHomeShortcutKeys, getVisiblePageKeys, isPageKey, type PageKey } from './lib/appPages';
+import { useAppNotifications } from './lib/useAppNotifications';
 import './App.css';
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
+  const { notifications, dismissNotification } = useAppNotifications(user);
   const mainRef = useRef<HTMLElement | null>(null);
   
   // LOG DE DEPURACIÓN
@@ -72,6 +74,11 @@ function AppShell() {
     setActiveSection(section as PageKey);
   };
 
+  const notificationCounts = notifications.reduce<Partial<Record<PageKey, number>>>((counts, notification) => {
+    counts[notification.section] = (counts[notification.section] || 0) + 1;
+    return counts;
+  }, {});
+
   return (
     <div className={`app-shell${focusMode ? ' sidebar-hidden' : ''}`}>
       <Sidebar
@@ -80,8 +87,25 @@ function AppShell() {
         sections={visibleSections}
         userEmail={user.username}
         onSignOut={signOut}
+        notificationCounts={notificationCounts}
       />
       <main ref={mainRef} className="app-main">
+        <div className="app-notifications" aria-live="polite">
+          {notifications.slice(0, 3).map((notification) => (
+            <button
+              key={notification.id}
+              type="button"
+              className="app-notification"
+              onClick={() => {
+                handleSelect(notification.section);
+                dismissNotification(notification.id);
+              }}
+            >
+              <strong>{notification.title}</strong>
+              <span>{notification.detail}</span>
+            </button>
+          ))}
+        </div>
         {currentSection !== 'Inicio' && (
           <button
             type="button"

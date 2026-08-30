@@ -7,9 +7,10 @@ type SidebarProps = {
   sections: PageKey[];
   userEmail?: string;
   onSignOut?: () => void;
+  notificationCounts?: Partial<Record<PageKey, number>>;
 };
 
-function Sidebar({ activeSection, onSelect, sections, userEmail, onSignOut }: SidebarProps) {
+function Sidebar({ activeSection, onSelect, sections, userEmail, onSignOut, notificationCounts = {} }: SidebarProps) {
   return (
     <aside className="sidebar-shell card">
       <div className="sidebar-brand">
@@ -28,6 +29,7 @@ function Sidebar({ activeSection, onSelect, sections, userEmail, onSignOut }: Si
             onClick={() => onSelect(section)}
           >
             {section}
+            {notificationCounts[section] ? <span className="sidebar-notification-count">{notificationCounts[section]}</span> : null}
           </button>
         ))}
       </nav>
