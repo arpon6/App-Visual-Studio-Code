@@ -132,6 +132,7 @@ interface CalendarEvent {
   id: string;
   date: string; // DD/MM/YYYY
   type: string;
+  time?: string | null;
 }
 
 function parseLocalDate(iso: string) {
@@ -172,6 +173,20 @@ function addMonths(iso: string, n: number) {
   const d = parseLocalDate(iso);
   d.setMonth(d.getMonth() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function calendarEventDate(event: CalendarEvent) {
+  const parts = event.date.split('/').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const [day, month, year] = parts;
+  const [hour = 23, minute = 59] = String(event.time || '23:59').split(':').map(Number);
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function calendarEventDayStart(event: CalendarEvent) {
+  const eventDate = calendarEventDate(event);
+  return eventDate ? new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()) : null;
 }
 
 const LOCAL_WELLNESS_STORAGE_KEY = 'wellness_local_responses';
@@ -327,15 +342,16 @@ function isUniqueConstraintError(error: WellnessSaveError) {
 }
 
 // ── Slider con color dinámico ──────────────────────────────────────────────
-function WellnessSlider({ value, onChange, min = 1, max = 10, colorClass, labelMin, labelMax }: {
+function WellnessSlider({ value, onChange, min = 1, max = 10, colorClass, labelMin, labelMax, disabled = false }: {
   value: number; onChange: (v: number) => void;
-  min?: number; max?: number; colorClass: string; labelMin: string; labelMax: string;
+  min?: number; max?: number; colorClass: string; labelMin: string; labelMax: string; disabled?: boolean;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <>
       <input
         type="range" min={min} max={max} value={value}
+        disabled={disabled}
         className={`wellness-slider ${colorClass}`}
         style={{ '--pct': `${pct}%` } as React.CSSProperties}
         onChange={e => onChange(Number(e.target.value))}
@@ -415,6 +431,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const today = todayISO();
   const supabaseProjectRef = getSupabaseProjectRef();
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([]);
+  const [now, setNow] = useState(() => new Date());
   const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
   const [rpe, setRpe] = useState(3);
   const [animo, setAnimo] = useState(3);
@@ -434,13 +451,43 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const [matchStatusType, setMatchStatusType] = useState<'error' | 'success'>('error');
   const [matchLoadingExisting, setMatchLoadingExisting] = useState(false);
 
-  // Cargar eventos del calendario desde localStorage
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCalendarEvents = async () => {
+      const { data, error } = await supabase
+        .from('calendar_events')
+        .select('id, date, type, time');
+
+      if (!cancelled && !error && data) {
+        setCalEvents(data as CalendarEvent[]);
+        localStorage.setItem('calendarEvents', JSON.stringify(data));
+        return;
+      }
+
+      // El calendario local permite seguir mostrando el formulario si falla la red.
+      if (!cancelled) {
+        try {
+          const raw = localStorage.getItem('calendarEvents');
+          if (raw) setCalEvents(JSON.parse(raw));
+        } catch { /* ignore */ }
+      }
+    };
+
+    void loadCalendarEvents();
+    const interval = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem('calendarEvents');
-      if (raw) setCalEvents(JSON.parse(raw));
+      if (raw && calEvents.length === 0) setCalEvents(JSON.parse(raw));
     } catch { /* ignore */ }
-  }, []);
+  }, [calEvents.length]);
 
   const hasTrainingToday = useMemo(() => {
     const display = isoToDisplay(today);
@@ -453,6 +500,28 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   }, [calEvents, today]);
 
   const hasActivityToday = hasTrainingToday || hasMatchToday;
+
+  const todayEvents = useMemo(() => {
+    const display = isoToDisplay(today);
+    return calEvents
+      .filter(event => event.date === display && (event.type === 'entrenamiento' || event.type === 'partido'))
+      .sort((a, b) => (calendarEventDate(a)?.getTime() || 0) - (calendarEventDate(b)?.getTime() || 0));
+  }, [calEvents, today]);
+
+  const nextActivityStart = useMemo(() => {
+    return calEvents
+      .filter(event => (event.type === 'entrenamiento' || event.type === 'partido') && event.date !== isoToDisplay(today))
+      .map(event => ({ event, date: calendarEventDayStart(event) }))
+      .filter(item => item.date && item.date.getTime() > new Date(today + 'T23:59:59').getTime())
+      .sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))[0]?.date || null;
+  }, [calEvents, today]);
+
+  const currentTrainingStart = todayEvents.find(event => event.type === 'entrenamiento')
+    ? calendarEventDate(todayEvents.find(event => event.type === 'entrenamiento') as CalendarEvent)
+    : null;
+  const preOpen = Boolean(currentTrainingStart && now < currentTrainingStart);
+  const postOpen = !nextActivityStart || now < nextActivityStart;
+  const selectedTestOpen = testType === 'pre_entrenamiento' ? preOpen : postOpen;
 
   useEffect(() => {
     void syncAllLocalWellnessToSupabase();
@@ -609,7 +678,11 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   }, [hasMatchToday, playerId, today]);
 
   const handleSubmit = async () => {
-    if (!hasTrainingToday || !playerId) return;
+    if (!hasTrainingToday || !playerId || !selectedTestOpen) {
+      setStatusType('error');
+      setStatusMsg('Este formulario ya no admite respuestas en este momento.');
+      return;
+    }
     setSaving(true);
     setStatusMsg('');
 
@@ -644,7 +717,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   };
 
   const handleDelete = async () => {
-    if (!hasTrainingToday || !playerId) return;
+    if (!hasTrainingToday || !playerId || !selectedTestOpen) return;
     setSaving(true);
     setStatusMsg('');
 
@@ -768,6 +841,9 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         ) : alreadySent ? (
           <p className="wellness-response-hint success">Ya has enviado tu {testTypeLabel(testType)} de hoy. Puedes editar o eliminar la respuesta.</p>
         ) : null}
+        {!selectedTestOpen && (
+          <p className="wellness-response-hint">El plazo de este formulario ha finalizado y ya no admite respuestas.</p>
+        )}
 
         {testType === 'pre_entrenamiento' ? (
           <>
@@ -777,7 +853,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
                 ESTADO FÍSICO
                 <span className="wellness-slider-value val-fisico">{fisico}</span>
               </div>
-              <WellnessSlider value={fisico} onChange={setFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" />
+              <WellnessSlider value={fisico} onChange={setFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!selectedTestOpen} />
             </div>
 
             <div className="wellness-slider-group">
@@ -786,7 +862,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
                 ESTADO ANÍMICO
                 <span className="wellness-slider-value val-animo">{animo}</span>
               </div>
-              <WellnessSlider value={animo} onChange={setAnimo} min={1} max={5} colorClass="animo" labelMin="BAJO" labelMax="ÓPTIMO" />
+              <WellnessSlider value={animo} onChange={setAnimo} min={1} max={5} colorClass="animo" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!selectedTestOpen} />
             </div>
           </>
         ) : (
@@ -796,7 +872,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
               ESFUERZO PERCIBIDO
               <span className="wellness-slider-value val-rpe">{rpe}</span>
             </div>
-            <WellnessSlider value={rpe} onChange={setRpe} min={1} max={5} colorClass="rpe" labelMin="MUY SUAVE" labelMax="MUY ALTO" />
+            <WellnessSlider value={rpe} onChange={setRpe} min={1} max={5} colorClass="rpe" labelMin="MUY SUAVE" labelMax="MUY ALTO" disabled={!selectedTestOpen} />
           </div>
         )}
 
@@ -810,6 +886,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
             placeholder={testType === 'pre_entrenamiento' ? 'Escribe cualquier aclaración previa al entrenamiento...' : 'Escribe cualquier observación o molestia tras el entrenamiento...'}
             value={comentario}
             onChange={e => setComentario(e.target.value)}
+            disabled={!selectedTestOpen}
           />
         </div>
 
@@ -820,12 +897,12 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         )}
 
         <div className="wellness-actions">
-          <button className="wellness-submit" onClick={handleSubmit} disabled={saving || loadingExisting}>
+          <button className="wellness-submit" onClick={handleSubmit} disabled={saving || loadingExisting || !selectedTestOpen}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
             {saving ? 'GUARDANDO...' : alreadySent ? 'GUARDAR CAMBIOS' : `ENVIAR ${WELLNESS_TEST_OPTIONS.find(option => option.type === testType)?.shortLabel}`}
           </button>
           {alreadySent && (
-            <button className="wellness-delete" onClick={handleDelete} disabled={saving || loadingExisting}>
+              <button className="wellness-delete" onClick={handleDelete} disabled={saving || loadingExisting || !selectedTestOpen}>
               ELIMINAR {WELLNESS_TEST_OPTIONS.find(option => option.type === testType)?.shortLabel}
             </button>
           )}
