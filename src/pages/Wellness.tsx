@@ -424,6 +424,97 @@ function CategoryAveragesChart({ data }: { data: { label: string; value: number;
   );
 }
 
+function WellnessWeeklyRanking({ playerId }: { playerId?: string }) {
+  const jugadores = usePlantilla();
+  const [responses, setResponses] = useState<WellnessResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const currentWeekStart = weekStart(todayISO());
+  const currentWeekEnd = addDays(currentWeekStart, 6);
+  const weekLabel = `${isoToDisplay(currentWeekStart)} - ${isoToDisplay(currentWeekEnd)}`;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadResponses = async () => {
+      const { data } = await supabase
+        .from('wellness_responses')
+        .select('id, player_id, event_date, event_type, rpe, animo, fisico, molestias, created_at')
+        .gte('event_date', currentWeekStart)
+        .lte('event_date', currentWeekEnd);
+
+      if (!cancelled) {
+        setResponses((data as WellnessResponse[]) || []);
+        setLoading(false);
+      }
+    };
+
+    void loadResponses();
+    return () => { cancelled = true; };
+  }, [currentWeekStart, currentWeekEnd]);
+
+  const rankingRows = useMemo(() => {
+    const weeklyCounts = new Map<string, number>();
+    responses.forEach(response => {
+      const key = String(response.player_id);
+      weeklyCounts.set(key, (weeklyCounts.get(key) || 0) + 1);
+    });
+
+    return jugadores
+      .map(jugador => ({
+        id: String(jugador.id),
+        nombre: jugador.nombre,
+        respuestas: weeklyCounts.get(String(jugador.id)) || 0,
+      }))
+      .sort((a, b) => {
+        if (b.respuestas !== a.respuestas) return b.respuestas - a.respuestas;
+        return a.nombre.localeCompare(b.nombre, 'es-ES');
+      });
+  }, [jugadores, responses]);
+
+  return (
+    <div className="card wellness-weekly-ranking">
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <small>{weekLabel}</small>
+          <h2>Clasificación semanal</h2>
+        </div>
+        <span className="wellness-responses-count">Respuestas wellness</span>
+      </div>
+      {loading ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>Cargando clasificación...</p>
+      ) : rankingRows.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="wellness-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>JUGADOR</th>
+                <th>RESPUESTAS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rankingRows.map((row, index) => (
+                <tr key={row.id} className={row.id === playerId ? 'wellness-ranking-current' : undefined}>
+                  <td>{index + 1}</td>
+                  <td>
+                    <div className="player-cell">
+                      <div className="wellness-avatar">{String(row.nombre).charAt(0)}</div>
+                      {row.nombre}{row.id === playerId ? ' (TÚ)' : ''}
+                    </div>
+                  </td>
+                  <td>{row.respuestas}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // VISTA JUGADOR
 // ══════════════════════════════════════════════════════════════════════════
@@ -797,13 +888,16 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
   if (!hasActivityToday) {
     return (
-      <div className="wellness-no-event card">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
-        <p>Hoy no hay entrenamiento ni partido programado.</p>
-        <small>Los formularios de wellness aparecen cuando el calendario tiene un entrenamiento o un partido.</small>
-      </div>
+      <>
+        <div className="wellness-no-event card">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <p>Hoy no hay entrenamiento ni partido programado.</p>
+          <small>Los formularios de wellness aparecen cuando el calendario tiene un entrenamiento o un partido.</small>
+        </div>
+        <WellnessWeeklyRanking playerId={playerId} />
+      </>
     );
   }
 
@@ -995,6 +1089,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           <p>Si tienes una molestia aguda o dolor que te pueda impedir entrenar en condiciones óptimas, además de rellenar este formulario, avisa directamente al fisioterapeuta o preparador físico lo antes posible para facilitar la planificación del entrenamiento. Gracias.</p>
         </div>
       </div>
+      <WellnessWeeklyRanking playerId={playerId} />
     </div>
   );
 }

@@ -68,6 +68,8 @@
 
 /* Layout dos columnas */
 .wellness-two-col { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+.wellness-weekly-ranking { grid-column: 1 / -1; }
+.wellness-ranking-current td { background: rgba(0, 230, 118, .08); color: var(--text, #f4f7ff); font-weight: 600; }
 @media (max-width: 900px) { .wellness-two-col { grid-template-columns: 1fr; } }
 
 /* Dashboard cuerpo técnico */

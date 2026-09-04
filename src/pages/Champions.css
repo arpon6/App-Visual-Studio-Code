@@ -1,0 +1,126 @@
+.champions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.champions-card {
+  padding: 24px;
+}
+
+.champions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.champions-header h2 {
+  margin: 0;
+}
+
+.champions-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.champions-block-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  min-width: 100px;
+  text-align: center;
+}
+
+.champions-today-btn {
+  color: var(--accent-strong);
+  border-color: rgba(0, 255, 141, 0.3);
+}
+
+.champions-status {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.champions-status-error {
+  color: #ff8b8b;
+}
+
+.champions-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.champions-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.champions-table th,
+.champions-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.champions-table thead th {
+  background: var(--surface-2);
+  color: var(--text);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.champions-col-fixed {
+  position: sticky;
+  left: 0;
+  background: var(--surface-1);
+  z-index: 2;
+  text-align: left;
+  font-weight: 600;
+}
+
+.champions-table th.champions-col-fixed {
+  z-index: 3;
+}
+
+.champions-footer-row td {
+  background: var(--surface-3);
+  font-weight: 600;
+}
+
+.champions-cell-editable {
+  cursor: pointer;
+}
+
+.champions-cell-editable:hover {
+  background: var(--surface-hover);
+}
+
+.champions-cell-saving {
+  opacity: 0.6;
+}
+
+.champions-cell input {
+  width: 60px;
+  background: var(--surface-3);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  text-align: center;
+  color: var(--text);
+}
+
+.champions-hint {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
