@@ -31,7 +31,7 @@ type AppPageDefinition = {
 
 const STAFF_ROLES = ['entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'] as const;
 const SHARED_ROLES = ['jugador', ...STAFF_ROLES] as const;
-const RIVAL_ANALYSIS_ROLES = ['entrenador', 'directivo', 'SUPER_ADMIN'] as const;
+const RIVAL_ANALYSIS_ROLES = ['jugador', 'entrenador', 'directivo', 'SUPER_ADMIN'] as const;
 
 export const APP_PAGES = [
   { key: 'Inicio', component: Inicio, visibleTo: SHARED_ROLES, showOnHome: false },
