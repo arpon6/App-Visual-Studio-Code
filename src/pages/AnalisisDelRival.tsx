@@ -93,6 +93,30 @@ function hasLocalDraftForTeam(sharedStateKey: string, teamName: string): boolean
   }
 }
 
+function readRemoteStoredValue(data: unknown, remoteUpdatedAt: string | null, targetKey: string): unknown {
+  // Si hay un borrador local sin guardar (guardado fallido), conservarlo.
+  // En caso contrario, el valor remoto tiene prioridad para mostrar lo que escribio otro usuario.
+  if (typeof localStorage.getItem(`${targetKey}__dirty`) !== 'string') {
+    localStorage.removeItem(getDraftStorageKey(targetKey));
+    return data;
+  }
+  try {
+    const draft = localStorage.getItem(getDraftStorageKey(targetKey));
+    if (!draft) return data;
+    const draftUpdatedAt = localStorage.getItem(`${targetKey}__draft_updated_at`);
+    if (remoteUpdatedAt && draftUpdatedAt && new Date(draftUpdatedAt).getTime() <= new Date(remoteUpdatedAt).getTime()) {
+      localStorage.removeItem(getDraftStorageKey(targetKey));
+      localStorage.removeItem(`${targetKey}__dirty`);
+      localStorage.removeItem(`${targetKey}__draft_updated_at`);
+      return data;
+    }
+    return JSON.parse(draft);
+  } catch (draftError) {
+    console.error('Error cargando borrador local del analisis del rival:', draftError);
+    return data;
+  }
+}
+
 function createFieldPlayers(formation: string): FieldPlayer[] {
   const base = FORMATIONS[formation]?.positions ?? FORMATIONS[DEFAULT_FORMATION].positions;
   return base.map((pos, idx) => ({
@@ -353,18 +377,20 @@ function AnalisisDelRival() {
       setActiveSeason(nextSeason);
 
       const targetKey = buildSeasonScopedKey(SHARED_STATE_KEY, nextSeason);
-      const { data, error } = await supabase.from('shared_state').select('value').eq('key', targetKey).maybeSingle();
+      const { data, error } = await supabase
+        .from('shared_state')
+        .select('value, updated_at')
+        .eq('key', targetKey)
+        .maybeSingle();
       if (error) {
         console.error('Error cargando analisis del rival:', error);
       }
 
-      let storedValue: unknown = data?.value;
-      try {
-        const localDraft = localStorage.getItem(getDraftStorageKey(targetKey));
-        if (localDraft) storedValue = JSON.parse(localDraft);
-      } catch (draftError) {
-        console.error('Error cargando borrador local del analisis del rival:', draftError);
-      }
+      const storedValue: unknown = readRemoteStoredValue(
+        data?.value,
+        typeof data?.updated_at === 'string' ? data.updated_at : null,
+        targetKey
+      );
 
       if (storedValue && typeof storedValue === 'object') {
         const loaded = storedValue as Partial<RivalGlobalState>;
@@ -400,6 +426,7 @@ function AnalisisDelRival() {
       teams: teamsData,
     };
     localStorage.setItem(getDraftStorageKey(sharedStateKey), JSON.stringify(payload));
+    localStorage.setItem(`${sharedStateKey}__draft_updated_at`, new Date().toISOString());
 
     setSaved(false);
     setSaveError('');
@@ -413,14 +440,55 @@ function AnalisisDelRival() {
       setSaving(false);
       if (error) {
         console.error('Error guardando analisis del rival:', error);
-        setSaveError('No se pudo guardar automaticamente.');
+        setSaveError('No se pudo guardar en la nube. Tu borrador local se conserva.');
+        localStorage.setItem(`${sharedStateKey}__dirty`, '1');
         return;
       }
 
+      localStorage.removeItem(`${sharedStateKey}__dirty`);
+      localStorage.removeItem(`${sharedStateKey}__draft_updated_at`);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }, 700);
   }, [selectedTeam, sharedStateKey, teamsData]);
+
+  // Escucha en tiempo real: cuando otro entrenador guarde, se recarga desde Supabase.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`analisis_rival_sync_${sharedStateKey}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'shared_state', filter: `key=eq.${sharedStateKey}` },
+        () => {
+          if (saving) return;
+          void supabase
+            .from('shared_state')
+            .select('value, updated_at')
+            .eq('key', sharedStateKey)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (!data?.value || typeof data.value !== 'object') return;
+              const remote = data.value as Partial<RivalGlobalState>;
+              const remoteTeams = remote.teams && typeof remote.teams === 'object' ? remote.teams : {};
+              const sanitized = Object.entries(remoteTeams).reduce<Record<string, RivalTeamData>>((acc, [team, value]) => {
+                acc[team] = sanitizeLoadedTeamData(value as Partial<RivalTeamData>);
+                return acc;
+              }, {});
+              setTeamsData(sanitized);
+              localStorage.setItem(getDraftStorageKey(sharedStateKey), JSON.stringify(remote));
+              if (typeof remote.selectedTeam === 'string' && availableTeams.includes(remote.selectedTeam)) {
+                setSelectedTeam(remote.selectedTeam);
+                setTeamFilter(remote.selectedTeam);
+              }
+            });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sharedStateKey, saving, availableTeams]);
 
   useEffect(() => {
     if (!selectedTeam) return;
@@ -521,11 +589,13 @@ function AnalisisDelRival() {
 
       const payload = JSON.stringify(players);
 
+      const dirty = typeof localStorage.getItem(`${sharedStateKey}__dirty`) === 'string';
+
       setTeamsData((prev) => {
         const base = prev[teamName] ?? createDefaultTeamData();
         const currentPayload = JSON.stringify(base.players);
 
-        if (!force && hasLocalDraftForTeam(sharedStateKey, teamName)) {
+        if (!force && dirty && hasLocalDraftForTeam(sharedStateKey, teamName)) {
           return prev;
         }
 
