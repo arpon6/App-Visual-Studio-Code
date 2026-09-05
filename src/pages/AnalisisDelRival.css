@@ -104,6 +104,27 @@
 
 .rival-players-table {
   min-width: 820px;
+  table-layout: fixed;
+}
+
+.rival-players-table th:nth-child(1),
+.rival-players-table td:nth-child(1) {
+  width: 18%;
+}
+
+.rival-players-table th:nth-child(2),
+.rival-players-table td:nth-child(2) {
+  width: 24%;
+}
+
+.rival-players-table th:nth-child(3),
+.rival-players-table td:nth-child(3) {
+  width: 10%;
+}
+
+.rival-players-table th:nth-child(4),
+.rival-players-table td:nth-child(4) {
+  width: 48%;
 }
 
 .rival-players-table input {
