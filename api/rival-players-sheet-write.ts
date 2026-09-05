@@ -4,6 +4,7 @@ type Req = {
     team?: string;
     players?: Array<{
       id?: number;
+      specificPosition?: string;
       fullName?: string;
       number?: string;
       traits?: string;
@@ -23,11 +24,12 @@ function normalizePlayerRows(input: Req['body']['players']) {
     ? input
       .map((row, idx) => ({
         id: Number.isFinite(Number(row?.id)) ? Number(row?.id) : idx + 1,
+        specificPosition: String(row?.specificPosition || '').trim(),
         fullName: String(row?.fullName || '').trim(),
         number: String(row?.number || '').trim(),
         traits: String(row?.traits || '').trim(),
       }))
-      .filter((row) => row.fullName || row.number || row.traits)
+      .filter((row) => row.specificPosition || row.fullName || row.number || row.traits)
     : [];
 }
 

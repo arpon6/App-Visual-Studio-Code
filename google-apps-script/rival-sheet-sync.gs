@@ -1,6 +1,7 @@
 const SYNC_SECRET = 'mi-club-rival-sync-2026-7hG9K2pLQ4xN8mZ';
 const SHEET_NAME = 'Hoja 1';
 const TEAM_COLUMN = 3;
+const SPECIFIC_POSITION_COLUMN = 2;
 const PLAYER_COLUMN = 4;
 const NUMBER_COLUMN = 5;
 const TRAITS_COLUMN = 6;
@@ -48,15 +49,16 @@ function doPost(e) {
 
     const normalizedPlayers = players
       .map((row) => ({
+        specificPosition: String(row.specificPosition || '').trim(),
         fullName: String(row.fullName || '').trim(),
         number: String(row.number || '').trim(),
         traits: String(row.traits || '').trim(),
       }))
-      .filter((row) => row.fullName || row.number || row.traits);
+      .filter((row) => row.specificPosition || row.fullName || row.number || row.traits);
 
     if (teamRows.length === 0) {
       normalizedPlayers.forEach((row) => {
-        sheet.appendRow(['', '', team, row.fullName, row.number, row.traits]);
+        sheet.appendRow(['', row.specificPosition, team, row.fullName, row.number, row.traits]);
       });
 
       return jsonResponse({ ok: true, team: team, updatedRows: normalizedPlayers.length, mode: 'append' }, 200);
@@ -114,11 +116,12 @@ function doPost(e) {
       if (targetRow) {
         usedRows[targetRow] = true;
         sheet.getRange(targetRow, TEAM_COLUMN).setValue(team);
+        sheet.getRange(targetRow, SPECIFIC_POSITION_COLUMN).setValue(player.specificPosition);
         sheet.getRange(targetRow, PLAYER_COLUMN).setValue(player.fullName);
         sheet.getRange(targetRow, NUMBER_COLUMN).setValue(player.number);
         sheet.getRange(targetRow, TRAITS_COLUMN).setValue(player.traits);
       } else {
-        sheet.appendRow(['', '', team, player.fullName, player.number, player.traits]);
+        sheet.appendRow(['', player.specificPosition, team, player.fullName, player.number, player.traits]);
       }
     });
 

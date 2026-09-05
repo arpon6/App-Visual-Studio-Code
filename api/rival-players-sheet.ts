@@ -12,6 +12,7 @@ type Res = {
 
 type RivalPlayerRow = {
   id: number;
+  specificPosition: string;
   fullName: string;
   number: string;
   traits: string;
@@ -124,11 +125,12 @@ export default async function handler(req: Req, res: Res) {
       .filter((row) => normalize(row[2] || '') === target)
       .map((row, idx) => ({
         id: idx + 1,
+        specificPosition: String(row[1] || '').trim(),
         fullName: String(row[3] || '').trim(),
         number: String(row[4] || '').trim(),
         traits: String(row[5] || '').trim(),
       }))
-      .filter((row) => row.fullName || row.number || row.traits)
+      .filter((row) => row.specificPosition || row.fullName || row.number || row.traits)
       .slice(0, 40);
 
     return res.status(200).json({

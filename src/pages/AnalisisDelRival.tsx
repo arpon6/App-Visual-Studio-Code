@@ -16,6 +16,7 @@ type RivalBoardState = {
 
 type RivalPlayerRow = {
   id: number;
+  specificPosition: string;
   fullName: string;
   number: string;
   traits: string;
@@ -90,6 +91,7 @@ function createFieldPlayers(formation: string): FieldPlayer[] {
 function createDefaultPlayers(): RivalPlayerRow[] {
   return Array.from({ length: 18 }, (_, idx) => ({
     id: idx + 1,
+    specificPosition: '',
     fullName: '',
     number: '',
     traits: '',
@@ -178,11 +180,12 @@ function mapSheetRowsToPlayersByTeam(raw: string, teamName: string): RivalPlayer
     .filter((row) => normalizeTeamName(row[2] || '') === normalizedTeam)
     .map((row, idx) => ({
       id: idx + 1,
+      specificPosition: String(row[1] || '').trim(),
       fullName: String(row[3] || '').trim(),
       number: String(row[4] || '').trim(),
       traits: String(row[5] || '').trim(),
     }))
-    .filter((row) => row.fullName || row.number || row.traits)
+    .filter((row) => row.specificPosition || row.fullName || row.number || row.traits)
     .slice(0, 40);
 }
 
@@ -215,6 +218,7 @@ function sanitizeLoadedTeamData(input: Partial<RivalTeamData> | undefined): Riva
   const rawPlayers = Array.isArray(input?.players) ? input?.players : fallback.players;
   const players = rawPlayers.slice(0, 40).map((row, idx) => ({
     id: Number.isFinite(Number((row as RivalPlayerRow).id)) ? Number((row as RivalPlayerRow).id) : idx + 1,
+    specificPosition: typeof (row as RivalPlayerRow).specificPosition === 'string' ? (row as RivalPlayerRow).specificPosition : '',
     fullName: typeof (row as RivalPlayerRow).fullName === 'string' ? (row as RivalPlayerRow).fullName : '',
     number: typeof (row as RivalPlayerRow).number === 'string' ? (row as RivalPlayerRow).number : '',
     traits: typeof (row as RivalPlayerRow).traits === 'string' ? (row as RivalPlayerRow).traits : '',
@@ -534,7 +538,7 @@ function AnalisisDelRival() {
   const pushPlayersToSheet = async () => {
     if (!selectedTeam || !currentTeamData) return;
 
-    const players = currentTeamData.players.filter((row) => row.fullName || row.number || row.traits);
+    const players = currentTeamData.players.filter((row) => row.specificPosition || row.fullName || row.number || row.traits);
     if (players.length === 0) {
       setSheetPushError('No hay jugadores para enviar a Google Sheets.');
       setSheetPushStatus('');
@@ -831,6 +835,7 @@ function AnalisisDelRival() {
                 <table className="list-table rival-players-table">
                   <thead>
                     <tr>
+                      <th>Posición específica</th>
                       <th>Nombre y apellidos</th>
                       <th>Dorsal</th>
                       <th>Caracteristicas</th>
@@ -839,6 +844,14 @@ function AnalisisDelRival() {
                   <tbody>
                     {sortedPlayers.map((row) => (
                       <tr key={row.id}>
+                        <td>
+                          <input
+                            type="text"
+                            value={row.specificPosition}
+                            onChange={(e) => updatePlayerRow(row.id, 'specificPosition', e.target.value)}
+                            placeholder="P, DC, LD..."
+                          />
+                        </td>
                         <td>
                           <input
                             type="text"
