@@ -211,6 +211,25 @@
 }
 
 @media (max-width: 760px) {
+  .rival-page .page-title,
+  .rival-page .card-header-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rival-page .title-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .rival-page .title-actions .btn {
+    width: 100%;
+  }
+
+  .rival-page .plan-card {
+    padding: 16px;
+  }
+
   .rival-sync-box {
     width: 100%;
     justify-items: stretch;
@@ -225,6 +244,49 @@
   }
 
   .rival-players-table {
-    min-width: 680px;
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 0.78rem;
+  }
+
+  .rival-players-table th,
+  .rival-players-table td {
+    padding: 6px 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .rival-players-table th:nth-child(1),
+  .rival-players-table td:nth-child(1) {
+    width: 19%;
+  }
+
+  .rival-players-table th:nth-child(2),
+  .rival-players-table td:nth-child(2) {
+    width: 25%;
+  }
+
+  .rival-players-table th:nth-child(3),
+  .rival-players-table td:nth-child(3) {
+    width: 12%;
+  }
+
+  .rival-players-table th:nth-child(4),
+  .rival-players-table td:nth-child(4) {
+    width: 44%;
+  }
+
+  .rival-players-table input {
+    min-width: 0;
+    padding: 7px 5px;
+    border-radius: 7px;
+  }
+
+  .rival-model-card {
+    padding: 12px;
+  }
+
+  .rival-model-card textarea {
+    min-height: 150px;
+    padding: 10px;
   }
 }

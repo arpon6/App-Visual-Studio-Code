@@ -744,6 +744,27 @@ function AnalisisDelRival() {
       if (key && !sectionsToInclude.includes(key)) node.remove();
     });
 
+    const sourceFields = Array.from(source.querySelectorAll('input, textarea, select'))
+      .filter((field) => !field.closest('.rival-selector-card'));
+    const clonedFields = clone.querySelectorAll('input, textarea, select');
+    sourceFields.forEach((field, index) => {
+      const clonedField = clonedFields[index];
+      if (!clonedField) return;
+      if (field instanceof HTMLTextAreaElement && clonedField instanceof HTMLTextAreaElement) {
+        clonedField.value = field.value;
+        clonedField.textContent = field.value;
+      } else if (field instanceof HTMLInputElement && clonedField instanceof HTMLInputElement) {
+        clonedField.value = field.value;
+        clonedField.checked = field.checked;
+        if (field.type === 'checkbox') clonedField.setAttribute('checked', field.checked ? 'checked' : '');
+      } else if (field instanceof HTMLSelectElement && clonedField instanceof HTMLSelectElement) {
+        clonedField.value = field.value;
+        Array.from(clonedField.options).forEach((option) => {
+          option.selected = option.value === field.value;
+        });
+      }
+    });
+
     const headerNote = document.createElement('div');
     headerNote.className = 'rival-export-team';
     headerNote.textContent = `Equipo rival: ${selectedTeam}`;
