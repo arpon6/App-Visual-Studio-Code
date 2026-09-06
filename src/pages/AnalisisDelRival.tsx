@@ -314,6 +314,8 @@ function AnalisisDelRival() {
 
   const hydratedRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localChangeAtRef = useRef(0);
+  const persistedChangeAtRef = useRef(0);
 
   const availableTeams = useMemo(
     () => LEAGUE_TEAMS.filter((team) => normalizeTeamName(team) !== normalizeTeamName(MY_TEAM_NAME)),
@@ -426,7 +428,9 @@ function AnalisisDelRival() {
       teams: teamsData,
     };
     localStorage.setItem(getDraftStorageKey(sharedStateKey), JSON.stringify(payload));
-    localStorage.setItem(`${sharedStateKey}__draft_updated_at`, new Date().toISOString());
+    const localChangeAt = Date.now();
+    localChangeAtRef.current = localChangeAt;
+    localStorage.setItem(`${sharedStateKey}__draft_updated_at`, new Date(localChangeAt).toISOString());
 
     setSaved(false);
     setSaveError('');
@@ -445,10 +449,13 @@ function AnalisisDelRival() {
         return;
       }
 
-      localStorage.removeItem(`${sharedStateKey}__dirty`);
-      localStorage.removeItem(`${sharedStateKey}__draft_updated_at`);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (localChangeAtRef.current === localChangeAt) {
+        persistedChangeAtRef.current = localChangeAt;
+        localStorage.removeItem(`${sharedStateKey}__dirty`);
+        localStorage.removeItem(`${sharedStateKey}__draft_updated_at`);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
     }, 700);
   }, [selectedTeam, sharedStateKey, teamsData]);
 
@@ -460,7 +467,6 @@ function AnalisisDelRival() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'shared_state', filter: `key=eq.${sharedStateKey}` },
         () => {
-          if (saving) return;
           void supabase
             .from('shared_state')
             .select('value, updated_at')
@@ -468,6 +474,10 @@ function AnalisisDelRival() {
             .maybeSingle()
             .then(({ data }) => {
               if (!data?.value || typeof data.value !== 'object') return;
+              const remoteUpdatedAt = typeof data.updated_at === 'string' ? new Date(data.updated_at).getTime() : 0;
+              if (localChangeAtRef.current > persistedChangeAtRef.current && remoteUpdatedAt < localChangeAtRef.current) {
+                return;
+              }
               const remote = data.value as Partial<RivalGlobalState>;
               const remoteTeams = remote.teams && typeof remote.teams === 'object' ? remote.teams : {};
               const sanitized = Object.entries(remoteTeams).reduce<Record<string, RivalTeamData>>((acc, [team, value]) => {
@@ -488,7 +498,7 @@ function AnalisisDelRival() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [sharedStateKey, saving, availableTeams]);
+  }, [sharedStateKey, availableTeams]);
 
   useEffect(() => {
     if (!selectedTeam) return;

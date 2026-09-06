@@ -12,6 +12,7 @@ import AnalisisDePartido from '../pages/AnalisisDePartido';
 import CortadorDeVideo from '../pages/CortadorDeVideo';
 import EditorDeImagenes from '../pages/EditorDeImagenes';
 import CortadorDeVideoRival from '../pages/CortadorDeVideoRival';
+import CreadorDeMontajes from '../pages/CreadorDeMontajes';
 import DesarrolloIndividual from '../pages/DesarrolloIndividual';
 import Estadisticas from '../pages/Estadisticas';
 import ResultadosYClasif from '../pages/ResultadosYClasif';
@@ -30,6 +31,7 @@ type AppPageDefinition = {
 };
 
 const STAFF_ROLES = ['entrenador', 'preparador_fisico', 'directivo', 'SUPER_ADMIN'] as const;
+const COACH_ROLES = ['entrenador', 'SUPER_ADMIN'] as const;
 const SHARED_ROLES = ['jugador', ...STAFF_ROLES] as const;
 const RIVAL_ANALYSIS_ROLES = ['jugador', 'entrenador', 'directivo', 'SUPER_ADMIN'] as const;
 
@@ -50,6 +52,7 @@ export const APP_PAGES = [
   { key: 'Resultados y Clasif.', component: ResultadosYClasif, visibleTo: SHARED_ROLES },
   { key: 'Repositorio ABP', component: RepositorioABP, visibleTo: SHARED_ROLES },
   { key: 'Editor de vídeo propio', component: CortadorDeVideo, visibleTo: STAFF_ROLES },
+  { key: 'Creador de montajes', component: CreadorDeMontajes, visibleTo: COACH_ROLES },
   { key: 'Editor de imágenes', component: EditorDeImagenes, visibleTo: SHARED_ROLES },
   { key: 'Editor de vídeo rival', component: CortadorDeVideoRival, visibleTo: STAFF_ROLES },
   { key: 'Otras Informaciones', component: OtrasInformaciones, visibleTo: SHARED_ROLES },
