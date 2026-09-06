@@ -996,8 +996,7 @@ function AnalisisDelRival() {
                           />
                         </td>
                         <td>
-                          <input
-                            type="text"
+                          <textarea
                             value={row.traits}
                             onChange={(e) => updatePlayerRow(row.id, 'traits', e.target.value)}
                             placeholder="Perfil, pierna, rol, comportamiento..."

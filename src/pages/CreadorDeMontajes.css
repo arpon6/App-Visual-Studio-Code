@@ -52,6 +52,216 @@
   font-size: 0.9rem;
 }
 
+/* Project toolbar bar */
+.montajes-project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-1);
+  padding: 12px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+
+.project-name-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 260px;
+}
+
+.project-name-group label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.project-name-input {
+  flex: 1;
+  max-width: 380px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.project-name-input:focus {
+  border-color: var(--accent);
+}
+
+.project-save-status {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.project-save-status.saved {
+  background: rgba(0, 255, 141, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(0, 255, 141, 0.3);
+}
+
+.project-save-status.unsaved {
+  background: rgba(255, 179, 0, 0.15);
+  color: #ffd166;
+  border: 1px solid rgba(255, 179, 0, 0.3);
+}
+
+.project-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Projects Gallery / Manager Tab */
+.projects-gallery-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.projects-gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.projects-gallery-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.project-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.project-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.project-card.active-project {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(0, 255, 141, 0.2);
+}
+
+.project-card-thumb-wrap {
+  width: 100%;
+  height: 150px;
+  background: #000;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.project-card-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-card-thumb-placeholder {
+  font-size: 40px;
+  color: #4a5c7a;
+}
+
+.project-active-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 255, 141, 0.9);
+  color: #04121a;
+  font-weight: 800;
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.project-card-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.project-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.project-card-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.project-card-stats span {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  color: #c0d0f0;
+}
+
+.project-card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.15);
+  gap: 8px;
+}
+
 .montajes-stats-badges {
   display: flex;
   gap: 12px;
@@ -315,6 +525,18 @@
   padding: 2px 6px;
   border-radius: 4px;
   color: #a0aec0;
+}
+
+.badge-tag.type-photo {
+  background: rgba(255, 179, 0, 0.2);
+  color: #ffd166;
+  font-weight: 600;
+}
+
+.badge-tag.type-video {
+  background: rgba(0, 255, 141, 0.15);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .badge-tag.has-texts {

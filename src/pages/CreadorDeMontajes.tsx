@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './CreadorDeMontajes.css';
+import {
+  deleteProjectFromDB,
+  getAllProjects,
+  getLastActiveProjectId,
+  getProject,
+  saveProjectToDB,
+  setLastActiveProjectId,
+  type ProjectSummary,
+  type SavedProject,
+} from '../lib/montajesStorage';
 
 export type TextOverlay = {
   id: string;
@@ -21,7 +31,7 @@ export type TextOverlay = {
 export type AudioTrack = {
   id: string;
   name: string;
-  file?: File;
+  file?: File | Blob;
   url: string;
   volume: number;      // 0 a 1
   startTime: number;   // segundo de inicio relativo al montaje global
@@ -29,21 +39,22 @@ export type AudioTrack = {
   isVoiceOver?: boolean;
 };
 
-export type VideoClip = {
+export type MediaClip = {
   id: string;
+  type: 'video' | 'image';
   name: string;
-  file: File;
+  file: File | Blob;
   url: string;
-  duration: number;    // duración total original del vídeo
-  start: number;       // punto In del recorte
-  end: number;         // punto Out del recorte
-  volume: number;      // 0 a 1
+  duration: number;    // duración total (para vídeo: metadata; para imagen: tiempo en pantalla)
+  start: number;       // punto In del recorte (para imagen: 0)
+  end: number;         // punto Out del recorte (para imagen: duration)
+  volume: number;      // 0 a 1 (vídeo)
   muted: boolean;
   texts: TextOverlay[];
   thumbnail?: string;
 };
 
-type ActiveTab = 'clips' | 'texts' | 'audio' | 'preview' | 'export';
+type ActiveTab = 'projects' | 'clips' | 'texts' | 'audio' | 'preview' | 'export';
 
 function formatSeconds(secs: number): string {
   if (isNaN(secs) || secs < 0) secs = 0;
@@ -54,7 +65,15 @@ function formatSeconds(secs: number): string {
 }
 
 export default function CreadorDeMontajes() {
-  const [clips, setClips] = useState<VideoClip[]>([]);
+  // Estado del Proyecto
+  const [projectId, setProjectId] = useState<string>(() => `proj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+  const [projectName, setProjectName] = useState<string>('Nuevo Montaje Táctico');
+  const [isSaved, setIsSaved] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedProjectsList, setSavedProjectsList] = useState<ProjectSummary[]>([]);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+
+  const [clips, setClips] = useState<MediaClip[]>([]);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('clips');
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -72,12 +91,15 @@ export default function CreadorDeMontajes() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
 
+  // Simulación de reproducción para fotos en el visor individual
+  const photoTimerRef = useRef<number | null>(null);
+
   // Previsualización global
   const globalVideoRef = useRef<HTMLVideoElement | null>(null);
-  const globalAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isGlobalPlaying, setIsGlobalPlaying] = useState(false);
   const [globalCurrentTime, setGlobalCurrentTime] = useState(0);
   const [currentGlobalClipIndex, setCurrentGlobalClipIndex] = useState(0);
+  const globalPhotoStartTimeRef = useRef<number>(0);
 
   // Exportación
   const [isExporting, setIsExporting] = useState(false);
@@ -85,6 +107,11 @@ export default function CreadorDeMontajes() {
   const [exportStatusText, setExportStatusText] = useState('');
   const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null);
   const cancelExportRef = useRef(false);
+
+  // Marcar cambios sin guardar cuando se editan clips o pistas
+  const markUnsaved = () => {
+    setIsSaved(false);
+  };
 
   const selectedClip = useMemo(() => {
     return clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null;
@@ -102,8 +129,215 @@ export default function CreadorDeMontajes() {
     }
   }, [clips, selectedClipId]);
 
-  // Cargar miniatura de un vídeo
-  const generateThumbnail = (file: File): Promise<string> => {
+  // Cargar lista de proyectos y restaurar el último activo al iniciar
+  useEffect(() => {
+    const initProjects = async () => {
+      try {
+        const summaries = await getAllProjects();
+        setSavedProjectsList(summaries);
+
+        const lastActiveId = getLastActiveProjectId();
+        if (lastActiveId) {
+          const loaded = await getProject(lastActiveId);
+          if (loaded) {
+            applyLoadedProject(loaded);
+            return;
+          }
+        }
+
+        // Si hay proyectos y ninguno activo, si el usuario no tiene clips, cargar el más reciente
+        if (summaries.length > 0) {
+          const loaded = await getProject(summaries[0].id);
+          if (loaded) applyLoadedProject(loaded);
+        }
+      } catch (err) {
+        console.error('Error al inicializar proyectos de montajes:', err);
+      }
+    };
+    initProjects();
+  }, []);
+
+  // Función para aplicar un proyecto recuperado de IndexedDB
+  const applyLoadedProject = (p: SavedProject) => {
+    setProjectId(p.id);
+    setProjectName(p.name);
+
+    const hydratedClips: MediaClip[] = (p.clips || []).map((c) => {
+      const url = URL.createObjectURL(c.blob);
+      return {
+        id: c.id,
+        type: c.type,
+        name: c.name,
+        file: c.blob,
+        url,
+        duration: c.duration,
+        start: c.start,
+        end: c.end,
+        volume: c.volume,
+        muted: c.muted,
+        texts: c.texts || [],
+        thumbnail: c.thumbnail || (c.type === 'image' ? url : undefined),
+      };
+    });
+
+    const hydratedAudios: AudioTrack[] = (p.audioTracks || []).map((a) => {
+      const url = a.blob ? URL.createObjectURL(a.blob) : '';
+      return {
+        id: a.id,
+        name: a.name,
+        file: a.blob,
+        url,
+        volume: a.volume,
+        startTime: a.startTime,
+        duration: a.duration,
+        isVoiceOver: a.isVoiceOver,
+      };
+    });
+
+    setClips(hydratedClips);
+    setAudioTracks(hydratedAudios);
+    if (hydratedClips.length > 0) {
+      setSelectedClipId(hydratedClips[0].id);
+    }
+    setIsSaved(true);
+    setLastActiveProjectId(p.id);
+  };
+
+  // Guardar proyecto actual en IndexedDB
+  const handleSaveProject = async () => {
+    setIsSaving(true);
+    try {
+      // Convertir audios en blobs si es necesario
+      const savedAudioTracks = await Promise.all(
+        audioTracks.map(async (track) => {
+          let blob = track.file as Blob | undefined;
+          if (!blob && track.url) {
+            try {
+              const res = await fetch(track.url);
+              blob = await res.blob();
+            } catch (e) {
+              console.warn('No se pudo guardar blob de pista:', track.name, e);
+            }
+          }
+          return {
+            id: track.id,
+            name: track.name,
+            blob,
+            volume: track.volume,
+            startTime: track.startTime,
+            duration: track.duration,
+            isVoiceOver: track.isVoiceOver,
+          };
+        })
+      );
+
+      const savedClips = clips.map((c) => ({
+        id: c.id,
+        type: c.type,
+        name: c.name,
+        blob: c.file as Blob,
+        duration: c.duration,
+        start: c.start,
+        end: c.end,
+        volume: c.volume,
+        muted: c.muted,
+        texts: c.texts,
+        thumbnail: c.thumbnail,
+      }));
+
+      const now = new Date().toISOString();
+      const projectData: SavedProject = {
+        id: projectId,
+        name: projectName.trim() || 'Montaje Táctico',
+        createdAt: now,
+        updatedAt: now,
+        thumbnail: clips[0]?.thumbnail,
+        totalDuration: totalMontageDuration,
+        clipsCount: clips.length,
+        clips: savedClips,
+        audioTracks: savedAudioTracks,
+      };
+
+      await saveProjectToDB(projectData);
+      setIsSaved(true);
+      setSaveFeedback('¡Proyecto guardado con éxito!');
+      setTimeout(() => setSaveFeedback(null), 3000);
+
+      // Actualizar lista
+      const list = await getAllProjects();
+      setSavedProjectsList(list);
+    } catch (err: any) {
+      console.error('Error al guardar el proyecto:', err);
+      alert(`No se pudo guardar el proyecto: ${err?.message || 'Error desconocido'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Crear nuevo proyecto limpio
+  const handleCreateNewProject = () => {
+    if (!isSaved && clips.length > 0) {
+      if (!confirm('Tienes cambios sin guardar en el proyecto actual. ¿Deseas crear un nuevo proyecto de todas formas?')) {
+        return;
+      }
+    }
+
+    const newId = `proj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setProjectId(newId);
+    setProjectName(`Montaje Táctico ${savedProjectsList.length + 1}`);
+    setClips([]);
+    setSelectedClipId(null);
+    setAudioTracks([]);
+    setIsSaved(true);
+    setLastActiveProjectId(newId);
+    setActiveTab('clips');
+  };
+
+  // Cargar un proyecto seleccionado de la lista
+  const handleLoadProject = async (id: string) => {
+    if (!isSaved && clips.length > 0) {
+      if (!confirm('Tienes cambios sin guardar en el proyecto actual. ¿Deseas abrir otro proyecto?')) {
+        return;
+      }
+    }
+
+    try {
+      const p = await getProject(id);
+      if (p) {
+        applyLoadedProject(p);
+        setActiveTab('clips');
+        setSaveFeedback(`Proyecto "${p.name}" cargado`);
+        setTimeout(() => setSaveFeedback(null), 2500);
+      }
+    } catch (e) {
+      console.error('Error al abrir el proyecto:', e);
+      alert('No se pudo cargar el proyecto seleccionado.');
+    }
+  };
+
+  // Eliminar un proyecto
+  const handleDeleteProject = async (id: string, name: string) => {
+    if (!confirm(`¿Seguro que deseas eliminar el proyecto "${name}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      await deleteProjectFromDB(id);
+      const list = await getAllProjects();
+      setSavedProjectsList(list);
+
+      // Si se elimina el proyecto que estaba abierto
+      if (id === projectId) {
+        handleCreateNewProject();
+      }
+    } catch (e) {
+      console.error('Error al eliminar proyecto:', e);
+      alert('Error al eliminar el proyecto.');
+    }
+  };
+
+  // Generar miniatura de vídeo
+  const generateVideoThumbnail = (file: File | Blob): Promise<string> => {
     return new Promise((resolve) => {
       const tempVideo = document.createElement('video');
       tempVideo.preload = 'metadata';
@@ -127,39 +361,62 @@ export default function CreadorDeMontajes() {
     });
   };
 
-  // Cargar vídeos desde el ordenador
-  const handleAddVideoFiles = async (files: FileList | File[]) => {
-    const newClips: VideoClip[] = [];
+  // Cargar archivos (vídeos o fotos) desde el ordenador
+  const handleAddMediaFiles = async (files: FileList | File[]) => {
+    const newClips: MediaClip[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!file.type.startsWith('video/')) continue;
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      if (!isVideo && !isImage) continue;
+
       const url = URL.createObjectURL(file);
 
-      // Obtener duración
-      const duration = await new Promise<number>((resolve) => {
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        v.src = url;
-        v.onloadedmetadata = () => resolve(v.duration || 5);
-        v.onerror = () => resolve(5);
-      });
+      if (isVideo) {
+        // Obtener duración de vídeo
+        const duration = await new Promise<number>((resolve) => {
+          const v = document.createElement('video');
+          v.preload = 'metadata';
+          v.src = url;
+          v.onloadedmetadata = () => resolve(v.duration || 5);
+          v.onerror = () => resolve(5);
+        });
 
-      const thumbnail = await generateThumbnail(file);
+        const thumbnail = await generateVideoThumbnail(file);
 
-      const clip: VideoClip = {
-        id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        name: file.name.replace(/\.[^/.]+$/, ''),
-        file,
-        url,
-        duration: Math.max(duration, 0.5),
-        start: 0,
-        end: Math.max(duration, 0.5),
-        volume: 1,
-        muted: false,
-        texts: [],
-        thumbnail,
-      };
-      newClips.push(clip);
+        const clip: MediaClip = {
+          id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          type: 'video',
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          file,
+          url,
+          duration: Math.max(duration, 0.5),
+          start: 0,
+          end: Math.max(duration, 0.5),
+          volume: 1,
+          muted: false,
+          texts: [],
+          thumbnail,
+        };
+        newClips.push(clip);
+      } else if (isImage) {
+        const defaultDuration = 4.0;
+        const clip: MediaClip = {
+          id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          type: 'image',
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          file,
+          url,
+          duration: defaultDuration,
+          start: 0,
+          end: defaultDuration,
+          volume: 0,
+          muted: true,
+          texts: [],
+          thumbnail: url,
+        };
+        newClips.push(clip);
+      }
     }
 
     if (newClips.length > 0) {
@@ -168,6 +425,7 @@ export default function CreadorDeMontajes() {
         if (!selectedClipId) setSelectedClipId(updated[0].id);
         return updated;
       });
+      markUnsaved();
     }
   };
 
@@ -175,7 +433,7 @@ export default function CreadorDeMontajes() {
     e.preventDefault();
     setIsDraggingOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleAddVideoFiles(e.dataTransfer.files);
+      handleAddMediaFiles(e.dataTransfer.files);
     }
   };
 
@@ -187,10 +445,11 @@ export default function CreadorDeMontajes() {
     const [moved] = updated.splice(index, 1);
     updated.splice(targetIndex, 0, moved);
     setClips(updated);
+    markUnsaved();
   };
 
-  const duplicateClip = (clip: VideoClip) => {
-    const newClip: VideoClip = {
+  const duplicateClip = (clip: MediaClip) => {
+    const newClip: MediaClip = {
       ...clip,
       id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: `${clip.name} (Copia)`,
@@ -203,37 +462,71 @@ export default function CreadorDeMontajes() {
       return updated;
     });
     setSelectedClipId(newClip.id);
+    markUnsaved();
   };
 
   const removeClip = (id: string) => {
     setClips((prev) => prev.filter((c) => c.id !== id));
+    markUnsaved();
   };
 
   // Ajustes de corte seleccionado
-  const updateSelectedClip = (patch: Partial<VideoClip>) => {
+  const updateSelectedClip = (patch: Partial<MediaClip>) => {
     if (!selectedClip) return;
     setClips((prev) =>
       prev.map((c) => (c.id === selectedClip.id ? { ...c, ...patch } : c))
     );
+    markUnsaved();
   };
 
   // Control de reproducción individual
   const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play();
-      setIsPlaying(true);
+    if (!selectedClip) return;
+
+    if (selectedClip.type === 'video') {
+      if (!videoRef.current) return;
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
     } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
+      if (isPlaying) {
+        if (photoTimerRef.current) clearInterval(photoTimerRef.current);
+        setIsPlaying(false);
+      } else {
+        setIsPlaying(true);
+        if (currentTime >= selectedClip.duration) {
+          setCurrentTime(0);
+        }
+        const interval = 100;
+        photoTimerRef.current = window.setInterval(() => {
+          setCurrentTime((prev) => {
+            const next = prev + 0.1;
+            if (next >= selectedClip.duration) {
+              clearInterval(photoTimerRef.current!);
+              setIsPlaying(false);
+              return selectedClip.duration;
+            }
+            return next;
+          });
+        }, interval);
+      }
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (photoTimerRef.current) clearInterval(photoTimerRef.current);
+    };
+  }, []);
+
   const handleVideoTimeUpdate = () => {
-    if (!videoRef.current || !selectedClip) return;
+    if (!videoRef.current || !selectedClip || selectedClip.type !== 'video') return;
     const time = videoRef.current.currentTime;
     setCurrentTime(time);
-    // Si sobrepasa el punto final 'end', detener o volver a 'start'
     if (time >= selectedClip.end) {
       videoRef.current.pause();
       videoRef.current.currentTime = selectedClip.start;
@@ -242,24 +535,36 @@ export default function CreadorDeMontajes() {
   };
 
   const playTrimmedRange = () => {
-    if (!videoRef.current || !selectedClip) return;
-    videoRef.current.currentTime = selectedClip.start;
-    videoRef.current.play();
-    setIsPlaying(true);
+    if (!selectedClip) return;
+    if (selectedClip.type === 'video' && videoRef.current) {
+      videoRef.current.currentTime = selectedClip.start;
+      videoRef.current.play();
+      setIsPlaying(true);
+    } else if (selectedClip.type === 'image') {
+      setCurrentTime(0);
+      togglePlay();
+    }
   };
 
   const markInPoint = () => {
-    if (!videoRef.current || !selectedClip) return;
+    if (!videoRef.current || !selectedClip || selectedClip.type !== 'video') return;
     const now = videoRef.current.currentTime;
     const newStart = Math.min(now, selectedClip.end - 0.2);
     updateSelectedClip({ start: Math.max(0, Number(newStart.toFixed(2))) });
   };
 
   const markOutPoint = () => {
-    if (!videoRef.current || !selectedClip) return;
+    if (!videoRef.current || !selectedClip || selectedClip.type !== 'video') return;
     const now = videoRef.current.currentTime;
     const newEnd = Math.max(now, selectedClip.start + 0.2);
     updateSelectedClip({ end: Math.min(selectedClip.duration, Number(newEnd.toFixed(2))) });
+  };
+
+  // Modificar duración de foto
+  const handleSetPhotoDuration = (newSecs: number) => {
+    if (!selectedClip || selectedClip.type !== 'image') return;
+    const val = Math.max(0.5, Math.min(60, Number(newSecs.toFixed(1))));
+    updateSelectedClip({ duration: val, start: 0, end: val });
   };
 
   // Gestión de textos del corte seleccionado
@@ -315,6 +620,7 @@ export default function CreadorDeMontajes() {
         const newTrack: AudioTrack = {
           id: `voice_${Date.now()}`,
           name: `Voz en off (${formatSeconds(duration)})`,
+          file: audioBlob,
           url: audioUrl,
           volume: 1,
           startTime: 0,
@@ -322,6 +628,7 @@ export default function CreadorDeMontajes() {
           isVoiceOver: true,
         };
         setAudioTracks((prev) => [...prev, newTrack]);
+        markUnsaved();
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -363,57 +670,80 @@ export default function CreadorDeMontajes() {
         duration: tempAudio.duration || 10,
       };
       setAudioTracks((prev) => [...prev, newTrack]);
+      markUnsaved();
     };
   };
 
   // Textos activos para el reproductor individual
   const activeClipTexts = useMemo(() => {
     if (!selectedClip) return [];
-    // Tiempo relativo al inicio del recorte
     const relTime = currentTime - selectedClip.start;
     return selectedClip.texts.filter(
       (t) => relTime >= t.startTime && relTime <= t.endTime
     );
   }, [selectedClip, currentTime]);
 
-  // Previsualización Global: control de reproducción continua
+  // Previsualización Global: control de reproducción continua (Vídeos + Fotos)
   useEffect(() => {
     let animationFrameId: number;
 
     const handleGlobalTick = () => {
       if (!isGlobalPlaying || clips.length === 0) return;
 
-      const v = globalVideoRef.current;
-      if (v) {
-        const activeClip = clips[currentGlobalClipIndex];
-        if (activeClip) {
-          const clipTime = v.currentTime;
-          // Calcular tiempo global acumulado
-          let accumulatedBefore = 0;
-          for (let i = 0; i < currentGlobalClipIndex; i++) {
-            accumulatedBefore += Math.max(0, clips[i].end - clips[i].start);
-          }
-          const currentProgressInClip = Math.max(0, clipTime - activeClip.start);
-          setGlobalCurrentTime(accumulatedBefore + currentProgressInClip);
+      const activeClip = clips[currentGlobalClipIndex];
+      if (activeClip) {
+        let clipProgress = 0;
+        const activeClipDuration = Math.max(0.1, activeClip.end - activeClip.start);
 
-          // Si el clip llega a su fin, pasar al siguiente
-          if (clipTime >= activeClip.end) {
-            if (currentGlobalClipIndex < clips.length - 1) {
-              const nextIndex = currentGlobalClipIndex + 1;
-              setCurrentGlobalClipIndex(nextIndex);
-              v.src = clips[nextIndex].url;
-              v.currentTime = clips[nextIndex].start;
-              v.volume = clips[nextIndex].muted ? 0 : clips[nextIndex].volume;
-              v.play().catch(() => {});
-            } else {
-              // Fin del montaje
-              setIsGlobalPlaying(false);
-              v.pause();
+        if (activeClip.type === 'video') {
+          const v = globalVideoRef.current;
+          if (v) {
+            clipProgress = Math.max(0, v.currentTime - activeClip.start);
+            if (v.currentTime >= activeClip.end) {
+              advanceToNextGlobalClip();
+              return;
             }
           }
+        } else {
+          const elapsed = (performance.now() - globalPhotoStartTimeRef.current) / 1000;
+          clipProgress = Math.min(elapsed, activeClipDuration);
+          if (elapsed >= activeClipDuration) {
+            advanceToNextGlobalClip();
+            return;
+          }
         }
+
+        let accumulatedBefore = 0;
+        for (let i = 0; i < currentGlobalClipIndex; i++) {
+          accumulatedBefore += Math.max(0, clips[i].end - clips[i].start);
+        }
+        setGlobalCurrentTime(accumulatedBefore + clipProgress);
       }
+
       animationFrameId = requestAnimationFrame(handleGlobalTick);
+    };
+
+    const advanceToNextGlobalClip = () => {
+      if (currentGlobalClipIndex < clips.length - 1) {
+        const nextIndex = currentGlobalClipIndex + 1;
+        setCurrentGlobalClipIndex(nextIndex);
+        const nextClip = clips[nextIndex];
+
+        if (nextClip.type === 'video') {
+          const v = globalVideoRef.current;
+          if (v) {
+            v.src = nextClip.url;
+            v.currentTime = nextClip.start;
+            v.volume = nextClip.muted ? 0 : nextClip.volume;
+            v.play().catch(() => {});
+          }
+        } else {
+          globalPhotoStartTimeRef.current = performance.now();
+        }
+      } else {
+        setIsGlobalPlaying(false);
+        if (globalVideoRef.current) globalVideoRef.current.pause();
+      }
     };
 
     if (isGlobalPlaying) {
@@ -423,22 +753,30 @@ export default function CreadorDeMontajes() {
   }, [isGlobalPlaying, clips, currentGlobalClipIndex]);
 
   const toggleGlobalPlay = () => {
-    const v = globalVideoRef.current;
-    if (!v || clips.length === 0) return;
+    if (clips.length === 0) return;
 
     if (isGlobalPlaying) {
-      v.pause();
+      if (globalVideoRef.current) globalVideoRef.current.pause();
       setIsGlobalPlaying(false);
     } else {
-      // Si estamos al final, reiniciar
+      let targetIndex = currentGlobalClipIndex;
       if (globalCurrentTime >= totalMontageDuration - 0.1) {
+        targetIndex = 0;
         setCurrentGlobalClipIndex(0);
-        v.src = clips[0].url;
-        v.currentTime = clips[0].start;
         setGlobalCurrentTime(0);
       }
-      v.volume = clips[currentGlobalClipIndex]?.muted ? 0 : (clips[currentGlobalClipIndex]?.volume ?? 1);
-      v.play().catch(() => {});
+
+      const activeClip = clips[targetIndex];
+      if (activeClip) {
+        if (activeClip.type === 'video' && globalVideoRef.current) {
+          globalVideoRef.current.src = activeClip.url;
+          globalVideoRef.current.currentTime = activeClip.start;
+          globalVideoRef.current.volume = activeClip.muted ? 0 : activeClip.volume;
+          globalVideoRef.current.play().catch(() => {});
+        } else if (activeClip.type === 'image') {
+          globalPhotoStartTimeRef.current = performance.now();
+        }
+      }
       setIsGlobalPlaying(true);
     }
   };
@@ -447,23 +785,105 @@ export default function CreadorDeMontajes() {
   const activeGlobalTexts = useMemo(() => {
     if (clips.length === 0 || currentGlobalClipIndex >= clips.length) return [];
     const activeClip = clips[currentGlobalClipIndex];
-    if (!activeClip || !globalVideoRef.current) return [];
-    const relTime = globalVideoRef.current.currentTime - activeClip.start;
+    if (!activeClip) return [];
+
+    let relTime = 0;
+    if (activeClip.type === 'video' && globalVideoRef.current) {
+      relTime = globalVideoRef.current.currentTime - activeClip.start;
+    } else {
+      let accumulatedBefore = 0;
+      for (let i = 0; i < currentGlobalClipIndex; i++) {
+        accumulatedBefore += Math.max(0, clips[i].end - clips[i].start);
+      }
+      relTime = Math.max(0, globalCurrentTime - accumulatedBefore);
+    }
+
     return activeClip.texts.filter(
       (t) => relTime >= t.startTime && relTime <= t.endTime
     );
   }, [clips, currentGlobalClipIndex, globalCurrentTime]);
 
-  // EXPORTACIÓN Y DESCARGA DEL VÍDEO COMPLETO (Canvas + Web Audio API + MediaRecorder)
+  // Helper para dibujar textos sobre Canvas
+  const drawTextOverlays = (
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    texts: TextOverlay[],
+    elapsedInClip: number
+  ) => {
+    const activeTexts = texts.filter(
+      (t) => elapsedInClip >= t.startTime && elapsedInClip <= t.endTime
+    );
+
+    for (const t of activeTexts) {
+      ctx.save();
+      const fontSizeScaled = Math.round(t.fontSize * (canvas.height / 540));
+      ctx.font = `${t.fontWeight === 'bold' ? 'bold ' : ''}${fontSizeScaled}px sans-serif`;
+      ctx.textAlign = t.textAlign;
+      ctx.textBaseline = 'middle';
+
+      const lines = t.text.split('\n');
+      const lineHeight = fontSizeScaled * 1.3;
+      const maxLineWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      const boxPaddingX = 24;
+      const boxPaddingY = 16;
+      const boxWidth = maxLineWidth + boxPaddingX * 2;
+      const boxHeight = lines.length * lineHeight + boxPaddingY * 2;
+
+      let posX = canvas.width / 2;
+      let posY = canvas.height - 80;
+
+      if (t.position === 'top') {
+        posY = 80;
+      } else if (t.position === 'center') {
+        posY = canvas.height / 2;
+      } else if (t.position === 'custom' && t.customX !== undefined && t.customY !== undefined) {
+        posX = (t.customX / 100) * canvas.width;
+        posY = (t.customY / 100) * canvas.height;
+      }
+
+      let boxX = posX - boxWidth / 2;
+      if (t.textAlign === 'left') boxX = posX - boxPaddingX;
+      if (t.textAlign === 'right') boxX = posX - boxWidth + boxPaddingX;
+      const boxY = posY - boxHeight / 2;
+
+      // Fondo de caja
+      if (t.bgOpacity > 0) {
+        ctx.fillStyle = t.bgColor;
+        ctx.globalAlpha = t.bgOpacity;
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 10);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Borde destacado
+      if (t.hasBorder) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+      }
+
+      // Dibujar líneas de texto
+      ctx.fillStyle = t.textColor;
+      lines.forEach((line, idx) => {
+        const lineY = boxY + boxPaddingY + idx * lineHeight + lineHeight / 2;
+        ctx.fillText(line, posX, lineY);
+      });
+
+      ctx.restore();
+    }
+  };
+
+  // EXPORTACIÓN EN FORMATO MP4 (.mp4)
   const exportFullMontage = async () => {
     if (clips.length === 0) {
-      alert('Por favor añade al menos un corte de vídeo para exportar el montaje.');
+      alert('Por favor añade al menos un corte de vídeo o foto para exportar el montaje.');
       return;
     }
 
     setIsExporting(true);
     setExportProgress(0);
-    setExportStatusText('Iniciando motor de renderizado y composición...');
+    setExportStatusText('Iniciando motor de renderizado y composición MP4...');
     setExportedVideoUrl(null);
     cancelExportRef.current = false;
 
@@ -474,12 +894,10 @@ export default function CreadorDeMontajes() {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No se pudo inicializar el contexto 2D');
 
-      // Audio Context para mezclar audios
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioContextClass();
       const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Cargar audios adicionales si existen
       for (const track of audioTracks) {
         try {
           const response = await fetch(track.url);
@@ -497,7 +915,6 @@ export default function CreadorDeMontajes() {
         }
       }
 
-      // Combinar canvas stream + audio stream
       const canvasStream = canvas.captureStream(30);
       const combinedTracks = [
         ...canvasStream.getVideoTracks(),
@@ -505,17 +922,23 @@ export default function CreadorDeMontajes() {
       ];
       const combinedStream = new MediaStream(combinedTracks);
 
-      let mimeType = 'video/webm;codecs=vp9,opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm;codecs=vp8,opus';
-      }
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
-      }
+      const mp4Mimes = [
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4;codecs=avc1',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4;codecs=h264',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+
+      const chosenMime = mp4Mimes.find((mime) => MediaRecorder.isTypeSupported(mime)) || 'video/mp4';
 
       const recorder = new MediaRecorder(combinedStream, {
-        mimeType,
-        videoBitsPerSecond: 4000000,
+        mimeType: chosenMime,
+        videoBitsPerSecond: 5000000,
       });
 
       const recordedChunks: Blob[] = [];
@@ -525,144 +948,126 @@ export default function CreadorDeMontajes() {
 
       recorder.start(100);
 
-      // Elemento de vídeo oculto para decodificar
       const renderVideo = document.createElement('video');
       renderVideo.muted = false;
       renderVideo.playsInline = true;
       renderVideo.crossOrigin = 'anonymous';
 
-      // Conectar audio del vídeo al AudioContext si no está silenciado
       try {
         const videoAudioSource = audioCtx.createMediaElementSource(renderVideo);
         const videoGain = audioCtx.createGain();
         videoAudioSource.connect(videoGain);
         videoGain.connect(audioDest);
-        videoGain.connect(audioCtx.destination); // para evitar que quede suspendido
+        videoGain.connect(audioCtx.destination);
       } catch (err) {
         console.warn('No se pudo conectar audio directo del elemento de vídeo:', err);
       }
 
       let totalRenderedSeconds = 0;
 
-      // Iterar por cada corte
       for (let i = 0; i < clips.length; i++) {
         if (cancelExportRef.current) break;
 
         const clip = clips[i];
-        setExportStatusText(`Renderizando corte ${i + 1} de ${clips.length}: "${clip.name}"...`);
-
-        renderVideo.src = clip.url;
-        await new Promise((r) => {
-          renderVideo.onloadeddata = r;
-          renderVideo.load();
-        });
-
-        renderVideo.currentTime = clip.start;
-        await new Promise((r) => {
-          renderVideo.onseeked = r;
-        });
-
-        await renderVideo.play();
+        setExportStatusText(
+          `Renderizando elemento ${i + 1} de ${clips.length} (${clip.type === 'image' ? 'Foto' : 'Vídeo'}): "${clip.name}"...`
+        );
 
         const clipDuration = Math.max(0.2, clip.end - clip.start);
 
-        // Bucle de renderizado del clip actual
-        await new Promise<void>((resolve) => {
-          const checkRenderFrame = () => {
-            if (cancelExportRef.current) {
-              renderVideo.pause();
-              resolve();
-              return;
-            }
+        if (clip.type === 'video') {
+          renderVideo.src = clip.url;
+          await new Promise((r) => {
+            renderVideo.onloadeddata = r;
+            renderVideo.load();
+          });
 
-            const currentPos = renderVideo.currentTime;
-            const elapsedInClip = currentPos - clip.start;
+          renderVideo.currentTime = clip.start;
+          await new Promise((r) => {
+            renderVideo.onseeked = r;
+          });
 
-            // Dibujar frame de vídeo en Canvas
+          await renderVideo.play();
+
+          await new Promise<void>((resolve) => {
+            const checkRenderFrame = () => {
+              if (cancelExportRef.current) {
+                renderVideo.pause();
+                resolve();
+                return;
+              }
+
+              const currentPos = renderVideo.currentTime;
+              const elapsedInClip = currentPos - clip.start;
+
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(renderVideo, 0, 0, canvas.width, canvas.height);
+
+              drawTextOverlays(ctx, canvas, clip.texts, elapsedInClip);
+
+              const currentTotal = totalRenderedSeconds + Math.min(elapsedInClip, clipDuration);
+              const progressPct = Math.min(99, Math.round((currentTotal / totalMontageDuration) * 100));
+              setExportProgress(progressPct);
+
+              if (currentPos >= clip.end || renderVideo.ended) {
+                renderVideo.pause();
+                totalRenderedSeconds += clipDuration;
+                resolve();
+              } else {
+                requestAnimationFrame(checkRenderFrame);
+              }
+            };
+
+            requestAnimationFrame(checkRenderFrame);
+          });
+        } else if (clip.type === 'image') {
+          const img = new Image();
+          img.src = clip.url;
+          await new Promise((r) => {
+            img.onload = r;
+          });
+
+          const fps = 30;
+          const totalFrames = Math.max(1, Math.round(clipDuration * fps));
+          const frameIntervalMs = 1000 / fps;
+
+          for (let frame = 0; frame < totalFrames; frame++) {
+            if (cancelExportRef.current) break;
+
+            const elapsedInClip = frame / fps;
+
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(renderVideo, 0, 0, canvas.width, canvas.height);
 
-            // Dibujar textos superpuestos activos en este instante
-            const activeTexts = clip.texts.filter(
-              (t) => elapsedInClip >= t.startTime && elapsedInClip <= t.endTime
+            const hRatio = canvas.width / img.width;
+            const vRatio = canvas.height / img.height;
+            const ratio = Math.min(hRatio, vRatio);
+            const centerShiftX = (canvas.width - img.width * ratio) / 2;
+            const centerShiftY = (canvas.height - img.height * ratio) / 2;
+            ctx.drawImage(
+              img,
+              0,
+              0,
+              img.width,
+              img.height,
+              centerShiftX,
+              centerShiftY,
+              img.width * ratio,
+              img.height * ratio
             );
 
-            for (const t of activeTexts) {
-              ctx.save();
-              const fontSizeScaled = Math.round(t.fontSize * (canvas.height / 540));
-              ctx.font = `${t.fontWeight === 'bold' ? 'bold ' : ''}${fontSizeScaled}px sans-serif`;
-              ctx.textAlign = t.textAlign;
-              ctx.textBaseline = 'middle';
+            drawTextOverlays(ctx, canvas, clip.texts, elapsedInClip);
 
-              const lines = t.text.split('\n');
-              const lineHeight = fontSizeScaled * 1.3;
-              const maxLineWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
-              const boxPaddingX = 24;
-              const boxPaddingY = 16;
-              const boxWidth = maxLineWidth + boxPaddingX * 2;
-              const boxHeight = lines.length * lineHeight + boxPaddingY * 2;
-
-              let posX = canvas.width / 2;
-              let posY = canvas.height - 80;
-
-              if (t.position === 'top') {
-                posY = 80;
-              } else if (t.position === 'center') {
-                posY = canvas.height / 2;
-              } else if (t.position === 'custom' && t.customX !== undefined && t.customY !== undefined) {
-                posX = (t.customX / 100) * canvas.width;
-                posY = (t.customY / 100) * canvas.height;
-              }
-
-              let boxX = posX - boxWidth / 2;
-              if (t.textAlign === 'left') boxX = posX - boxPaddingX;
-              if (t.textAlign === 'right') boxX = posX - boxWidth + boxPaddingX;
-              const boxY = posY - boxHeight / 2;
-
-              // Fondo de caja
-              if (t.bgOpacity > 0) {
-                ctx.fillStyle = t.bgColor;
-                ctx.globalAlpha = t.bgOpacity;
-                ctx.beginPath();
-                ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 10);
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-              }
-
-              // Borde destacado
-              if (t.hasBorder) {
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-              }
-
-              // Dibujar líneas de texto
-              ctx.fillStyle = t.textColor;
-              lines.forEach((line, idx) => {
-                const lineY = boxY + boxPaddingY + idx * lineHeight + lineHeight / 2;
-                ctx.fillText(line, posX, lineY);
-              });
-
-              ctx.restore();
-            }
-
-            // Actualizar progreso
-            const currentTotal = totalRenderedSeconds + Math.min(elapsedInClip, clipDuration);
+            const currentTotal = totalRenderedSeconds + elapsedInClip;
             const progressPct = Math.min(99, Math.round((currentTotal / totalMontageDuration) * 100));
             setExportProgress(progressPct);
 
-            if (currentPos >= clip.end || renderVideo.ended) {
-              renderVideo.pause();
-              totalRenderedSeconds += clipDuration;
-              resolve();
-            } else {
-              requestAnimationFrame(checkRenderFrame);
-            }
-          };
+            await new Promise((r) => setTimeout(r, frameIntervalMs));
+          }
 
-          requestAnimationFrame(checkRenderFrame);
-        });
+          totalRenderedSeconds += clipDuration;
+        }
       }
 
       if (cancelExportRef.current) {
@@ -672,21 +1077,21 @@ export default function CreadorDeMontajes() {
         return;
       }
 
-      setExportStatusText('Finalizando codificación y preparando archivo para descarga...');
+      setExportStatusText('Finalizando codificación y generando archivo .mp4...');
       setExportProgress(100);
 
       recorder.onstop = () => {
-        const finalBlob = new Blob(recordedChunks, { type: mimeType });
+        const finalBlob = new Blob(recordedChunks, { type: 'video/mp4' });
         const finalUrl = URL.createObjectURL(finalBlob);
         setExportedVideoUrl(finalUrl);
-        setExportStatusText('¡Montaje completado con éxito!');
+        setExportStatusText('¡Montaje en formato .mp4 completado con éxito!');
 
-        // Descarga automática
         const a = document.createElement('a');
         a.href = finalUrl;
         const now = new Date();
+        const cleanName = (projectName || 'montaje_tactico').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
         const dateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-        a.download = `montaje_tactico_sd_oyonesa_${dateStr}.webm`;
+        a.download = `${cleanName}_${dateStr}.mp4`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -711,13 +1116,13 @@ export default function CreadorDeMontajes() {
           <div>
             <h1>Creador de montajes</h1>
             <p>
-              Herramienta exclusiva de entrenadores: une cortes de vídeo, recórtalos, añade textos explicativos y pistas de audio.
+              Herramienta exclusiva de entrenadores: guarda tus proyectos, une vídeos y fotos, recórtalos, añade rótulos y audios, y exporta en <strong>.MP4</strong>.
             </p>
           </div>
         </div>
         <div className="montajes-stats-badges">
           <div className="montajes-stat-badge">
-            <span className="stat-label">Total Cortes</span>
+            <span className="stat-label">Total Elementos</span>
             <span className="stat-value">{clips.length}</span>
           </div>
           <div className="montajes-stat-badge">
@@ -727,14 +1132,71 @@ export default function CreadorDeMontajes() {
         </div>
       </div>
 
+      {/* Barra de Proyecto: Título, estado y acciones de guardado */}
+      <div className="montajes-project-bar">
+        <div className="project-name-group">
+          <label>📁 Proyecto:</label>
+          <input
+            type="text"
+            className="project-name-input"
+            value={projectName}
+            placeholder="Escribe el nombre del montaje..."
+            onChange={(e) => {
+              setProjectName(e.target.value);
+              markUnsaved();
+            }}
+          />
+          <span className={`project-save-status ${isSaved ? 'saved' : 'unsaved'}`}>
+            {isSaving ? 'Guardando...' : isSaved ? '✓ Guardado' : '● Sin guardar'}
+          </span>
+          {saveFeedback && (
+            <span style={{ fontSize: '0.82rem', color: 'var(--accent)', fontWeight: 600 }}>
+              {saveFeedback}
+            </span>
+          )}
+        </div>
+
+        <div className="project-actions-group">
+          <button
+            type="button"
+            className="ctrl-btn primary"
+            onClick={handleSaveProject}
+            disabled={isSaving}
+          >
+            💾 Guardar proyecto
+          </button>
+          <button
+            type="button"
+            className="ctrl-btn"
+            onClick={handleCreateNewProject}
+          >
+            ➕ Nuevo proyecto
+          </button>
+          <button
+            type="button"
+            className={`ctrl-btn ${activeTab === 'projects' ? 'primary' : ''}`}
+            onClick={() => setActiveTab(activeTab === 'projects' ? 'clips' : 'projects')}
+          >
+            📂 Mis Proyectos ({savedProjectsList.length})
+          </button>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="montajes-tabs">
+        <button
+          type="button"
+          className={`montajes-tab-btn ${activeTab === 'projects' ? 'active' : ''}`}
+          onClick={() => setActiveTab('projects')}
+        >
+          📂 1. Mis Proyectos ({savedProjectsList.length})
+        </button>
         <button
           type="button"
           className={`montajes-tab-btn ${activeTab === 'clips' ? 'active' : ''}`}
           onClick={() => setActiveTab('clips')}
         >
-          ✂️ 1. Cortes y Recorte ({clips.length})
+          ✂️ 2. Cortes y Fotos ({clips.length})
         </button>
         <button
           type="button"
@@ -742,14 +1204,14 @@ export default function CreadorDeMontajes() {
           onClick={() => setActiveTab('texts')}
           disabled={clips.length === 0}
         >
-          📝 2. Textos y Rótulos ({selectedClip ? selectedClip.texts.length : 0})
+          📝 3. Textos y Rótulos ({selectedClip ? selectedClip.texts.length : 0})
         </button>
         <button
           type="button"
           className={`montajes-tab-btn ${activeTab === 'audio' ? 'active' : ''}`}
           onClick={() => setActiveTab('audio')}
         >
-          🎙️ 3. Audios y Locución ({audioTracks.length})
+          🎙️ 4. Audios y Locución ({audioTracks.length})
         </button>
         <button
           type="button"
@@ -759,14 +1221,14 @@ export default function CreadorDeMontajes() {
             setIsGlobalPlaying(false);
             setGlobalCurrentTime(0);
             setCurrentGlobalClipIndex(0);
-            if (globalVideoRef.current && clips.length > 0) {
+            if (clips[0]?.type === 'video' && globalVideoRef.current) {
               globalVideoRef.current.src = clips[0].url;
               globalVideoRef.current.currentTime = clips[0].start;
             }
           }}
           disabled={clips.length === 0}
         >
-          👁️ 4. Vista Previa Montaje
+          👁️ 5. Vista Previa Montaje
         </button>
         <button
           type="button"
@@ -774,44 +1236,132 @@ export default function CreadorDeMontajes() {
           onClick={() => setActiveTab('export')}
           disabled={clips.length === 0}
         >
-          🚀 5. Exportar y Descargar
+          🚀 6. Exportar en .MP4
         </button>
       </div>
 
-      {/* Dropzone para cargar vídeos */}
-      <div
-        className={`montajes-dropzone ${isDraggingOver ? 'dragging' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(true);
-        }}
-        onDragLeave={() => setIsDraggingOver(false)}
-        onDrop={handleDrop}
-      >
-        <input
-          type="file"
-          accept="video/*"
-          multiple
-          onChange={(e) => {
-            if (e.target.files) handleAddVideoFiles(e.target.files);
-          }}
-        />
-        <div className="dropzone-content">
-          <span className="dropzone-icon">📁</span>
-          <h3>Arrastra aquí tus cortes de vídeo o haz clic para seleccionarlos</h3>
-          <p>Formatos compatibles: MP4, WebM, MOV, MKV. Puedes seleccionar varios archivos a la vez.</p>
-          <span className="dropzone-btn">+ Cargar cortes desde el ordenador</span>
+      {/* PESTAÑA: GESTOR DE PROYECTOS GUARDADOS */}
+      {activeTab === 'projects' && (
+        <div className="projects-gallery-container">
+          <div className="projects-gallery-header">
+            <div>
+              <h3>📂 Galería de proyectos guardados</h3>
+              <p style={{ margin: '4px 0 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Todos los vídeos, fotos, recortes y locuciones quedan guardados en el navegador para que puedas retomarlos cuando quieras.
+              </p>
+            </div>
+            <button type="button" className="ctrl-btn primary" onClick={handleCreateNewProject}>
+              ➕ Crear nuevo montaje desde cero
+            </button>
+          </div>
+
+          {savedProjectsList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: 44 }}>📁</span>
+              <p style={{ marginTop: 10, fontSize: '1.1rem' }}>No tienes ningún proyecto guardado aún.</p>
+              <p style={{ fontSize: '0.88rem' }}>
+                Añade cortes o fotos en la pestaña "Cortes y Fotos" y pulsa "Guardar proyecto" para conservarlo.
+              </p>
+            </div>
+          ) : (
+            <div className="projects-grid">
+              {savedProjectsList.map((p) => {
+                const isActive = p.id === projectId;
+                const formattedDate = new Date(p.updatedAt).toLocaleDateString('es-ES', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <div key={p.id} className={`project-card ${isActive ? 'active-project' : ''}`}>
+                    <div className="project-card-thumb-wrap">
+                      {p.thumbnail ? (
+                        <img src={p.thumbnail} alt={p.name} />
+                      ) : (
+                        <span className="project-card-thumb-placeholder">🎬</span>
+                      )}
+                      {isActive && <span className="project-active-badge">ACTIVO EN EDICIÓN</span>}
+                    </div>
+
+                    <div className="project-card-body">
+                      <h4 className="project-card-title" title={p.name}>{p.name}</h4>
+                      <div className="project-card-meta">
+                        <span>🕒 Modificado: {formattedDate}</span>
+                        <div className="project-card-stats">
+                          <span>🎞️ {p.clipsCount} {p.clipsCount === 1 ? 'elemento' : 'elementos'}</span>
+                          <span>⏱️ {formatSeconds(p.totalDuration)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="project-card-actions">
+                      <button
+                        type="button"
+                        className={`ctrl-btn ${isActive ? 'primary' : ''}`}
+                        style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                        onClick={() => handleLoadProject(p.id)}
+                      >
+                        {isActive ? '✏️ Editando' : '📂 Abrir'}
+                      </button>
+                      <button
+                        type="button"
+                        className="clip-mini-btn danger"
+                        style={{ padding: '6px 10px', fontSize: '0.82rem' }}
+                        title="Eliminar proyecto"
+                        onClick={() => handleDeleteProject(p.id, p.name)}
+                      >
+                        🗑️ Eliminar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Dropzone para cargar vídeos y fotos */}
+      {activeTab === 'clips' && (
+        <div
+          className={`montajes-dropzone ${isDraggingOver ? 'dragging' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={() => setIsDraggingOver(false)}
+          onDrop={handleDrop}
+        >
+          <input
+            type="file"
+            accept="video/*,image/*"
+            multiple
+            onChange={(e) => {
+              if (e.target.files) handleAddMediaFiles(e.target.files);
+            }}
+          />
+          <div className="dropzone-content">
+            <span className="dropzone-icon">📁</span>
+            <h3>Arrastra aquí tus cortes de vídeo o fotos, o haz clic para seleccionarlos</h3>
+            <p>
+              Formatos compatibles: Vídeos (MP4, WebM, MOV, MKV) e Imágenes (JPG, PNG, WebP). Puedes añadir y mezclar ambos.
+            </p>
+            <span className="dropzone-btn">+ Cargar vídeos o fotos desde el ordenador</span>
+          </div>
+        </div>
+      )}
 
       {/* Línea de tiempo de clips (Timeline) */}
-      {clips.length > 0 && (
+      {clips.length > 0 && activeTab !== 'projects' && (
         <div className="montajes-timeline-card">
           <div className="timeline-header">
             <h3>
               <span>🎞️ Línea de tiempo del montaje</span>
               <small style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'normal' }}>
-                (Arrastra o usa las flechas para reordenar el orden en el que se unirán los cortes)
+                (Arrastra o usa las flechas para reordenar el orden en el que se unirán los vídeos y fotos)
               </small>
             </h3>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -820,9 +1370,10 @@ export default function CreadorDeMontajes() {
                 className="ctrl-btn"
                 style={{ fontSize: '0.8rem', padding: '4px 10px' }}
                 onClick={() => {
-                  if (confirm('¿Vaciar todos los cortes del montaje?')) {
+                  if (confirm('¿Vaciar todos los elementos del montaje?')) {
                     setClips([]);
                     setSelectedClipId(null);
+                    markUnsaved();
                   }
                 }}
               >
@@ -841,7 +1392,8 @@ export default function CreadorDeMontajes() {
                   className={`timeline-clip-card ${isSelected ? 'selected' : ''}`}
                   onClick={() => {
                     setSelectedClipId(clip.id);
-                    if (videoRef.current) {
+                    setCurrentTime(clip.type === 'video' ? clip.start : 0);
+                    if (videoRef.current && clip.type === 'video') {
                       videoRef.current.currentTime = clip.start;
                       setIsPlaying(false);
                     }
@@ -852,7 +1404,9 @@ export default function CreadorDeMontajes() {
                     {clip.thumbnail ? (
                       <img src={clip.thumbnail} alt={clip.name} />
                     ) : (
-                      <span className="clip-thumb-placeholder">📹</span>
+                      <span className="clip-thumb-placeholder">
+                        {clip.type === 'image' ? '🖼️' : '📹'}
+                      </span>
                     )}
                     <span className="clip-duration-badge">{formatSeconds(effectiveDuration)}</span>
                   </div>
@@ -861,8 +1415,8 @@ export default function CreadorDeMontajes() {
                       {clip.name}
                     </span>
                     <div className="clip-card-badges">
-                      <span className="badge-tag">
-                        [{formatSeconds(clip.start)} - {formatSeconds(clip.end)}]
+                      <span className={`badge-tag ${clip.type === 'image' ? 'type-photo' : 'type-video'}`}>
+                        {clip.type === 'image' ? '📷 FOTO' : '🎬 VÍDEO'}
                       </span>
                       {clip.texts.length > 0 && (
                         <span className="badge-tag has-texts">📝 {clip.texts.length}</span>
@@ -881,7 +1435,7 @@ export default function CreadorDeMontajes() {
                       <button
                         type="button"
                         className="clip-mini-btn"
-                        title="Duplicar corte"
+                        title="Duplicar elemento"
                         onClick={() => duplicateClip(clip)}
                       >
                         📋
@@ -889,7 +1443,7 @@ export default function CreadorDeMontajes() {
                       <button
                         type="button"
                         className="clip-mini-btn danger"
-                        title="Eliminar corte"
+                        title="Eliminar elemento"
                         onClick={() => removeClip(clip.id)}
                       >
                         🗑️
@@ -912,21 +1466,30 @@ export default function CreadorDeMontajes() {
         </div>
       )}
 
-      {/* ÁREA PRINCIPAL: EDICIÓN DE CORTES, TEXTOS Y AUDIO */}
+      {/* ÁREA PRINCIPAL: EDICIÓN DE CORTES, FOTOS, TEXTOS Y AUDIO */}
       {clips.length > 0 && selectedClip && (
         <>
           {activeTab === 'clips' && (
             <div className="montajes-workspace-grid">
-              {/* Visor de Corte y Recorte */}
+              {/* Visor de Elemento (Vídeo o Foto) */}
               <div className="video-player-card">
                 <div className="video-container-relative">
-                  <video
-                    ref={videoRef}
-                    src={selectedClip.url}
-                    onTimeUpdate={handleVideoTimeUpdate}
-                    onEnded={() => setIsPlaying(false)}
-                    playsInline
-                  />
+                  {selectedClip.type === 'video' ? (
+                    <video
+                      ref={videoRef}
+                      src={selectedClip.url}
+                      onTimeUpdate={handleVideoTimeUpdate}
+                      onEnded={() => setIsPlaying(false)}
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={selectedClip.url}
+                      alt={selectedClip.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  )}
+
                   {/* Textos sobre el reproductor */}
                   {activeClipTexts.map((txt) => (
                     <div
@@ -968,7 +1531,9 @@ export default function CreadorDeMontajes() {
                     onChange={(e) => {
                       const t = parseFloat(e.target.value);
                       setCurrentTime(t);
-                      if (videoRef.current) videoRef.current.currentTime = t;
+                      if (selectedClip.type === 'video' && videoRef.current) {
+                        videoRef.current.currentTime = t;
+                      }
                     }}
                   />
                   <div className="player-buttons-row">
@@ -977,7 +1542,9 @@ export default function CreadorDeMontajes() {
                         {isPlaying ? '⏸️ Pausar' : '▶️ Reproducir'}
                       </button>
                       <button type="button" className="ctrl-btn" onClick={playTrimmedRange}>
-                        🔁 Reproducir recorte ({formatSeconds(selectedClip.start)} - {formatSeconds(selectedClip.end)})
+                        {selectedClip.type === 'video'
+                          ? `🔁 Reproducir recorte (${formatSeconds(selectedClip.start)} - ${formatSeconds(selectedClip.end)})`
+                          : `🔁 Simular pase de foto (${selectedClip.duration}s)`}
                       </button>
                     </div>
                     <div className="time-display">
@@ -986,87 +1553,137 @@ export default function CreadorDeMontajes() {
                   </div>
                 </div>
 
-                {/* Herramienta de Recorte (Trimming) */}
-                <div className="trim-tool-card">
-                  <div className="trim-header">
-                    <h4>✂️ Recortar este corte ({selectedClip.name})</h4>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Ajusta los puntos de inicio y fin para quedarte sólo con la jugada clave
-                    </span>
-                  </div>
+                {/* Herramienta de Ajuste / Recorte */}
+                {selectedClip.type === 'video' ? (
+                  <div className="trim-tool-card">
+                    <div className="trim-header">
+                      <h4>✂️ Recortar este corte de vídeo ({selectedClip.name})</h4>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Ajusta los puntos de inicio y fin para quedarte sólo con la jugada clave
+                      </span>
+                    </div>
 
-                  <div className="trim-controls-grid">
-                    <div className="trim-input-group">
-                      <label>Punto de Inicio (IN):</label>
-                      <div className="trim-input-controls">
-                        <input
-                          type="number"
-                          step={0.1}
-                          min={0}
-                          max={selectedClip.end - 0.1}
-                          value={selectedClip.start}
-                          onChange={(e) =>
-                            updateSelectedClip({ start: Math.max(0, parseFloat(e.target.value) || 0) })
-                          }
-                        />
-                        <button type="button" className="trim-mark-btn" onClick={markInPoint}>
-                          📍 Fijar en pos. actual ({formatSeconds(currentTime)})
-                        </button>
+                    <div className="trim-controls-grid">
+                      <div className="trim-input-group">
+                        <label>Punto de Inicio (IN):</label>
+                        <div className="trim-input-controls">
+                          <input
+                            type="number"
+                            step={0.1}
+                            min={0}
+                            max={selectedClip.end - 0.1}
+                            value={selectedClip.start}
+                            onChange={(e) =>
+                              updateSelectedClip({ start: Math.max(0, parseFloat(e.target.value) || 0) })
+                            }
+                          />
+                          <button type="button" className="trim-mark-btn" onClick={markInPoint}>
+                            📍 Fijar en pos. actual ({formatSeconds(currentTime)})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="trim-input-group">
+                        <label>Punto de Fin (OUT):</label>
+                        <div className="trim-input-controls">
+                          <input
+                            type="number"
+                            step={0.1}
+                            min={selectedClip.start + 0.1}
+                            max={selectedClip.duration}
+                            value={selectedClip.end}
+                            onChange={(e) =>
+                              updateSelectedClip({
+                                end: Math.min(selectedClip.duration, parseFloat(e.target.value) || selectedClip.duration),
+                              })
+                            }
+                          />
+                          <button type="button" className="trim-mark-btn" onClick={markOutPoint}>
+                            🏁 Fijar en pos. actual ({formatSeconds(currentTime)})
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="trim-input-group">
-                      <label>Punto de Fin (OUT):</label>
-                      <div className="trim-input-controls">
-                        <input
-                          type="number"
-                          step={0.1}
-                          min={selectedClip.start + 0.1}
-                          max={selectedClip.duration}
-                          value={selectedClip.end}
-                          onChange={(e) =>
-                            updateSelectedClip({
-                              end: Math.min(selectedClip.duration, parseFloat(e.target.value) || selectedClip.duration),
-                            })
-                          }
-                        />
-                        <button type="button" className="trim-mark-btn" onClick={markOutPoint}>
-                          🏁 Fijar en pos. actual ({formatSeconds(currentTime)})
-                        </button>
+                    <div className="trim-summary-bar">
+                      <span>
+                        Duración del recorte:{' '}
+                        <strong style={{ color: 'var(--accent)' }}>
+                          {formatSeconds(Math.max(0, selectedClip.end - selectedClip.start))}
+                        </strong>
+                      </span>
+                      <button
+                        type="button"
+                        className="ctrl-btn"
+                        style={{ padding: '4px 8px', fontSize: '0.78rem' }}
+                        onClick={() =>
+                          updateSelectedClip({ start: 0, end: selectedClip.duration })
+                        }
+                      >
+                        ↺ Restablecer corte completo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="trim-tool-card">
+                    <div className="trim-header">
+                      <h4>📷 Duración en pantalla de la foto</h4>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Establece cuántos segundos se mostrará esta imagen en el montaje
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--surface-1)', padding: 12, borderRadius: 10 }}>
+                      <label style={{ fontSize: '0.88rem', fontWeight: 600 }}>Segundos en pantalla:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        step={0.5}
+                        value={selectedClip.duration}
+                        style={{
+                          width: 80,
+                          padding: '6px 10px',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          color: '#fff',
+                          fontWeight: 700,
+                          fontSize: '1rem',
+                        }}
+                        onChange={(e) => handleSetPhotoDuration(parseFloat(e.target.value) || 3)}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[2, 3, 4, 5, 8, 10].map((sec) => (
+                          <button
+                            key={sec}
+                            type="button"
+                            className="ctrl-btn"
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '0.8rem',
+                              borderColor: selectedClip.duration === sec ? 'var(--accent)' : undefined,
+                            }}
+                            onClick={() => handleSetPhotoDuration(sec)}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
-
-                  <div className="trim-summary-bar">
-                    <span>
-                      Duración del recorte:{' '}
-                      <strong style={{ color: 'var(--accent)' }}>
-                        {formatSeconds(Math.max(0, selectedClip.end - selectedClip.start))}
-                      </strong>
-                    </span>
-                    <button
-                      type="button"
-                      className="ctrl-btn"
-                      style={{ padding: '4px 8px', fontSize: '0.78rem' }}
-                      onClick={() =>
-                        updateSelectedClip({ start: 0, end: selectedClip.duration })
-                      }
-                    >
-                      ↺ Restablecer corte completo
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Panel lateral: Información y acciones rápidas */}
+              {/* Panel lateral: Información y propiedades */}
               <div className="side-editor-card">
                 <div className="side-panel-header">
-                  <h3>⚙️ Propiedades del corte</h3>
+                  <h3>⚙️ Propiedades del elemento</h3>
                 </div>
 
                 <div style={{ display: 'grid', gap: 14 }}>
                   <div>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nombre del corte:</label>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Nombre:</label>
                     <input
                       type="text"
                       value={selectedClip.name}
@@ -1083,30 +1700,34 @@ export default function CreadorDeMontajes() {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontSize: '0.85rem' }}>Silenciar audio original de este corte:</label>
-                    <input
-                      type="checkbox"
-                      checked={selectedClip.muted}
-                      onChange={(e) => updateSelectedClip({ muted: e.target.checked })}
-                    />
-                  </div>
+                  {selectedClip.type === 'video' && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '0.85rem' }}>Silenciar audio original:</label>
+                        <input
+                          type="checkbox"
+                          checked={selectedClip.muted}
+                          onChange={(e) => updateSelectedClip({ muted: e.target.checked })}
+                        />
+                      </div>
 
-                  {!selectedClip.muted && (
-                    <div>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        Volumen del audio original ({Math.round(selectedClip.volume * 100)}%):
-                      </label>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={selectedClip.volume}
-                        style={{ width: '100%', accentColor: 'var(--accent)' }}
-                        onChange={(e) => updateSelectedClip({ volume: parseFloat(e.target.value) })}
-                      />
-                    </div>
+                      {!selectedClip.muted && (
+                        <div>
+                          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            Volumen del audio original ({Math.round(selectedClip.volume * 100)}%):
+                          </label>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={selectedClip.volume}
+                            style={{ width: '100%', accentColor: 'var(--accent)' }}
+                            onChange={(e) => updateSelectedClip({ volume: parseFloat(e.target.value) })}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1116,7 +1737,7 @@ export default function CreadorDeMontajes() {
                       style={{ justifyContent: 'center' }}
                       onClick={() => setActiveTab('texts')}
                     >
-                      📝 Añadir textos explicativos a este corte ({selectedClip.texts.length})
+                      📝 Añadir textos explicativos ({selectedClip.texts.length})
                     </button>
                     <button
                       type="button"
@@ -1124,7 +1745,7 @@ export default function CreadorDeMontajes() {
                       style={{ justifyContent: 'center' }}
                       onClick={() => duplicateClip(selectedClip)}
                     >
-                      📋 Duplicar este corte para hacer otra toma
+                      📋 Duplicar este elemento
                     </button>
                   </div>
                 </div>
@@ -1132,18 +1753,27 @@ export default function CreadorDeMontajes() {
             </div>
           )}
 
-          {/* PESTAÑA 2: TEXTOS Y RÓTULOS */}
+          {/* PESTAÑA 3: TEXTOS Y RÓTULOS */}
           {activeTab === 'texts' && (
             <div className="montajes-workspace-grid">
               <div className="video-player-card">
                 <div className="video-container-relative">
-                  <video
-                    ref={videoRef}
-                    src={selectedClip.url}
-                    onTimeUpdate={handleVideoTimeUpdate}
-                    onEnded={() => setIsPlaying(false)}
-                    playsInline
-                  />
+                  {selectedClip.type === 'video' ? (
+                    <video
+                      ref={videoRef}
+                      src={selectedClip.url}
+                      onTimeUpdate={handleVideoTimeUpdate}
+                      onEnded={() => setIsPlaying(false)}
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={selectedClip.url}
+                      alt={selectedClip.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  )}
+
                   {activeClipTexts.map((txt) => (
                     <div
                       key={txt.id}
@@ -1183,7 +1813,9 @@ export default function CreadorDeMontajes() {
                     onChange={(e) => {
                       const t = parseFloat(e.target.value);
                       setCurrentTime(t);
-                      if (videoRef.current) videoRef.current.currentTime = t;
+                      if (selectedClip.type === 'video' && videoRef.current) {
+                        videoRef.current.currentTime = t;
+                      }
                     }}
                   />
                   <div className="player-buttons-row">
@@ -1191,7 +1823,7 @@ export default function CreadorDeMontajes() {
                       {isPlaying ? '⏸️ Pausar' : '▶️ Reproducir'}
                     </button>
                     <div className="time-display">
-                      Posición en corte: <strong>{formatSeconds(Math.max(0, currentTime - selectedClip.start))}</strong> (total: {formatSeconds(selectedClip.end - selectedClip.start)})
+                      Posición: <strong>{formatSeconds(Math.max(0, currentTime - selectedClip.start))}</strong> (total: {formatSeconds(selectedClip.end - selectedClip.start)})
                     </div>
                   </div>
                 </div>
@@ -1200,7 +1832,7 @@ export default function CreadorDeMontajes() {
               {/* Lista y editor de textos */}
               <div className="side-editor-card">
                 <div className="side-panel-header">
-                  <h3>📝 Textos y rótulos en "{selectedClip.name}"</h3>
+                  <h3>📝 Textos y rótulos en "${selectedClip.name}"</h3>
                   <button type="button" className="ctrl-btn primary" onClick={addTextOverlay}>
                     + Añadir texto
                   </button>
@@ -1208,7 +1840,7 @@ export default function CreadorDeMontajes() {
 
                 {selectedClip.texts.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
-                    <p>Aún no hay textos en este corte.</p>
+                    <p>Aún no hay textos en este elemento.</p>
                     <p style={{ fontSize: '0.85rem' }}>
                       Añade rótulos explicativos, flechas o instrucciones tácticas para tus jugadores.
                     </p>
@@ -1240,7 +1872,7 @@ export default function CreadorDeMontajes() {
                           <div className="text-fields-grid">
                             <textarea
                               value={txt.text}
-                              placeholder="Escribe aquí el texto que se mostrará en el vídeo..."
+                              placeholder="Escribe aquí el texto que se mostrará en el vídeo o foto..."
                               onChange={(e) => updateTextOverlay(txt.id, { text: e.target.value })}
                             />
 
@@ -1375,7 +2007,7 @@ export default function CreadorDeMontajes() {
             </div>
           )}
 
-          {/* PESTAÑA 3: AUDIOS Y LOCUCIÓN */}
+          {/* PESTAÑA 4: AUDIOS Y LOCUCIÓN */}
           {activeTab === 'audio' && (
             <div className="audio-manager-card">
               <div className="montajes-workspace-grid">
@@ -1384,7 +2016,7 @@ export default function CreadorDeMontajes() {
                   <span style={{ fontSize: 32 }}>🎙️</span>
                   <h3 style={{ margin: 0 }}>Grabar locución / voz en off</h3>
                   <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                    Narra las indicaciones tácticas de viva voz mientras visualizas los cortes.
+                    Narra las indicaciones tácticas de viva voz mientras visualizas el montaje.
                   </p>
 
                   {isRecordingVoice ? (
@@ -1439,7 +2071,10 @@ export default function CreadorDeMontajes() {
                           <button
                             type="button"
                             className="clip-mini-btn danger"
-                            onClick={() => setAudioTracks((prev) => prev.filter((t) => t.id !== track.id))}
+                            onClick={() => {
+                              setAudioTracks((prev) => prev.filter((t) => t.id !== track.id));
+                              markUnsaved();
+                            }}
                           >
                             🗑️ Eliminar pista
                           </button>
@@ -1460,6 +2095,7 @@ export default function CreadorDeMontajes() {
                                 setAudioTracks((prev) =>
                                   prev.map((t) => (t.id === track.id ? { ...t, volume: vol } : t))
                                 );
+                                markUnsaved();
                               }}
                             />
                           </label>
@@ -1483,6 +2119,7 @@ export default function CreadorDeMontajes() {
                                 setAudioTracks((prev) =>
                                   prev.map((t) => (t.id === track.id ? { ...t, startTime: st } : t))
                                 );
+                                markUnsaved();
                               }}
                             />
                           </label>
@@ -1495,7 +2132,7 @@ export default function CreadorDeMontajes() {
             </div>
           )}
 
-          {/* PESTAÑA 4: VISTA PREVIA MONTAJE GLOBAL */}
+          {/* PESTAÑA 5: VISTA PREVIA MONTAJE GLOBAL */}
           {activeTab === 'preview' && (
             <div className="global-montage-container">
               <div className="side-panel-header">
@@ -1504,12 +2141,15 @@ export default function CreadorDeMontajes() {
               </div>
 
               <div className="video-container-relative">
-                <video
-                  ref={globalVideoRef}
-                  playsInline
-                />
-                {/* Audio adicional */}
-                <audio ref={globalAudioRef} />
+                {clips[currentGlobalClipIndex]?.type === 'image' ? (
+                  <img
+                    src={clips[currentGlobalClipIndex]?.url}
+                    alt={clips[currentGlobalClipIndex]?.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <video ref={globalVideoRef} playsInline />
+                )}
 
                 {/* Textos sobre el montaje completo */}
                 {activeGlobalTexts.map((txt) => (
@@ -1553,15 +2193,17 @@ export default function CreadorDeMontajes() {
                         style={{ width: `${pct}%` }}
                         onClick={() => {
                           setCurrentGlobalClipIndex(idx);
-                          if (globalVideoRef.current) {
+                          if (c.type === 'video' && globalVideoRef.current) {
                             globalVideoRef.current.src = c.url;
                             globalVideoRef.current.currentTime = c.start;
                             globalVideoRef.current.volume = c.muted ? 0 : c.volume;
+                          } else if (c.type === 'image') {
+                            globalPhotoStartTimeRef.current = performance.now();
                           }
                         }}
-                        title={`#${idx + 1}: ${c.name} (${formatSeconds(dur)})`}
+                        title={`#${idx + 1} (${c.type === 'image' ? 'Foto' : 'Vídeo'}): ${c.name} (${formatSeconds(dur)})`}
                       >
-                        #{idx + 1} {c.name}
+                        #{idx + 1} {c.type === 'image' ? '📷 ' : '🎬 '} {c.name}
                       </div>
                     );
                   })}
@@ -1586,10 +2228,12 @@ export default function CreadorDeMontajes() {
                     onClick={() => {
                       setCurrentGlobalClipIndex(0);
                       setGlobalCurrentTime(0);
-                      if (globalVideoRef.current && clips[0]) {
+                      if (clips[0]?.type === 'video' && globalVideoRef.current) {
                         globalVideoRef.current.src = clips[0].url;
                         globalVideoRef.current.currentTime = clips[0].start;
                         if (isGlobalPlaying) globalVideoRef.current.play();
+                      } else if (clips[0]?.type === 'image') {
+                        globalPhotoStartTimeRef.current = performance.now();
                       }
                     }}
                   >
@@ -1597,30 +2241,30 @@ export default function CreadorDeMontajes() {
                   </button>
                 </div>
                 <div className="time-display">
-                  Reproduciendo corte {currentGlobalClipIndex + 1} de {clips.length} (
+                  Reproduciendo elemento {currentGlobalClipIndex + 1} de {clips.length} (
                   <span>{formatSeconds(globalCurrentTime)}</span> / <span>{formatSeconds(totalMontageDuration)}</span>)
                 </div>
               </div>
             </div>
           )}
 
-          {/* PESTAÑA 5: EXPORTAR Y DESCARGAR */}
+          {/* PESTAÑA 6: EXPORTAR Y DESCARGAR */}
           {activeTab === 'export' && (
             <div className="global-montage-container" style={{ alignItems: 'center', textAlign: 'center' }}>
               <div className="side-panel-header" style={{ width: '100%' }}>
-                <h3>🚀 Exportar y descargar el vídeo completo</h3>
+                <h3>🚀 Exportar y descargar el vídeo completo en formato MP4</h3>
               </div>
 
               <div style={{ maxWidth: 640, padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <p style={{ color: 'var(--text-muted)' }}>
-                  Al pulsar el botón de exportación, el sistema unirá todos tus cortes ({clips.length} clips),
-                  aplicará los recortes de inicio/fin, superpondrá los textos y fusionará todas las pistas de sonido en un solo archivo de vídeo descargable de alta calidad.
+                  Al pulsar el botón de exportación, el sistema unirá todos tus vídeos y fotos ({clips.length} elementos),
+                  aplicará los recortes y tiempos de exposición, superpondrá los textos y fusionará todas las pistas de sonido en un único archivo de vídeo <strong>.MP4</strong> descargable de alta definición.
                 </p>
 
                 <div className="montajes-stat-badge" style={{ alignSelf: 'center', minWidth: 260 }}>
-                  <span className="stat-label">Resumen del montaje</span>
+                  <span className="stat-label">Resumen del montaje final</span>
                   <span className="stat-value" style={{ fontSize: '1rem', marginTop: 4 }}>
-                    {clips.length} cortes • {formatSeconds(totalMontageDuration)} duración total
+                    {clips.length} elementos ({clips.filter((c) => c.type === 'video').length} vídeos, {clips.filter((c) => c.type === 'image').length} fotos) • {formatSeconds(totalMontageDuration)} duración total
                   </span>
                 </div>
 
@@ -1638,22 +2282,22 @@ export default function CreadorDeMontajes() {
                   onClick={exportFullMontage}
                   disabled={isExporting}
                 >
-                  🚀 Generar y Descargar Vídeo Unido
+                  🚀 Generar y Descargar Vídeo Unido (.MP4)
                 </button>
 
                 {exportedVideoUrl && (
                   <div className="export-success-box" style={{ marginTop: 20 }}>
-                    <h4 style={{ margin: 0, color: 'var(--accent)' }}>✅ Vídeo generado correctamente</h4>
+                    <h4 style={{ margin: 0, color: 'var(--accent)' }}>✅ Archivo .MP4 generado correctamente</h4>
                     <p style={{ margin: 0, fontSize: '0.88rem' }}>
                       Si la descarga no ha comenzado automáticamente, haz clic en el siguiente enlace:
                     </p>
                     <a
                       href={exportedVideoUrl}
-                      download={`montaje_tactico_sd_oyonesa_${Date.now()}.webm`}
+                      download={`${(projectName || 'montaje_tactico').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()}_${Date.now()}.mp4`}
                       className="ctrl-btn primary"
                       style={{ alignSelf: 'center', padding: '8px 20px', textDecoration: 'none' }}
                     >
-                      💾 Descargar archivo de vídeo (.webm)
+                      💾 Descargar archivo de vídeo (.mp4)
                     </a>
                     <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden' }}>
                       <video src={exportedVideoUrl} controls style={{ width: '100%', maxHeight: 300 }} />
@@ -1697,7 +2341,7 @@ export default function CreadorDeMontajes() {
             </div>
 
             <div className="export-status-info">
-              <h3>Uniendo y procesando cortes...</h3>
+              <h3>Uniendo y procesando cortes y fotos...</h3>
               <p>{exportStatusText}</p>
             </div>
 
