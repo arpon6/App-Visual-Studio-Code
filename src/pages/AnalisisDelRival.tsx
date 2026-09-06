@@ -750,19 +750,19 @@ function AnalisisDelRival() {
     sourceFields.forEach((field, index) => {
       const clonedField = clonedFields[index];
       if (!clonedField) return;
+      let value = '';
       if (field instanceof HTMLTextAreaElement && clonedField instanceof HTMLTextAreaElement) {
-        clonedField.value = field.value;
-        clonedField.textContent = field.value;
+        value = field.value;
       } else if (field instanceof HTMLInputElement && clonedField instanceof HTMLInputElement) {
-        clonedField.value = field.value;
-        clonedField.checked = field.checked;
-        if (field.type === 'checkbox') clonedField.setAttribute('checked', field.checked ? 'checked' : '');
+        value = field.value;
       } else if (field instanceof HTMLSelectElement && clonedField instanceof HTMLSelectElement) {
-        clonedField.value = field.value;
-        Array.from(clonedField.options).forEach((option) => {
-          option.selected = option.value === field.value;
-        });
+        value = field.selectedOptions[0]?.textContent?.trim() || field.value;
       }
+
+      const exportValue = document.createElement('div');
+      exportValue.className = 'rival-export-field-value';
+      exportValue.textContent = value;
+      clonedField.replaceWith(exportValue);
     });
 
     const headerNote = document.createElement('div');

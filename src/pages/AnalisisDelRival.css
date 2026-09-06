@@ -203,6 +203,23 @@
   font-weight: 700;
 }
 
+.rival-export-field-value {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(8, 15, 26, 0.9);
+  color: #d7e0ff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.rival-model-card .rival-export-field-value {
+  min-height: 180px;
+  line-height: 1.45;
+}
+
 @media (max-width: 1200px) {
   .rival-boards-grid,
   .rival-model-grid {
