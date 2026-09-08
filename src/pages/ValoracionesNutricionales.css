@@ -1,0 +1,148 @@
+.vn-toggle-import-btn {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 141, 0.35);
+  background: rgba(0, 255, 141, 0.12);
+  color: var(--accent-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vn-import-card {
+  padding: 20px 24px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vn-import-card h3 {
+  margin: 0;
+}
+
+.vn-import-help {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.vn-import-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 220px;
+}
+
+.vn-import-controls input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 18, 30, 0.9);
+  color: var(--text);
+}
+
+.vn-import-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 18, 30, 0.9);
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  resize: vertical;
+}
+
+.vn-import-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vn-import-actions button {
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: #16d67a;
+  color: #071119;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.vn-import-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.vn-import-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.vn-table-card {
+  padding: 20px;
+}
+
+.vn-status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.vn-status-error {
+  color: #ff8b8b;
+}
+
+.vn-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.vn-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.vn-table th,
+.vn-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.vn-table thead th {
+  background: var(--surface-2);
+  color: var(--text);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.vn-periodo-header {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.vn-col-fixed {
+  position: sticky;
+  left: 0;
+  background: var(--surface-1);
+  z-index: 2;
+  text-align: left;
+  font-weight: 600;
+}
+
+.vn-col-dorsal {
+  left: 140px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.vn-table th.vn-col-fixed {
+  z-index: 3;
+}

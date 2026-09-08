@@ -22,6 +22,7 @@ import GestionUsuarios from '../pages/GestionUsuarios';
 import Wellness from '../pages/Wellness';
 import RegistroDeEventos from '../pages/RegistroDeEventos';
 import Champions from '../pages/Champions';
+import ValoracionesNutricionales from '../pages/ValoracionesNutricionales';
 
 type AppPageDefinition = {
   key: string;
@@ -48,6 +49,7 @@ export const APP_PAGES = [
   { key: 'Desarrollo Individual', component: DesarrolloIndividual, visibleTo: SHARED_ROLES },
   { key: 'Wellness', component: Wellness, visibleTo: SHARED_ROLES },
   { key: 'Champions', component: Champions, visibleTo: SHARED_ROLES },
+  { key: 'Valoraciones nutricionales', component: ValoracionesNutricionales, visibleTo: SHARED_ROLES },
   { key: 'Estadísticas', component: Estadisticas, visibleTo: SHARED_ROLES },
   { key: 'Resultados y Clasif.', component: ResultadosYClasif, visibleTo: SHARED_ROLES },
   { key: 'Repositorio ABP', component: RepositorioABP, visibleTo: SHARED_ROLES },
