@@ -149,6 +149,7 @@ function Estadisticas() {
   const [players, setPlayers] = useState<PlantillaJugador[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingActaId, setEditingActaId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -300,6 +301,7 @@ function Estadisticas() {
     setShowForm((prev) => {
       const next = !prev;
       if (next) {
+        setEditingActaId(null);
         setForm({
           fecha: '',
           rival: '',
@@ -312,6 +314,32 @@ function Estadisticas() {
       }
       return next;
     });
+  };
+
+  const editarActa = (acta: ActaPartido) => {
+    const lineasPorDorsal = new Map((acta.estadisticas_actas || []).map((linea) => [linea.dorsal, linea]));
+    setEditingActaId(acta.id);
+    setForm({
+      fecha: acta.fecha,
+      rival: acta.rival,
+      resultado: acta.resultado || '',
+      competicion: acta.competicion || '',
+      jugadores: players.map((player) => {
+        const linea = lineasPorDorsal.get(player.dorsal);
+        return {
+          playerId: player.id,
+          dorsal: player.dorsal,
+          nombre: linea?.nombre || player.nombre,
+          titular: linea?.titular || false,
+          goles: linea?.goles || 0,
+          tarjetas: linea?.tarjetas || 0,
+          minutos: linea?.minutos || 0,
+        };
+      }),
+    });
+    setParseMsg('');
+    setSaveError('');
+    setShowForm(true);
   };
 
   const handleJugadorChange = (idx: number, field: keyof ActaJugador, value: any) => {
@@ -382,11 +410,35 @@ function Estadisticas() {
     setSaving(true);
     setSaveError('');
 
-    const { data: acta, error: errorActa } = await supabase
-      .from('actas_partidos')
-      .insert({ fecha: form.fecha, rival: form.rival, resultado: form.resultado || null, competicion: form.competicion || null })
-      .select()
-      .single();
+    let acta: ActaPartido | null = null;
+    let errorActa = null;
+
+    if (editingActaId) {
+      const response = await supabase
+        .from('actas_partidos')
+        .update({ fecha: form.fecha, rival: form.rival, resultado: form.resultado || null, competicion: form.competicion || null })
+        .eq('id', editingActaId)
+        .select()
+        .single();
+      acta = response.data;
+      errorActa = response.error;
+      if (!errorActa) {
+        const { error: errorDelete } = await supabase.from('estadisticas_actas').delete().eq('acta_id', editingActaId);
+        if (errorDelete) {
+          setSaveError('No se pudieron actualizar las estadísticas: ' + errorDelete.message);
+          setSaving(false);
+          return;
+        }
+      }
+    } else {
+      const response = await supabase
+        .from('actas_partidos')
+        .insert({ fecha: form.fecha, rival: form.rival, resultado: form.resultado || null, competicion: form.competicion || null })
+        .select()
+        .single();
+      acta = response.data;
+      errorActa = response.error;
+    }
 
     if (errorActa || !acta) {
       const msg = errorActa?.message || 'No se pudo crear el partido. Comprueba que la fecha y el rival están rellenos.';
@@ -413,6 +465,7 @@ function Estadisticas() {
 
     await fetchActas();
     setShowForm(false);
+    setEditingActaId(null);
     setUrlActa('');
     setParseMsg('');
     setSaveError('');
@@ -481,7 +534,7 @@ function Estadisticas() {
           {/* Formulario de datos del partido — dentro de la misma tarjeta */}
           {showForm && !isReadOnly && (
             <div style={{ display: 'grid', gap: '16px', marginBottom: '24px', padding: '18px', borderRadius: '14px', border: '1px solid rgba(22,214,122,0.25)', background: 'rgba(22,214,122,0.05)' }}>
-              <p style={{ margin: 0, fontWeight: 700, color: '#16d67a', fontSize: '0.9rem' }}>Datos del partido <span style={{ color: '#f44242' }}>*</span><span style={{ color: '#7f96bc', fontWeight: 400 }}> — Fecha y Rival son obligatorios</span></p>
+              <p style={{ margin: 0, fontWeight: 700, color: '#16d67a', fontSize: '0.9rem' }}>{editingActaId ? 'Editar partido' : 'Datos del partido'} <span style={{ color: '#f44242' }}>*</span><span style={{ color: '#7f96bc', fontWeight: 400 }}> — Fecha y Rival son obligatorios</span></p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
                 {([['Fecha *', 'fecha', 'date'], ['Rival *', 'rival', 'text'], ['Resultado', 'resultado', 'text'], ['Competición', 'competicion', 'text']] as const).map(([label, field, type]) => (
                   <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#7f96bc' }}>
@@ -586,7 +639,7 @@ function Estadisticas() {
                   background: saving ? '#555' : '#16d67a', color: '#071119', fontSize: '1rem',
                 }}
               >
-                {saving ? 'Guardando...' : 'Guardar partido'}
+                {saving ? 'Guardando...' : editingActaId ? 'Guardar cambios' : 'Guardar partido'}
               </button>
               {(!form.fecha || !form.rival) && (
                 <span style={{ color: '#f4c842', fontSize: '0.85rem' }}>
@@ -699,7 +752,10 @@ function Estadisticas() {
               <div key={acta.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '10px', background: 'rgba(10,18,30,0.9)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <span style={{ color: '#fff', fontSize: '0.9rem' }}>{acta.fecha} · <strong>{acta.rival}</strong>{acta.resultado ? ` · ${acta.resultado}` : ''}</span>
                 {!isReadOnly && (
-                  <button onClick={() => handleEliminarActa(acta.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '1rem' }} title="Eliminar acta">✕</button>
+                  <>
+                    <button onClick={() => editarActa(acta)} style={{ background: 'none', border: 'none', color: '#90b8ff', cursor: 'pointer', fontSize: '0.9rem' }} title="Editar acta">Editar</button>
+                    <button onClick={() => handleEliminarActa(acta.id)} style={{ background: 'none', border: 'none', color: '#f44242', cursor: 'pointer', fontSize: '1rem' }} title="Eliminar acta">✕</button>
+                  </>
                 )}
               </div>
             ))}
