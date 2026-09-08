@@ -175,6 +175,16 @@ function addMonths(iso: string, n: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function monthWeekStarts(monthFrom: string, monthTo: string) {
+  const weeks: string[] = [];
+  let current = weekStart(monthFrom);
+  while (current <= monthTo) {
+    weeks.push(current);
+    current = addWeeks(current, 1);
+  }
+  return weeks;
+}
+
 function calendarEventDate(event: CalendarEvent) {
   const parts = event.date.split('/').map(Number);
   if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
@@ -1101,6 +1111,7 @@ function WellnessDashboard() {
   const { user } = useAuth();
   const jugadores = usePlantilla();
   const [refDate, setRefDate] = useState(todayISO());
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => weekStart(todayISO()));
   const [testType, setTestType] = useState<WellnessTestType>('pre_entrenamiento');
   const [responses, setResponses] = useState<WellnessResponse[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -1114,9 +1125,16 @@ function WellnessDashboard() {
   const weekTo = addDays(weekFrom, 6);
   const monthFrom = monthStart(refDate);
   const monthTo = addDays(addMonths(monthFrom, 1), -1);
+  const monthWeeks = useMemo(() => monthWeekStarts(monthFrom, monthTo), [monthFrom, monthTo]);
+  const selectedWeekTo = addDays(selectedWeekStart, 6);
 
   const weekLabel = `${isoToDisplay(weekFrom)} - ${isoToDisplay(weekTo)}`;
+  const selectedWeekLabel = `${isoToDisplay(selectedWeekStart)} - ${isoToDisplay(selectedWeekTo)}`;
   const monthLabel = new Date(refDate + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+  useEffect(() => {
+    setSelectedWeekStart(weekStart(refDate));
+  }, [refDate]);
 
   useEffect(() => {
     void syncAllLocalWellnessToSupabase();
@@ -1173,7 +1191,7 @@ function WellnessDashboard() {
   const weeklyRankingRows = useMemo(() => {
     const weeklyCounts = new Map<string, number>();
     responses
-      .filter(response => response.event_date >= weekFrom && response.event_date <= weekTo)
+      .filter(response => response.event_date >= selectedWeekStart && response.event_date <= selectedWeekTo)
       .forEach(response => {
         const key = String(response.player_id);
         weeklyCounts.set(key, (weeklyCounts.get(key) || 0) + 1);
@@ -1189,7 +1207,7 @@ function WellnessDashboard() {
         if (b.respuestas !== a.respuestas) return b.respuestas - a.respuestas;
         return a.nombre.localeCompare(b.nombre, 'es-ES');
       });
-  }, [responses, weekFrom, weekTo, jugadores]);
+  }, [responses, selectedWeekStart, selectedWeekTo, jugadores]);
 
   const monthResponses = responsesByType;
   const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
@@ -1453,10 +1471,24 @@ function WellnessDashboard() {
         <div className="card">
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <small>{weekLabel}</small>
+              <small>{selectedWeekLabel}</small>
               <h2>Clasificación de respuestas</h2>
             </div>
-            <span className="wellness-responses-count">{weeklyRankingRows.length} jugadores</span>
+            <label className="wellness-week-select-label">
+              <span>Semana</span>
+              <select
+                className="wellness-week-select"
+                value={selectedWeekStart}
+                onChange={event => setSelectedWeekStart(event.target.value)}
+                aria-label="Seleccionar semana de la clasificación"
+              >
+                {monthWeeks.map(week => (
+                  <option key={week} value={week}>
+                    {isoToDisplay(week)} - {isoToDisplay(addDays(week, 6))}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           {weeklyRankingRows.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
