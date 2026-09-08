@@ -196,6 +196,7 @@ function Estadisticas() {
         nombre: [p.first_name, p.last_name1, p.last_name2].filter(Boolean).join(' ') || 'Sin nombre',
         posicion: p.position || 'Sin posicion',
       }))
+      .filter((player) => player.dorsal !== 0 && player.nombre !== 'Sin nombre')
       .sort((a, b) => a.dorsal - b.dorsal);
 
     setPlayers(mapped);
