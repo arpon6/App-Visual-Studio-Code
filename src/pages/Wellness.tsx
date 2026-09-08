@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { usePlantilla } from '../lib/usePlantilla';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './Wellness.css';
 
 interface WellnessResponse {
@@ -27,6 +29,68 @@ const WELLNESS_DASHBOARD_TEST_OPTIONS: { type: WellnessTestType; label: string; 
   ...WELLNESS_TEST_OPTIONS,
   { type: 'partido', label: 'PARTIDO', shortLabel: 'PARTIDO' },
 ];
+
+function isValidWellnessPlayer(jugador: { nombre: string; dorsal: number | null }) {
+  return jugador.dorsal !== 0 && Boolean(jugador.nombre.trim());
+}
+
+async function exportWellnessSection(selector: string, fileName: string) {
+  const source = document.querySelector(selector) as HTMLElement | null;
+  if (!source) return;
+
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('[data-export-ignore]').forEach(node => node.remove());
+  const container = document.createElement('div');
+  container.className = 'wellness-export-container';
+  container.appendChild(clone);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, { backgroundColor: '#0c1622', scale: 2, useCORS: true, logging: false });
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margin = 8;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - margin * 2;
+    const contentHeight = pageHeight - margin * 2;
+    const imageHeight = (canvas.height * contentWidth) / canvas.width;
+    const image = canvas.toDataURL('image/png');
+    let heightLeft = imageHeight;
+    pdf.addImage(image, 'PNG', margin, margin, contentWidth, imageHeight, undefined, 'FAST');
+    heightLeft -= contentHeight;
+    while (heightLeft > 0) {
+      pdf.addPage();
+      pdf.addImage(image, 'PNG', margin, margin - (imageHeight - heightLeft), contentWidth, imageHeight, undefined, 'FAST');
+      heightLeft -= contentHeight;
+    }
+    pdf.save(`${fileName}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } finally {
+    container.remove();
+  }
+}
+
+function WellnessExportButton({ selector, fileName }: { selector: string; fileName: string }) {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportWellnessSection(selector, fileName);
+    } catch (error) {
+      console.error('Error al exportar apartado de Wellness:', error);
+      alert('No se pudo exportar el PDF. Inténtalo de nuevo.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <button type="button" className="wellness-export-button" onClick={() => void handleExport()} disabled={exporting} data-export-ignore>
+      {exporting ? 'GENERANDO...' : 'PDF'}
+    </button>
+  );
+}
 
 type WellnessStoredEntry = {
   animo?: number | null;
@@ -462,7 +526,7 @@ function WellnessWeeklyRanking({ playerId }: { playerId?: string }) {
     return () => { cancelled = true; };
   }, [currentWeekStart, currentWeekEnd]);
 
-  const rankingRows = useMemo(() => {
+   const rankingRows = useMemo(() => { 
     const weeklyCounts = new Map<string, number>();
     responses.forEach(response => {
       const key = String(response.player_id);
@@ -470,6 +534,7 @@ function WellnessWeeklyRanking({ playerId }: { playerId?: string }) {
     });
 
     return jugadores
+      .filter(isValidWellnessPlayer)
       .map(jugador => ({
         id: String(jugador.id),
         nombre: jugador.nombre,
@@ -488,7 +553,10 @@ function WellnessWeeklyRanking({ playerId }: { playerId?: string }) {
           <small>{weekLabel}</small>
           <h2>Clasificación semanal</h2>
         </div>
-        <span className="wellness-responses-count">Respuestas wellness</span>
+        <div className="wellness-section-actions">
+          <span className="wellness-responses-count">Respuestas wellness</span>
+          <WellnessExportButton selector=".wellness-weekly-ranking" fileName="wellness-clasificacion-semanal" />
+        </div>
       </div>
       {loading ? (
         <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>Cargando clasificación...</p>
@@ -1198,6 +1266,7 @@ function WellnessDashboard() {
       });
 
     return jugadores
+      .filter(isValidWellnessPlayer)
       .map(jugador => ({
         id: String(jugador.id),
         nombre: jugador.nombre,
@@ -1246,6 +1315,7 @@ function WellnessDashboard() {
     });
 
     return jugadores
+      .filter(isValidWellnessPlayer)
       .map(jugador => {
         const stats = grouped.get(String(jugador.id));
         return {
@@ -1384,13 +1454,16 @@ function WellnessDashboard() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card wellness-export-section" id="wellness-detalle-dia">
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <small>Detalle editable por fecha</small>
             <h2>{testTypeLabel(testType)} del día seleccionado</h2>
           </div>
-          <span className="wellness-responses-count">{dayResponseRows.length} respuestas</span>
+          <div className="wellness-section-actions">
+            <span className="wellness-responses-count">{dayResponseRows.length} respuestas</span>
+            <WellnessExportButton selector="#wellness-detalle-dia" fileName="wellness-detalle-dia" />
+          </div>
         </div>
         {dayResponseRows.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay respuestas registradas para este día.</p>
@@ -1468,7 +1541,7 @@ function WellnessDashboard() {
       </div>
 
       {canSeeWeeklyRanking && (
-        <div className="card">
+        <div className="card wellness-export-section" id="wellness-clasificacion-semana">
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <small>{selectedWeekLabel}</small>
@@ -1489,6 +1562,7 @@ function WellnessDashboard() {
                 ))}
               </select>
             </label>
+            <WellnessExportButton selector="#wellness-clasificacion-semana" fileName="wellness-clasificacion-semana" />
           </div>
           {weeklyRankingRows.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay jugadores en plantilla.</p>
@@ -1523,13 +1597,16 @@ function WellnessDashboard() {
       )}
 
       {canSeePlayerAverages && (
-        <div className="card">
+        <div className="card wellness-export-section" id="wellness-promedios-mes">
           <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <small>{monthLabel}</small>
               <h2>Promedios por jugador</h2>
             </div>
-            <span className="wellness-responses-count">{playerAverageRows.length} jugadores</span>
+            <div className="wellness-section-actions">
+              <span className="wellness-responses-count">{playerAverageRows.length} jugadores</span>
+              <WellnessExportButton selector="#wellness-promedios-mes" fileName="wellness-promedios-mes" />
+            </div>
           </div>
           {playerAverageRows.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>No hay datos de wellness para este periodo.</p>

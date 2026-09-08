@@ -5,6 +5,7 @@ export interface PlantillaJugador {
   id: string;
   nombre: string;
   posicion: string;
+  dorsal: number | null;
 }
 
 export function usePlantilla() {
@@ -13,13 +14,14 @@ export function usePlantilla() {
   useEffect(() => {
     supabase
       .from('plantilla')
-      .select('id, first_name, last_name1, position')
+      .select('id, number, first_name, last_name1, position')
       .then(({ data }) => {
         if (data) {
           setJugadores(data.map(p => ({
             id: String(p.id),
             nombre: [p.first_name, p.last_name1].filter(Boolean).join(' '),
             posicion: p.position || '',
+            dorsal: p.number == null ? null : Number(p.number),
           })));
         }
       });
