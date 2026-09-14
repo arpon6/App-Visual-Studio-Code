@@ -853,10 +853,9 @@ function Calendario() {
                   <option value="Por determinar">Por determinar</option>
                   {Array.from({ length: 24 }).flatMap((_, i) => {
                     const hour = String(i).padStart(2, '0');
-                    return [
-                      <option key={`${hour}:00`} value={`${hour}:00`}>{hour}:00</option>,
-                      <option key={`${hour}:30`} value={`${hour}:30`}>{hour}:30</option>,
-                    ];
+                    return [':00', ':15', ':30', ':45'].map(minutes => (
+                      <option key={`${hour}${minutes}`} value={`${hour}${minutes}`}>{hour}{minutes}</option>
+                    ));
                   })}
                 </select>
               </div>

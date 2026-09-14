@@ -9,8 +9,8 @@
 - Los eventos de cumpleaños no se pueden editar ni eliminar (son de solo lectura)
 
 ### 2. **Desplegable de Horas**
-- Se agregó un campo de hora con todas las horas posibles del día (00:00 a 23:30)
-- El formato es en intervalos de 30 minutos para mayor flexibilidad
+- Se agregó un campo de hora con todas las horas posibles del día (00:00 a 23:45)
+- El formato es en intervalos de 15 minutos para mayor flexibilidad
 - Hora por defecto: 10:00
 - El campo de hora aparece junto al campo de lugar en una fila lado a lado
 
@@ -21,8 +21,7 @@
   - Otro (permite especificar tipo personalizado)
   
 - **Lugar**: Campo de texto para especificar dónde se realizará el evento
-  
-- **Hora**: Desplegable con todas las horas del día (intervalos de 30 minutos)
+- **Hora**: Desplegable con todas las horas del día (intervalos de 15 minutos)
   
 - **Descripción**: Campo de texto múltiple para notas adicionales
   
