@@ -106,6 +106,8 @@ type WellnessStoredPayload = {
   pre?: WellnessStoredEntry;
   post?: WellnessStoredEntry;
   partido?: WellnessStoredEntry;
+  partidoPre?: WellnessStoredEntry;
+  partidoPost?: WellnessStoredEntry;
 };
 
 function getSupabaseProjectRef() {
@@ -143,124 +145,81 @@ function parseWellnessStoredPayload(response: WellnessResponse | null): Wellness
   return parseWellnessPayloadText(response.molestias?.trim());
 }
 
-function buildWellnessStoredPayload(current: WellnessStoredPayload, type: WellnessTestType, values: { animo?: number | null; fisico?: number | null; rpe?: number | null; comentario?: string | null; estadoInicial?: number | null; estadoFinal?: number | null }) {
-  const next: WellnessStoredPayload = { ...current };
-  const entry: WellnessStoredEntry = {
-    ...values,
-    saved_at: new Date().toISOString(),
-  };
-
-  if (type === 'pre_entrenamiento') {
-    next.pre = entry;
-  } else if (type === 'post_entrenamiento') {
-    next.post = entry;
-  } else {
-    next.partido = entry;
-  }
-
-  return next;
-}
-
-function getWellnessDisplayState(payload: WellnessStoredPayload, type: WellnessTestType) {
-  const entry = type === 'pre_entrenamiento' ? payload.pre : type === 'post_entrenamiento' ? payload.post : payload.partido;
+function normalizeMatchPayload(payload: WellnessStoredPayload): WellnessStoredPayload {
+  const legacy = payload.partido;
   return {
-    exists: Boolean(entry),
-    animo: payload.pre?.animo ?? 3,
-    fisico: payload.pre?.fisico ?? 3,
-    rpe: payload.post?.rpe ?? 3,
-    estadoInicial: payload.partido?.estadoInicial ?? 3,
-    estadoFinal: payload.partido?.estadoFinal ?? 3,
-    comentario: entry?.comentario || '',
+    ...payload,
+    partido: undefined,
+    partidoPre: payload.partidoPre || (legacy ? { fisico: legacy.estadoInicial, comentario: legacy.comentario } : undefined),
+    partidoPost: payload.partidoPost || (legacy ? { fisico: legacy.estadoFinal, comentario: legacy.comentario } : undefined),
   };
 }
+/*
+        <div className="wellness-match-forms">
+          <div className="card wellness-form-card">
+            <div className="wellness-form-title"><h2>PREVIO AL PARTIDO</h2><div className="wellness-icon">PARTIDO</div></div>
+            <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+            {matchPreLoadingExisting ? <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p> : matchPreAlreadySent ? <p className="wellness-response-hint success">Ya has enviado tu respuesta previa. Puedes editarla o eliminarla.</p> : null}
+            {!matchPreOpen && <p className="wellness-response-hint">Este formulario se cierra a la hora de inicio del partido.</p>}
+            <div className="wellness-slider-group"><div className="wellness-slider-label">ESTADO FÍSICO PREVIO AL PARTIDO <span className={`wellness-slider-value val-fisico${matchPreFisico <= 3 ? ' wellness-low-value' : ''}`}>{matchPreFisico}</span></div><WellnessSlider value={matchPreFisico} onChange={setMatchPreFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!matchPreOpen || matchPreLoadingExisting} /></div>
+            <div className="wellness-slider-group"><div className="wellness-slider-label">OBSERVACIONES / ACLARACIONES</div><textarea className="wellness-textarea" placeholder="Escribe cualquier observación previa al partido..." value={matchPreComentario} onChange={e => setMatchPreComentario(e.target.value)} disabled={!matchPreOpen || matchPreLoadingExisting} /></div>
+            {matchPreStatusMsg && <p style={{ color: matchPreStatusType === 'error' ? '#ff7b7b' : '#9af5c3', fontSize: 13, marginBottom: 8 }}>{matchPreStatusMsg}</p>}
+            <div className="wellness-actions"><button className="wellness-submit" onClick={() => void handleMatchPreSubmit()} disabled={matchPreSaving || matchPreLoadingExisting || !matchPreOpen}>{matchPreSaving ? 'GUARDANDO...' : matchPreAlreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR PREVIO'}</button>{matchPreAlreadySent && <button className="wellness-delete" onClick={() => void handleMatchDelete('pre')} disabled={matchPreSaving || matchPreLoadingExisting || !matchPreOpen}>ELIMINAR PREVIO</button>}</div>
+          </div>
+          <div className="card wellness-form-card">
+            <div className="wellness-form-title"><h2>POSTERIOR AL PARTIDO</h2><div className="wellness-icon">PARTIDO</div></div>
+            <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+            {matchPostLoadingExisting ? <p className="wellness-response-hint">Cargando tu respuesta de hoy...</p> : matchPostAlreadySent ? <p className="wellness-response-hint success">Ya has enviado tu respuesta posterior. Puedes editarla o eliminarla.</p> : null}
+            {!matchPostOpen && <p className="wellness-response-hint">Se abrirá a la hora de inicio y se cerrará a las 23:59.</p>}
+            <div className="wellness-slider-group"><div className="wellness-slider-label">ESTADO FÍSICO POSTERIOR AL PARTIDO <span className={`wellness-slider-value val-fisico${matchPostFisico <= 3 ? ' wellness-low-value' : ''}`}>{matchPostFisico}</span></div><WellnessSlider value={matchPostFisico} onChange={setMatchPostFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!matchPostOpen || matchPostLoadingExisting} /></div>
+            <div className="wellness-slider-group"><div className="wellness-slider-label">OBSERVACIONES / ACLARACIONES</div><textarea className="wellness-textarea" placeholder="Escribe cualquier observación posterior al partido..." value={matchPostComentario} onChange={e => setMatchPostComentario(e.target.value)} disabled={!matchPostOpen || matchPostLoadingExisting} /></div>
+            {matchPostStatusMsg && <p style={{ color: matchPostStatusType === 'error' ? '#ff7b7b' : '#9af5c3', fontSize: 13, marginBottom: 8 }}>{matchPostStatusMsg}</p>}
+            <div className="wellness-actions"><button className="wellness-submit" onClick={() => void handleMatchPostSubmit()} disabled={matchPostSaving || matchPostLoadingExisting || !matchPostOpen}>{matchPostSaving ? 'GUARDANDO...' : matchPostAlreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR POSTERIOR'}</button>{matchPostAlreadySent && <button className="wellness-delete" onClick={() => void handleMatchDelete('post')} disabled={matchPostSaving || matchPostLoadingExisting || !matchPostOpen}>ELIMINAR POSTERIOR</button>}</div>
+          </div>
+        </div>
+      */
 
-function serializeWellnessPayload(payload: WellnessStoredPayload) {
-  return JSON.stringify(payload);
-}
+      function buildWellnessStoredPayload(current: WellnessStoredPayload, type: WellnessTestType, values: { animo?: number | null; fisico?: number | null; rpe?: number | null; comentario?: string | null; estadoInicial?: number | null; estadoFinal?: number | null }) {
+        const next = { ...current };
+        const entry: WellnessStoredEntry = { ...values, saved_at: new Date().toISOString() };
+        if (type === 'pre_entrenamiento') next.pre = entry;
+        else if (type === 'post_entrenamiento') next.post = entry;
+        else next.partido = entry;
+        return next;
+      }
 
-function hasStoredEntryForType(response: WellnessResponse, type: WellnessTestType) {
-  const payload = parseWellnessStoredPayload(response);
-  if (type === 'pre_entrenamiento') return Boolean(payload.pre);
-  if (type === 'post_entrenamiento') return Boolean(payload.post);
-  return Boolean(payload.partido);
-}
+      function getWellnessDisplayState(payload: WellnessStoredPayload, type: WellnessTestType) {
+        const entry = type === 'pre_entrenamiento' ? payload.pre : type === 'post_entrenamiento' ? payload.post : payload.partido;
+        const pre = payload.partidoPre || (payload.partido ? { fisico: payload.partido.estadoInicial, comentario: payload.partido.comentario } : undefined);
+        const post = payload.partidoPost || (payload.partido ? { fisico: payload.partido.estadoFinal, comentario: payload.partido.comentario } : undefined);
+        return { exists: Boolean(entry), animo: payload.pre?.animo ?? 3, fisico: payload.pre?.fisico ?? 3, rpe: payload.post?.rpe ?? 3, estadoInicial: pre?.fisico ?? 3, estadoFinal: post?.fisico ?? 3, comentario: entry?.comentario || '', comentarioPartidoPre: pre?.comentario || '', comentarioPartidoPost: post?.comentario || '' };
+      }
 
-interface WellnessPoint {
-  label: string;
-  rpe: number;
-  animo: number;
-  fisico: number;
-}
+      function serializeWellnessPayload(payload: WellnessStoredPayload) { return JSON.stringify(payload); }
+      function hasStoredEntryForType(response: WellnessResponse, type: WellnessTestType) {
+        const payload = parseWellnessStoredPayload(response);
+        if (type === 'pre_entrenamiento') return Boolean(payload.pre);
+        if (type === 'post_entrenamiento') return Boolean(payload.post);
+        return Boolean(payload.partidoPre || payload.partidoPost || payload.partido);
+      }
 
-interface CalendarEvent {
-  id: string;
-  date: string; // DD/MM/YYYY
-  type: string;
-  time?: string | null;
-}
-
-function parseLocalDate(iso: string) {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function isoToDisplay(iso: string) {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
-}
-
-function weekStart(iso: string) {
-  const d = parseLocalDate(iso);
-  const day = d.getDay() === 0 ? 6 : d.getDay() - 1;
-  d.setDate(d.getDate() - day);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function monthStart(iso: string) {
-  const [y, m] = iso.split('-');
-  return `${y}-${String(Number(m)).padStart(2, '0')}-01`;
-}
+interface WellnessPoint { label: string; rpe: number; animo: number; fisico: number; }
+interface CalendarEvent { id: string; date: string; type: string; time?: string | null; }
+function parseLocalDate(iso: string) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function isoToDisplay(iso: string) { const [y, m, d] = iso.split('-').map(Number); return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`; }
+function weekStart(iso: string) { const d = parseLocalDate(iso); const day = d.getDay() === 0 ? 6 : d.getDay() - 1; d.setDate(d.getDate() - day); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function monthStart(iso: string) { const [y, m] = iso.split('-'); return `${y}-${String(Number(m)).padStart(2, '0')}-01`; }
+function addWeeks(iso: string, n: number) { return addDays(iso, n * 7); }
+function addMonths(iso: string, n: number) { const d = parseLocalDate(iso); d.setMonth(d.getMonth() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function monthWeekStarts(monthFrom: string, monthTo: string) { const weeks: string[] = []; let current = weekStart(monthFrom); while (current <= monthTo) { weeks.push(current); current = addWeeks(current, 1); } return weeks; }
+function calendarEventDate(event: CalendarEvent) { const parts = event.date.split('/').map(Number); if (parts.length !== 3 || parts.some(Number.isNaN)) return null; const [day, month, year] = parts; const [hour = 23, minute = 59] = String(event.time || '23:59').split(':').map(Number); const date = new Date(year, month - 1, day, hour, minute); return Number.isNaN(date.getTime()) ? null : date; }
+function calendarEventDayStart(event: CalendarEvent) { const date = calendarEventDate(event); return date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()) : null; }
 
 function addDays(iso: string, n: number) {
   const d = parseLocalDate(iso);
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function addWeeks(iso: string, n: number) { return addDays(iso, n * 7); }
-function addMonths(iso: string, n: number) {
-  const d = parseLocalDate(iso);
-  d.setMonth(d.getMonth() + n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function monthWeekStarts(monthFrom: string, monthTo: string) {
-  const weeks: string[] = [];
-  let current = weekStart(monthFrom);
-  while (current <= monthTo) {
-    weeks.push(current);
-    current = addWeeks(current, 1);
-  }
-  return weeks;
-}
-
-function calendarEventDate(event: CalendarEvent) {
-  const parts = event.date.split('/').map(Number);
-  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
-  const [day, month, year] = parts;
-  const [hour = 23, minute = 59] = String(event.time || '23:59').split(':').map(Number);
-  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function calendarEventDayStart(event: CalendarEvent) {
-  const eventDate = calendarEventDate(event);
-  return eventDate ? new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()) : null;
 }
 
 const LOCAL_WELLNESS_STORAGE_KEY = 'wellness_local_responses';
@@ -443,7 +402,6 @@ function GroupedWellnessChart({ data }: { data: WellnessPoint[] }) {
   const maxVal = 10;
   const yScale = (v: number) => PAD.top + (H - PAD.top - PAD.bottom) * (1 - v / maxVal);
   const colors = ['#f5c518', '#00e676', '#4fc3f7'];
-
   return (
     <div className="wellness-chart-wrap">
       <svg className="wellness-chart-svg" width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`}>
@@ -611,14 +569,21 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const [statusMsg, setStatusMsg] = useState('');
   const [statusType, setStatusType] = useState<'error' | 'success'>('error');
   const [loadingExisting, setLoadingExisting] = useState(false);
-  const [matchInicio, setMatchInicio] = useState(3);
-  const [matchFin, setMatchFin] = useState(3);
-  const [matchComentario, setMatchComentario] = useState('');
-  const [matchSaving, setMatchSaving] = useState(false);
-  const [matchAlreadySent, setMatchAlreadySent] = useState(false);
-  const [matchStatusMsg, setMatchStatusMsg] = useState('');
-  const [matchStatusType, setMatchStatusType] = useState<'error' | 'success'>('error');
-  const [matchLoadingExisting, setMatchLoadingExisting] = useState(false);
+  const [matchPayload, setMatchPayload] = useState<WellnessStoredPayload>({});
+  const [matchPreFisico, setMatchPreFisico] = useState(3);
+  const [matchPreComentario, setMatchPreComentario] = useState('');
+  const [matchPreSaving, setMatchPreSaving] = useState(false);
+  const [matchPreAlreadySent, setMatchPreAlreadySent] = useState(false);
+  const [matchPreStatusMsg, setMatchPreStatusMsg] = useState('');
+  const [matchPreStatusType, setMatchPreStatusType] = useState<'error' | 'success'>('error');
+  const [matchPreLoadingExisting, setMatchPreLoadingExisting] = useState(false);
+  const [matchPostFisico, setMatchPostFisico] = useState(3);
+  const [matchPostComentario, setMatchPostComentario] = useState('');
+  const [matchPostSaving, setMatchPostSaving] = useState(false);
+  const [matchPostAlreadySent, setMatchPostAlreadySent] = useState(false);
+  const [matchPostStatusMsg, setMatchPostStatusMsg] = useState('');
+  const [matchPostStatusType, setMatchPostStatusType] = useState<'error' | 'success'>('error');
+  const [matchPostLoadingExisting, setMatchPostLoadingExisting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -688,9 +653,15 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   const currentTrainingStart = todayEvents.find(event => event.type === 'entrenamiento')
     ? calendarEventDate(todayEvents.find(event => event.type === 'entrenamiento') as CalendarEvent)
     : null;
+  const currentMatchStart = todayEvents.find(event => event.type === 'partido')
+    ? calendarEventDate(todayEvents.find(event => event.type === 'partido') as CalendarEvent)
+    : null;
+  const matchDayEnd = new Date(`${today}T23:59:59.999`);
   const preOpen = Boolean(currentTrainingStart && now < currentTrainingStart);
   const postOpen = !nextActivityStart || now < nextActivityStart;
   const selectedTestOpen = testType === 'pre_entrenamiento' ? preOpen : postOpen;
+  const matchPreOpen = Boolean(currentMatchStart && now < currentMatchStart);
+  const matchPostOpen = Boolean(currentMatchStart && now >= currentMatchStart && now <= matchDayEnd);
 
   useEffect(() => {
     void syncAllLocalWellnessToSupabase();
@@ -774,16 +745,21 @@ function WellnessJugador({ playerId }: { playerId: string }) {
 
   useEffect(() => {
     if (!hasMatchToday || !playerId) {
-      setMatchAlreadySent(false);
-      setMatchInicio(3);
-      setMatchFin(3);
-      setMatchComentario('');
+      setMatchPayload({});
+      setMatchPreAlreadySent(false);
+      setMatchPreFisico(3);
+      setMatchPreComentario('');
+      setMatchPostAlreadySent(false);
+      setMatchPostFisico(3);
+      setMatchPostComentario('');
       return;
     }
 
     const loadExisting = async () => {
-      setMatchLoadingExisting(true);
-      setMatchStatusMsg('');
+      setMatchPreLoadingExisting(true);
+      setMatchPostLoadingExisting(true);
+      setMatchPreStatusMsg('');
+      setMatchPostStatusMsg('');
       try {
         const { data, error } = await supabase
           .from('wellness_responses')
@@ -797,49 +773,69 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         if (!error && data && data.length > 0) {
           const existing = data[0] as WellnessResponse;
           const payload = parseWellnessStoredPayload(existing);
-          const entry = payload.partido;
-          if (entry) {
-            setMatchInicio(entry.estadoInicial ?? 3);
-            setMatchFin(entry.estadoFinal ?? 3);
-            setMatchComentario(entry.comentario?.trim() || '');
-            setMatchAlreadySent(true);
-            return;
-          }
+          const normalizedPayload = normalizeMatchPayload(payload);
+          setMatchPayload(normalizedPayload);
+          const preEntry = normalizedPayload.partidoPre;
+          const postEntry = normalizedPayload.partidoPost;
+          setMatchPreFisico(preEntry?.fisico ?? 3);
+          setMatchPreComentario(preEntry?.comentario?.trim() || '');
+          setMatchPreAlreadySent(Boolean(preEntry));
+          setMatchPostFisico(postEntry?.fisico ?? 3);
+          setMatchPostComentario(postEntry?.comentario?.trim() || '');
+          setMatchPostAlreadySent(Boolean(postEntry));
+          return;
         }
 
         const local = readLocalWellnessRecord(playerId, today, 'partido');
         if (local) {
           const payload = parseWellnessPayloadText(local.molestias?.trim());
-          const partidoEntry = payload.partido;
-          setMatchInicio(partidoEntry?.estadoInicial ?? 3);
-          setMatchFin(partidoEntry?.estadoFinal ?? 3);
-          setMatchComentario(partidoEntry?.comentario?.trim() || '');
-          setMatchAlreadySent(true);
+          const normalizedPayload = normalizeMatchPayload(payload);
+          setMatchPayload(normalizedPayload);
+          const preEntry = normalizedPayload.partidoPre;
+          const postEntry = normalizedPayload.partidoPost;
+          setMatchPreFisico(preEntry?.fisico ?? 3);
+          setMatchPreComentario(preEntry?.comentario?.trim() || '');
+          setMatchPreAlreadySent(Boolean(preEntry));
+          setMatchPostFisico(postEntry?.fisico ?? 3);
+          setMatchPostComentario(postEntry?.comentario?.trim() || '');
+          setMatchPostAlreadySent(Boolean(postEntry));
           return;
         }
 
-        setMatchAlreadySent(false);
-        setMatchInicio(3);
-        setMatchFin(3);
-        setMatchComentario('');
+        setMatchPayload({});
+        setMatchPreAlreadySent(false);
+        setMatchPreFisico(3);
+        setMatchPreComentario('');
+        setMatchPostAlreadySent(false);
+        setMatchPostFisico(3);
+        setMatchPostComentario('');
       } catch (err) {
         console.error('Error cargando wellness de partido:', err);
         const local = readLocalWellnessRecord(playerId, today, 'partido');
         if (local) {
           const payload = parseWellnessPayloadText(local.molestias?.trim());
-          const partidoEntry = payload.partido;
-          setMatchInicio(partidoEntry?.estadoInicial ?? 3);
-          setMatchFin(partidoEntry?.estadoFinal ?? 3);
-          setMatchComentario(partidoEntry?.comentario?.trim() || '');
-          setMatchAlreadySent(true);
+          const normalizedPayload = normalizeMatchPayload(payload);
+          setMatchPayload(normalizedPayload);
+          const preEntry = normalizedPayload.partidoPre;
+          const postEntry = normalizedPayload.partidoPost;
+          setMatchPreFisico(preEntry?.fisico ?? 3);
+          setMatchPreComentario(preEntry?.comentario?.trim() || '');
+          setMatchPreAlreadySent(Boolean(preEntry));
+          setMatchPostFisico(postEntry?.fisico ?? 3);
+          setMatchPostComentario(postEntry?.comentario?.trim() || '');
+          setMatchPostAlreadySent(Boolean(postEntry));
         } else {
-          setMatchAlreadySent(false);
-          setMatchInicio(3);
-          setMatchFin(3);
-          setMatchComentario('');
+          setMatchPayload({});
+          setMatchPreAlreadySent(false);
+          setMatchPreFisico(3);
+          setMatchPreComentario('');
+          setMatchPostAlreadySent(false);
+          setMatchPostFisico(3);
+          setMatchPostComentario('');
         }
       } finally {
-        setMatchLoadingExisting(false);
+        setMatchPreLoadingExisting(false);
+        setMatchPostLoadingExisting(false);
       }
     };
 
@@ -907,11 +903,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
     setSaving(false);
   };
 
-  const handleMatchSubmit = async () => {
-    if (!hasMatchToday || !playerId) return;
-    setMatchSaving(true);
-    setMatchStatusMsg('');
-
+  const persistMatchPayload = async (payload: WellnessStoredPayload) => {
     const localRecord: LocalWellnessRecord = {
       player_id: playerId,
       event_date: today,
@@ -919,47 +911,78 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       rpe: null,
       animo: null,
       fisico: null,
-      molestias: serializeWellnessPayload(buildWellnessStoredPayload(parseWellnessPayloadText(null), 'partido', {
-        estadoInicial: matchInicio,
-        estadoFinal: matchFin,
-        comentario: matchComentario.trim() || null,
-      })),
+      molestias: serializeWellnessPayload(payload),
       updated_at: new Date().toISOString(),
     };
-
     writeLocalWellnessResponse(localRecord);
-    const syncResult = await syncWellnessRecordToSupabase(localRecord);
-
-    setMatchAlreadySent(true);
-    if (syncResult.ok) {
-      setMatchStatusType('success');
-      setMatchStatusMsg('Formulario de partido guardado y sincronizado.');
-    } else {
-      setMatchStatusType('error');
-      setMatchStatusMsg(`Guardado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
-    }
-    setMatchSaving(false);
+    return syncWellnessRecordToSupabase(localRecord);
   };
 
-  const handleMatchDelete = async () => {
-    if (!hasMatchToday || !playerId) return;
-    setMatchSaving(true);
-    setMatchStatusMsg('');
+  const handleMatchPreSubmit = async () => {
+    if (!hasMatchToday || !playerId || !matchPreOpen) return;
+    setMatchPreSaving(true);
+    setMatchPreStatusMsg('');
+    const nextPayload = {
+      ...normalizeMatchPayload(matchPayload),
+      partidoPre: { fisico: matchPreFisico, comentario: matchPreComentario.trim() || null, saved_at: new Date().toISOString() },
+    };
+    const syncResult = await persistMatchPayload(nextPayload);
+    setMatchPayload(nextPayload);
+    setMatchPreAlreadySent(true);
+    setMatchPreStatusType(syncResult.ok ? 'success' : 'error');
+    setMatchPreStatusMsg(syncResult.ok ? 'Formulario previo al partido guardado y sincronizado.' : `Guardado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    setMatchPreSaving(false);
+  };
 
-    deleteLocalWellnessResponse(playerId, today, 'partido');
-    const syncResult = await deleteWellnessRecordFromSupabase(playerId, today, 'partido');
-    setMatchAlreadySent(false);
-    setMatchInicio(3);
-    setMatchFin(3);
-    setMatchComentario('');
-    if (syncResult.ok) {
-      setMatchStatusType('success');
-      setMatchStatusMsg('Formulario de partido eliminado y sincronizado.');
+  const handleMatchPostSubmit = async () => {
+    if (!hasMatchToday || !playerId || !matchPostOpen) return;
+    setMatchPostSaving(true);
+    setMatchPostStatusMsg('');
+    const nextPayload = {
+      ...normalizeMatchPayload(matchPayload),
+      partidoPost: { fisico: matchPostFisico, comentario: matchPostComentario.trim() || null, saved_at: new Date().toISOString() },
+    };
+    const syncResult = await persistMatchPayload(nextPayload);
+    setMatchPayload(nextPayload);
+    setMatchPostAlreadySent(true);
+    setMatchPostStatusType(syncResult.ok ? 'success' : 'error');
+    setMatchPostStatusMsg(syncResult.ok ? 'Formulario posterior al partido guardado y sincronizado.' : `Guardado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+    setMatchPostSaving(false);
+  };
+
+  const handleMatchDelete = async (kind: 'pre' | 'post') => {
+    const isPre = kind === 'pre';
+    const isOpen = isPre ? matchPreOpen : matchPostOpen;
+    if (!hasMatchToday || !playerId || !isOpen) return;
+    if (isPre) setMatchPreSaving(true); else setMatchPostSaving(true);
+    const nextPayload = { ...normalizeMatchPayload(matchPayload) };
+    if (isPre) {
+      delete nextPayload.partidoPre;
+      setMatchPreFisico(3);
+      setMatchPreComentario('');
+      setMatchPreAlreadySent(false);
     } else {
-      setMatchStatusType('error');
-      setMatchStatusMsg(`Eliminado local. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`);
+      delete nextPayload.partidoPost;
+      setMatchPostFisico(3);
+      setMatchPostComentario('');
+      setMatchPostAlreadySent(false);
     }
-    setMatchSaving(false);
+    const hasOtherEntry = Boolean(nextPayload.partidoPre || nextPayload.partidoPost);
+    const syncResult = hasOtherEntry
+      ? await persistMatchPayload(nextPayload)
+      : await deleteWellnessRecordFromSupabase(playerId, today, 'partido');
+    if (!hasOtherEntry) deleteLocalWellnessResponse(playerId, today, 'partido');
+    setMatchPayload(nextPayload);
+    const message = syncResult.ok ? 'Respuesta eliminada y sincronizada.' : `Eliminada localmente. Sin sincronizar: ${syncResult.errorMessage || 'revisa conexión o permisos de Supabase'}.`;
+    if (isPre) {
+      setMatchPreStatusType(syncResult.ok ? 'success' : 'error');
+      setMatchPreStatusMsg(message);
+      setMatchPreSaving(false);
+    } else {
+      setMatchPostStatusType(syncResult.ok ? 'success' : 'error');
+      setMatchPostStatusMsg(message);
+      setMatchPostSaving(false);
+    }
   };
 
   const dayName = new Date(today + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -1082,6 +1105,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
       </div>
       )}
 
+      {/*
       {hasMatchToday && (
         <div className="card wellness-form-card" style={{ marginTop: 16 }}>
           <div className="wellness-form-title">
@@ -1148,6 +1172,30 @@ function WellnessJugador({ playerId }: { playerId: string }) {
                 ELIMINAR PARTIDO
               </button>
             )}
+          </div>
+        </div>
+      )}
+      */}
+
+      {hasMatchToday && (
+        <div className="wellness-match-forms">
+          <div className="card wellness-form-card">
+            <h2>PREVIO AL PARTIDO</h2>
+            <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+            {!matchPreOpen && <p className="wellness-response-hint">Este formulario se cierra a la hora de inicio del partido.</p>}
+            <div className="wellness-slider-group"><div className="wellness-slider-label">ESTADO FÍSICO PREVIO AL PARTIDO <span className={`wellness-slider-value val-fisico${matchPreFisico <= 3 ? ' wellness-low-value' : ''}`}>{matchPreFisico}</span></div><WellnessSlider value={matchPreFisico} onChange={setMatchPreFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!matchPreOpen || matchPreLoadingExisting} /></div>
+            <div className="wellness-slider-group"><div className="wellness-slider-label">OBSERVACIONES / ACLARACIONES</div><textarea className="wellness-textarea" value={matchPreComentario} onChange={e => setMatchPreComentario(e.target.value)} disabled={!matchPreOpen || matchPreLoadingExisting} /></div>
+            {matchPreStatusMsg && <p className="wellness-response-hint">{matchPreStatusMsg}</p>}
+            <button className="wellness-submit" onClick={() => void handleMatchPreSubmit()} disabled={matchPreSaving || matchPreLoadingExisting || !matchPreOpen}>{matchPreAlreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR PREVIO'}</button>
+          </div>
+          <div className="card wellness-form-card">
+            <h2>POSTERIOR AL PARTIDO</h2>
+            <p className="wellness-form-subtitle">{dayName.toUpperCase()}</p>
+            {!matchPostOpen && <p className="wellness-response-hint">Se abrirá a la hora de inicio y se cerrará a las 23:59.</p>}
+            <div className="wellness-slider-group"><div className="wellness-slider-label">ESTADO FÍSICO POSTERIOR AL PARTIDO <span className={`wellness-slider-value val-fisico${matchPostFisico <= 3 ? ' wellness-low-value' : ''}`}>{matchPostFisico}</span></div><WellnessSlider value={matchPostFisico} onChange={setMatchPostFisico} min={1} max={5} colorClass="fisico" labelMin="BAJO" labelMax="ÓPTIMO" disabled={!matchPostOpen || matchPostLoadingExisting} /></div>
+            <div className="wellness-slider-group"><div className="wellness-slider-label">OBSERVACIONES / ACLARACIONES</div><textarea className="wellness-textarea" value={matchPostComentario} onChange={e => setMatchPostComentario(e.target.value)} disabled={!matchPostOpen || matchPostLoadingExisting} /></div>
+            {matchPostStatusMsg && <p className="wellness-response-hint">{matchPostStatusMsg}</p>}
+            <button className="wellness-submit" onClick={() => void handleMatchPostSubmit()} disabled={matchPostSaving || matchPostLoadingExisting || !matchPostOpen}>{matchPostAlreadySent ? 'GUARDAR CAMBIOS' : 'ENVIAR POSTERIOR'}</button>
           </div>
         </div>
       )}
@@ -1484,7 +1532,8 @@ function WellnessDashboard() {
                     <>
                       <th>ESTADO INICIAL</th>
                       <th>ESTADO FINAL</th>
-                      <th>OBSERVACIÓN / ACLARACIÓN</th>
+                      <th>OBSERVACIÓN PREVIA</th>
+                      <th>OBSERVACIÓN POSTERIOR</th>
                     </>
                   ) : (
                     <>
@@ -1514,8 +1563,9 @@ function WellnessDashboard() {
                     ) : testType === 'partido' ? (
                       <>
                         <td><span className={`wellness-dot dot-fisico${response.displayState.estadoInicial != null && response.displayState.estadoInicial <= 3 ? ' wellness-low' : ''}`}>{response.displayState.estadoInicial ?? '-'}</span></td>
-                        <td><span className="wellness-dot dot-animo">{response.displayState.estadoFinal ?? '-'}</span></td>
-                        <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin observación'}</span></td>
+                        <td><span className={`wellness-dot dot-fisico${response.displayState.estadoFinal != null && response.displayState.estadoFinal <= 3 ? ' wellness-low' : ''}`}>{response.displayState.estadoFinal ?? '-'}</span></td>
+                        <td><span className="wellness-molestia">{response.displayState.comentarioPartidoPre?.trim() || 'Sin observación'}</span></td>
+                        <td><span className="wellness-molestia">{response.displayState.comentarioPartidoPost?.trim() || 'Sin observación'}</span></td>
                       </>
                     ) : (
                       <>
