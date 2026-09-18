@@ -104,6 +104,7 @@
 .wellness-table .player-cell { display: flex; align-items: center; gap: 8px; }
 .wellness-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent, #00e676); color: #000; font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .wellness-dot { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.wellness-dot.wellness-low { padding: 4px 7px; border: 1px solid rgba(255, 123, 123, .55); border-radius: 6px; background: rgba(255, 82, 82, .16); color: #ff9b9b; }
 .wellness-dot::before { content: ''; width: 8px; height: 8px; border-radius: 50%; }
 .dot-rpe::before { background: #f5c518; }
 .dot-animo::before { background: #4fc3f7; }

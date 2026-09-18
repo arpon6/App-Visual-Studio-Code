@@ -778,22 +778,46 @@ function AnalisisDelRival() {
   };
 
   const handleExportPDF = async () => {
+    if (isExporting) return;
+
     const sectionsToInclude = SECTION_OPTIONS.filter((option) => selectedSections[option.key]).map((option) => option.key);
     if (sectionsToInclude.length === 0) {
       alert('Selecciona al menos un apartado para exportar.');
       return;
     }
 
-    const element = createExportContainer(sectionsToInclude);
-    if (!element || isExporting) return;
-
     setIsExporting(true);
     setShowExportDialog(false);
 
+    const element = createExportContainer(sectionsToInclude);
+    if (!element) {
+      setIsExporting(false);
+      return;
+    }
+
     try {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (document.fonts?.ready) await document.fonts.ready;
+
+      const exportWidth = Math.max(element.scrollWidth, element.offsetWidth);
+      const exportHeight = Math.max(element.scrollHeight, element.offsetHeight);
+      const maxCanvasPixels = 24_000_000;
+      const maxCanvasDimension = 14_000;
+      const scale = Math.max(
+        0.5,
+        Math.min(
+          2,
+          Math.sqrt(maxCanvasPixels / (exportWidth * exportHeight)),
+          maxCanvasDimension / exportWidth,
+          maxCanvasDimension / exportHeight,
+        ),
+      );
+
       const canvas = await html2canvas(element, {
         backgroundColor: '#0c1622',
-        scale: 2,
+        scale,
         useCORS: true,
         logging: false,
       });

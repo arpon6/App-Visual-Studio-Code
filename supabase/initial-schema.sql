@@ -44,7 +44,7 @@ create table if not exists matches (
 create table if not exists match_plans (
   id uuid primary key default gen_random_uuid(),
   match_id uuid references matches(id) on delete cascade,
-  title text not null,
+  title text not null unique,
   description text,
   tactics jsonb,
   created_at timestamptz default now()

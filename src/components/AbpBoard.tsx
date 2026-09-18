@@ -669,6 +669,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
   const [activeIdx, setActiveIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [editingName, setEditingName] = useState<number | null>(null);
   const [showRepoPicker, setShowRepoPicker] = useState(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -704,16 +705,19 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
     setBoards(normalized);
     localStorage.setItem(storageKey, JSON.stringify(normalized));
     setSaved(false);
+    setSaveError('');
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(async () => {
       setSaving(true);
-      const { data } = await supabase.from('match_plans').select('id').eq('title', supabaseTitle).maybeSingle();
-      if (data?.id) {
-        await supabase.from('match_plans').update({ tactics: normalized }).eq('id', data.id);
-      } else {
-        await supabase.from('match_plans').insert({ title: supabaseTitle, tactics: normalized });
-      }
+      const { error } = await supabase
+        .from('match_plans')
+        .upsert({ title: supabaseTitle, tactics: normalized }, { onConflict: 'title' });
       setSaving(false);
+      if (error) {
+        console.error('Error guardando pizarra ABP:', supabaseTitle, error);
+        setSaveError('No se pudo guardar en la nube. La copia local se conserva.');
+        return;
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }, 1500);
@@ -810,6 +814,7 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {saving && <span className="tb-status tb-status--saving">Guardando…</span>}
           {saved && <span className="tb-status tb-status--saved">✓ Guardado</span>}
+          {saveError && <span className="rival-save-error">{saveError}</span>}
           {!readOnly && repoStorageKeys && repoStorageKeys.length > 0 && (
             <button className="btn" onClick={() => setShowRepoPicker(true)}>📂 Del repositorio</button>
           )}

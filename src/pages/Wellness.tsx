@@ -1507,13 +1507,13 @@ function WellnessDashboard() {
                     <td>{isoToDisplay(response.event_date)}</td>
                     {testType === 'pre_entrenamiento' ? (
                       <>
-                        <td><span className="wellness-dot dot-fisico">{response.displayState.fisico ?? '-'}</span></td>
-                        <td><span className="wellness-dot dot-animo">{response.displayState.animo ?? '-'}</span></td>
+                        <td><span className={`wellness-dot dot-fisico${response.displayState.fisico != null && response.displayState.fisico <= 3 ? ' wellness-low' : ''}`}>{response.displayState.fisico ?? '-'}</span></td>
+                        <td><span className={`wellness-dot dot-animo${response.displayState.animo != null && response.displayState.animo <= 3 ? ' wellness-low' : ''}`}>{response.displayState.animo ?? '-'}</span></td>
                         <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin aclaración'}</span></td>
                       </>
                     ) : testType === 'partido' ? (
                       <>
-                        <td><span className="wellness-dot dot-fisico">{response.displayState.estadoInicial ?? '-'}</span></td>
+                        <td><span className={`wellness-dot dot-fisico${response.displayState.estadoInicial != null && response.displayState.estadoInicial <= 3 ? ' wellness-low' : ''}`}>{response.displayState.estadoInicial ?? '-'}</span></td>
                         <td><span className="wellness-dot dot-animo">{response.displayState.estadoFinal ?? '-'}</span></td>
                         <td><span className="wellness-molestia">{response.displayState.comentario?.trim() || 'Sin observación'}</span></td>
                       </>
