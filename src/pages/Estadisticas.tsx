@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 interface PlantillaJugador {
   id: string;
@@ -366,16 +372,40 @@ function Estadisticas() {
     setParsing(true);
     setParseMsg('');
     try {
-      // Lectura de texto plano (TXT, CSV, HTML)
-      if (file.type === 'text/plain' || file.type === 'text/html' || file.type === 'text/csv' || file.name.endsWith('.txt')) {
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const buffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+        let texto = '';
+
+        for (let i = 1; i <= pdf.numPages; i += 1) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items
+            .map((item: any) => ('str' in item ? item.str : ''))
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (pageText) texto += `${pageText}\n`;
+        }
+
+        if (!texto.trim()) {
+          setParseMsg('⚠ El PDF se ha leído pero no se ha obtenido texto útil. Copia el texto manualmente o prueba con otro archivo.');
+        } else {
+          aplicarParser(texto);
+        }
+        return;
+      }
+
+      if (file.type === 'text/plain' || file.type === 'text/html' || file.type === 'text/csv' || file.name.toLowerCase().endsWith('.txt')) {
         const texto = await file.text();
         aplicarParser(texto);
       } else {
-        // Para PDF e imágenes: extraemos el texto que el navegador puede leer del nombre + aviso
-        setParseMsg('⚠ Para PDF e imágenes la extracción automática no está disponible en el navegador. Copia el texto del acta en el campo URL/texto y pulsa "Extraer datos".');
+        setParseMsg('⚠ El archivo no es compatible. Usa un PDF o un texto .txt/.csv/.html.');
       }
-    } catch {
-      setParseMsg('Error al leer el archivo.');
+    } catch (error) {
+      console.error('Error leyendo archivo del acta:', error);
+      setParseMsg('Error al leer el archivo. Comprueba que el PDF no esté corrupto o intenta pegar el texto manualmente.');
     }
     setParsing(false);
   };
@@ -565,7 +595,7 @@ function Estadisticas() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube un archivo (.txt, .html):</span>
-                    <input ref={fileRef} type="file" accept=".txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
+                    <input ref={fileRef} type="file" accept=".pdf,.txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
                     <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>Seleccionar archivo</button>
                   </div>
                   {parseMsg && <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>}
