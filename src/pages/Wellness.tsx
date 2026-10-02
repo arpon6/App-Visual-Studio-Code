@@ -253,32 +253,26 @@ function readLocalWellnessResponses() {
 
 async function syncWellnessRecordToSupabase(record: LocalWellnessRecord): Promise<SyncResult> {
   try {
-    const { error: deleteError } = await supabase
+    // upsert atomico: evita el hueco delete+insert donde un fallo de red/validacion
+    // entre ambas llamadas borraba la respuesta anterior sin guardar la nueva.
+    const { error: upsertError } = await supabase
       .from('wellness_responses')
-      .delete()
-      .eq('player_id', record.player_id)
-      .eq('event_date', record.event_date)
-      .eq('event_type', record.event_type);
+      .upsert(
+        {
+          player_id: record.player_id,
+          event_date: record.event_date,
+          event_type: record.event_type,
+          rpe: record.rpe,
+          animo: record.animo,
+          fisico: record.fisico,
+          molestias: record.molestias,
+        },
+        { onConflict: 'player_id,event_date,event_type' }
+      );
 
-    if (deleteError) {
-      console.error('No se pudo limpiar wellness duplicado en Supabase:', deleteError);
-    }
-
-    const { error: insertError } = await supabase
-      .from('wellness_responses')
-      .insert({
-        player_id: record.player_id,
-        event_date: record.event_date,
-        event_type: record.event_type,
-        rpe: record.rpe,
-        animo: record.animo,
-        fisico: record.fisico,
-        molestias: record.molestias,
-      });
-
-    if (insertError) {
-      console.error('No se pudo insertar wellness en Supabase:', insertError);
-      return { ok: false, errorMessage: insertError.message || 'Error de Supabase al guardar' };
+    if (upsertError) {
+      console.error('No se pudo guardar wellness en Supabase:', upsertError);
+      return { ok: false, errorMessage: upsertError.message || 'Error de Supabase al guardar' };
     }
 
     return { ok: true };

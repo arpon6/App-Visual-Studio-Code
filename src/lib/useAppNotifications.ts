@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import type { UserRole } from './AuthContext';
 import { supabase } from './supabaseClient';
+import { firestore } from './firebaseClient';
 
 type AppUser = {
   id: string;
@@ -15,11 +17,6 @@ type Message = {
   text: string;
   recipients: string[];
   createdAt: string;
-};
-
-type SharedStateRow = {
-  key: string;
-  value: unknown;
 };
 
 export type AppNotification = {
@@ -70,43 +67,27 @@ export function useAppNotifications(user: AppUser | null) {
     }
 
     let cancelled = false;
-    const loadNotifications = async () => {
-      const [{ data: stateRows }, { data: calendarRows }, { data: responseRows }] = await Promise.all([
-        supabase.from('shared_state').select('key, value').in('key', ['tablon_messages', 'analisis_chat']),
-        supabase.from('calendar_events').select('date, type'),
-        user.role === 'jugador' && user.player_id
+    const isJugador = user.role === 'jugador' && Boolean(user.player_id);
+
+    // Wellness/calendario siguen en Supabase (ya acotados a hoy y al propio jugador); solo aplica a rol jugador.
+    const loadWellness = async () => {
+      const [{ data: calendarRows }, { data: responseRows }] = await Promise.all([
+        isJugador
+          ? supabase.from('calendar_events').select('date, type').eq('date', todayDisplay())
+          : Promise.resolve({ data: [] }),
+        isJugador
           ? supabase.from('wellness_responses').select('event_type, molestias').eq('player_id', String(user.player_id)).eq('event_date', todayISO())
           : Promise.resolve({ data: [] }),
       ]);
 
       if (cancelled) return;
 
-      const rows = (stateRows || []) as SharedStateRow[];
-      const messages = rows.flatMap((row) => {
-        const values = Array.isArray(row.value) ? row.value as Message[] : [];
-        const section: 'Inicio' | 'Desarrollo Individual' = row.key === 'tablon_messages' ? 'Inicio' : 'Desarrollo Individual';
-        return values.filter((message) => isRecipient(message, user)).map((message) => ({ message, section }));
-      });
-
-      const currentMessageIds = new Set(messages.map(({ message }) => message.id));
-      const newMessages = previousIdsRef.current
-        ? messages.filter(({ message }) => !previousIdsRef.current!.has(message.id))
-        : [];
-      previousIdsRef.current = currentMessageIds;
-
-      const messageNotifications = newMessages.map(({ message, section }) => ({
-        id: `message-${message.id}`,
-        section,
-        title: `Nuevo mensaje de ${message.senderName}`,
-        detail: message.text,
-      }));
-
       const hasTraining = (calendarRows || []).some((event: { date: string; type: string }) => event.date === todayDisplay() && event.type === 'entrenamiento');
       const hasMatch = (calendarRows || []).some((event: { date: string; type: string }) => event.date === todayDisplay() && event.type === 'partido');
       const responses = (responseRows || []) as Array<{ event_type?: string; molestias?: string | null }>;
       const wellnessNotifications: AppNotification[] = [];
 
-      if (user.role === 'jugador' && user.player_id && hasTraining) {
+      if (isJugador && hasTraining) {
         if (!responses.some((response) => responseHasType(response, 'pre_entrenamiento'))) {
           wellnessNotifications.push({ id: 'wellness-pre', section: 'Wellness', title: 'Wellness pendiente', detail: 'Completa el cuestionario PRE de hoy.' });
         }
@@ -114,25 +95,60 @@ export function useAppNotifications(user: AppUser | null) {
           wellnessNotifications.push({ id: 'wellness-post', section: 'Wellness', title: 'Wellness pendiente', detail: 'Completa el cuestionario POST de hoy.' });
         }
       }
-      if (user.role === 'jugador' && user.player_id && hasMatch && !responses.some((response) => responseHasType(response, 'partido'))) {
+      if (isJugador && hasMatch && !responses.some((response) => responseHasType(response, 'partido'))) {
         wellnessNotifications.push({ id: 'wellness-match', section: 'Wellness', title: 'Wellness pendiente', detail: 'Completa el formulario de partido de hoy.' });
       }
 
-      setNotifications((previous) => [...messageNotifications, ...wellnessNotifications, ...previous.filter((item) => item.id.startsWith('message-'))].slice(0, 8));
+      setNotifications((previous) => [...previous.filter((item) => item.id.startsWith('message-')), ...wellnessNotifications].slice(0, 8));
     };
 
-    void loadNotifications();
-    const interval = window.setInterval(() => void loadNotifications(), 30000);
-    const channel = supabase.channel(`app-notifications-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shared_state' }, () => void loadNotifications())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wellness_responses' }, () => void loadNotifications())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events' }, () => void loadNotifications())
-      .subscribe();
+    void loadWellness();
+    const wellnessInterval = window.setInterval(() => void loadWellness(), 300000);
+    const wellnessChannel = isJugador
+      ? supabase.channel(`app-notifications-wellness-${user.id}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'wellness_responses', filter: `player_id=eq.${user.player_id}` }, () => void loadWellness())
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events' }, () => void loadWellness())
+          .subscribe()
+      : null;
+
+    // Mensajes (tablon/chat) via Firestore en tiempo real: ya no consumen cuota de Supabase.
+    let tablonMessages: Message[] = [];
+    let chatMessages: Message[] = [];
+    const recomputeMessageNotifications = () => {
+      const combined = [
+        ...tablonMessages.filter((m) => isRecipient(m, user)).map((message) => ({ message, section: 'Inicio' as const })),
+        ...chatMessages.filter((m) => isRecipient(m, user)).map((message) => ({ message, section: 'Desarrollo Individual' as const })),
+      ];
+      const currentIds = new Set(combined.map(({ message }) => message.id));
+      const newOnes = previousIdsRef.current ? combined.filter(({ message }) => !previousIdsRef.current!.has(message.id)) : [];
+      previousIdsRef.current = currentIds;
+      if (newOnes.length === 0) return;
+      const messageNotifications = newOnes.map(({ message, section }) => ({
+        id: `message-${message.id}`,
+        section,
+        title: `Nuevo mensaje de ${message.senderName}`,
+        detail: message.text,
+      }));
+      setNotifications((previous) => [...messageNotifications, ...previous].slice(0, 8));
+    };
+
+    const tablonQuery = query(collection(firestore, 'tablon_messages'), orderBy('createdAt', 'desc'), limit(50));
+    const chatQuery = query(collection(firestore, 'analisis_chat'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubscribeTablon = onSnapshot(tablonQuery, (snapshot) => {
+      tablonMessages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
+      recomputeMessageNotifications();
+    });
+    const unsubscribeChat = onSnapshot(chatQuery, (snapshot) => {
+      chatMessages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
+      recomputeMessageNotifications();
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
-      void supabase.removeChannel(channel);
+      window.clearInterval(wellnessInterval);
+      if (wellnessChannel) void supabase.removeChannel(wellnessChannel);
+      unsubscribeTablon();
+      unsubscribeChat();
     };
   }, [user]);
 

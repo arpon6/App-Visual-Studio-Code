@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
+import { useFirestoreMessages } from '../lib/useFirestoreMessages';
 import { usePlantilla } from '../lib/usePlantilla';
 import type { PageKey } from '../lib/appPages';
 import type { UserRole } from '../lib/AuthContext';
@@ -182,7 +183,7 @@ function Inicio({ quickAccessSections }: InicioProps) {
   };
 
   // ── Tablón ────────────────────────────────────────────────────────────────
-  const [tablonMessages, setTablonMessages] = useSharedState<TablonMessage[]>('tablon_messages', []);
+  const [tablonMessages, setTablonMessages] = useFirestoreMessages<TablonMessage>('tablon_messages');
   const [msgText, setMsgText] = useState('');
   const [recipientType, setRecipientType] = useState<'all' | 'players_all' | 'staff' | 'users_select'>('all');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -312,7 +313,8 @@ function Inicio({ quickAccessSections }: InicioProps) {
       sent: false,
       createdAt: new Date().toISOString(),
     };
-    setTablonMessages((prev) => [msg, ...prev]);
+    // Limite de 300 mensajes para no hacer crecer indefinidamente el JSON de shared_state (egress).
+    setTablonMessages((prev) => [msg, ...prev].slice(0, 300));
     setMsgText('');
     setSelectedUsers([]);
     setRecipientType('all');

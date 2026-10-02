@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, ChangeEvent } from 'react';
 import { useAuth, UserRole } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
+import { useFirestoreMessages } from '../lib/useFirestoreMessages';
 import { supabase } from '../lib/supabaseClient';
 import { usePlantilla } from '../lib/usePlantilla';
 
@@ -93,7 +94,7 @@ function AnalisisDePartido() {
   const [selectedOwnMatchId, setSelectedOwnMatchId] = useState<string>('');
   const [ownMatchCutsMap, setOwnMatchCutsMap] = useState<Record<string, AnalysisCut[]>>({});
   const [ownMatchVideoMap, setOwnMatchVideoMap] = useState<Record<string, string>>({});
-  const [chatMessages, setChatMessages] = useSharedState<ChatMessage[]>('analisis_chat', []);
+  const [chatMessages, setChatMessages] = useFirestoreMessages<ChatMessage>('analisis_chat');
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -254,7 +255,8 @@ function AnalisisDePartido() {
       createdAt: new Date().toISOString(),
     };
 
-    setChatMessages((prev) => [message, ...prev]);
+    // Limite de 300 mensajes para no hacer crecer indefinidamente el JSON de shared_state (egress).
+    setChatMessages((prev) => [message, ...prev].slice(0, 300));
     setMessageText('');
     setSelectedPlayerRecipients([]);
   };
@@ -291,7 +293,7 @@ function AnalisisDePartido() {
         createdAt: new Date().toISOString(),
       };
 
-      setChatMessages((prev) => [message, ...prev]);
+      setChatMessages((prev) => [message, ...prev].slice(0, 300));
       setCutMessageText('');
       setOpenConversationId(cutId);
     };

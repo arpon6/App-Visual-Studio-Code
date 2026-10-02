@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, ChangeEvent } from 'react';
 import { useAuth, UserRole } from '../lib/AuthContext';
 import { useSharedState } from '../lib/useSharedState';
+import { useFirestoreMessages } from '../lib/useFirestoreMessages';
 import { usePlantilla } from '../lib/usePlantilla';
 import { supabase } from '../lib/supabaseClient';
 
@@ -89,7 +90,7 @@ function DesarrolloIndividual() {
   const [localVideoSrc, setLocalVideoSrc] = useState<string | null>(null);
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [analysisChat, setAnalysisChat] = useSharedState<ChatMessage[]>('analisis_chat', []);
+  const [analysisChat, setAnalysisChat] = useFirestoreMessages<ChatMessage>('analisis_chat');
   const [cutMessageText, setCutMessageText] = useState('');
   const [playTokens, setPlayTokens] = useState<Record<string, number>>({});
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -373,7 +374,8 @@ function DesarrolloIndividual() {
       sent: false,
       createdAt: new Date().toISOString(),
     };
-    setAnalysisChat([newMessage, ...analysisChat]);
+    // Limite de 300 mensajes para no hacer crecer indefinidamente el JSON de shared_state (egress).
+    setAnalysisChat([newMessage, ...analysisChat].slice(0, 300));
     setCutMessageText('');
   };
 
