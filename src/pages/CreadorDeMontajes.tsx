@@ -48,6 +48,7 @@ export type MediaClip = {
   duration: number;    // duración total (para vídeo: metadata; para imagen: tiempo en pantalla)
   start: number;       // punto In del recorte (para imagen: 0)
   end: number;         // punto Out del recorte (para imagen: duration)
+  playbackRate?: number;
   volume: number;      // 0 a 1 (vídeo)
   muted: boolean;
   texts: TextOverlay[];
@@ -62,6 +63,11 @@ function formatSeconds(secs: number): string {
   const s = Math.floor(secs % 60);
   const ms = Math.floor((secs % 1) * 10);
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+}
+
+function getClipMontageDuration(clip: MediaClip): number {
+  const playbackRate = clip.type === 'video' ? clip.playbackRate || 1 : 1;
+  return Math.max(0, clip.end - clip.start) / playbackRate;
 }
 
 export default function CreadorDeMontajes() {
@@ -117,9 +123,22 @@ export default function CreadorDeMontajes() {
     return clips.find((c) => c.id === selectedClipId) ?? clips[0] ?? null;
   }, [clips, selectedClipId]);
 
+  useEffect(() => {
+    if (selectedClip?.type === 'video' && videoRef.current) {
+      videoRef.current.playbackRate = selectedClip.playbackRate || 1;
+    }
+  }, [selectedClip?.id, selectedClip?.playbackRate, activeTab]);
+
+  useEffect(() => {
+    const activeClip = clips[currentGlobalClipIndex];
+    if (activeTab === 'preview' && activeClip?.type === 'video' && globalVideoRef.current) {
+      globalVideoRef.current.playbackRate = activeClip.playbackRate || 1;
+    }
+  }, [activeTab, clips, currentGlobalClipIndex]);
+
   // Duración total acumulada del montaje
   const totalMontageDuration = useMemo(() => {
-    return clips.reduce((acc, c) => acc + Math.max(0, c.end - c.start), 0);
+    return clips.reduce((acc, c) => acc + getClipMontageDuration(c), 0);
   }, [clips]);
 
   // Selección por defecto del primer corte
@@ -173,6 +192,7 @@ export default function CreadorDeMontajes() {
         duration: c.duration,
         start: c.start,
         end: c.end,
+        playbackRate: c.playbackRate || 1,
         volume: c.volume,
         muted: c.muted,
         texts: c.texts || [],
@@ -239,6 +259,7 @@ export default function CreadorDeMontajes() {
         duration: c.duration,
         start: c.start,
         end: c.end,
+        playbackRate: c.playbackRate,
         volume: c.volume,
         muted: c.muted,
         texts: c.texts,
@@ -393,6 +414,7 @@ export default function CreadorDeMontajes() {
           duration: Math.max(duration, 0.5),
           start: 0,
           end: Math.max(duration, 0.5),
+          playbackRate: 1,
           volume: 1,
           muted: false,
           texts: [],
@@ -486,6 +508,7 @@ export default function CreadorDeMontajes() {
     if (selectedClip.type === 'video') {
       if (!videoRef.current) return;
       if (videoRef.current.paused) {
+        videoRef.current.playbackRate = selectedClip.playbackRate || 1;
         videoRef.current.play();
         setIsPlaying(true);
       } else {
@@ -537,6 +560,7 @@ export default function CreadorDeMontajes() {
   const playTrimmedRange = () => {
     if (!selectedClip) return;
     if (selectedClip.type === 'video' && videoRef.current) {
+      videoRef.current.playbackRate = selectedClip.playbackRate || 1;
       videoRef.current.currentTime = selectedClip.start;
       videoRef.current.play();
       setIsPlaying(true);
@@ -570,7 +594,7 @@ export default function CreadorDeMontajes() {
   // Gestión de textos del corte seleccionado
   const addTextOverlay = () => {
     if (!selectedClip) return;
-    const clipEffectiveDuration = Math.max(0.5, selectedClip.end - selectedClip.start);
+    const clipEffectiveDuration = Math.max(0.5, getClipMontageDuration(selectedClip));
     const newText: TextOverlay = {
       id: `txt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       text: 'Texto explicativo del corte',
@@ -677,7 +701,7 @@ export default function CreadorDeMontajes() {
   // Textos activos para el reproductor individual
   const activeClipTexts = useMemo(() => {
     if (!selectedClip) return [];
-    const relTime = currentTime - selectedClip.start;
+    const relTime = (currentTime - selectedClip.start) / (selectedClip.playbackRate || 1);
     return selectedClip.texts.filter(
       (t) => relTime >= t.startTime && relTime <= t.endTime
     );
@@ -693,12 +717,12 @@ export default function CreadorDeMontajes() {
       const activeClip = clips[currentGlobalClipIndex];
       if (activeClip) {
         let clipProgress = 0;
-        const activeClipDuration = Math.max(0.1, activeClip.end - activeClip.start);
+        const activeClipDuration = Math.max(0.1, getClipMontageDuration(activeClip));
 
         if (activeClip.type === 'video') {
           const v = globalVideoRef.current;
           if (v) {
-            clipProgress = Math.max(0, v.currentTime - activeClip.start);
+            clipProgress = Math.max(0, (v.currentTime - activeClip.start) / (activeClip.playbackRate || 1));
             if (v.currentTime >= activeClip.end) {
               advanceToNextGlobalClip();
               return;
@@ -715,7 +739,7 @@ export default function CreadorDeMontajes() {
 
         let accumulatedBefore = 0;
         for (let i = 0; i < currentGlobalClipIndex; i++) {
-          accumulatedBefore += Math.max(0, clips[i].end - clips[i].start);
+          accumulatedBefore += getClipMontageDuration(clips[i]);
         }
         setGlobalCurrentTime(accumulatedBefore + clipProgress);
       }
@@ -734,6 +758,7 @@ export default function CreadorDeMontajes() {
           if (v) {
             v.src = nextClip.url;
             v.currentTime = nextClip.start;
+            v.playbackRate = nextClip.playbackRate || 1;
             v.volume = nextClip.muted ? 0 : nextClip.volume;
             v.play().catch(() => {});
           }
@@ -771,6 +796,7 @@ export default function CreadorDeMontajes() {
         if (activeClip.type === 'video' && globalVideoRef.current) {
           globalVideoRef.current.src = activeClip.url;
           globalVideoRef.current.currentTime = activeClip.start;
+          globalVideoRef.current.playbackRate = activeClip.playbackRate || 1;
           globalVideoRef.current.volume = activeClip.muted ? 0 : activeClip.volume;
           globalVideoRef.current.play().catch(() => {});
         } else if (activeClip.type === 'image') {
@@ -789,11 +815,11 @@ export default function CreadorDeMontajes() {
 
     let relTime = 0;
     if (activeClip.type === 'video' && globalVideoRef.current) {
-      relTime = globalVideoRef.current.currentTime - activeClip.start;
+      relTime = (globalVideoRef.current.currentTime - activeClip.start) / (activeClip.playbackRate || 1);
     } else {
       let accumulatedBefore = 0;
       for (let i = 0; i < currentGlobalClipIndex; i++) {
-        accumulatedBefore += Math.max(0, clips[i].end - clips[i].start);
+        accumulatedBefore += getClipMontageDuration(clips[i]);
       }
       relTime = Math.max(0, globalCurrentTime - accumulatedBefore);
     }
@@ -973,7 +999,8 @@ export default function CreadorDeMontajes() {
           `Renderizando elemento ${i + 1} de ${clips.length} (${clip.type === 'image' ? 'Foto' : 'Vídeo'}): "${clip.name}"...`
         );
 
-        const clipDuration = Math.max(0.2, clip.end - clip.start);
+        const playbackRate = clip.type === 'video' ? clip.playbackRate || 1 : 1;
+        const clipDuration = Math.max(0.2, getClipMontageDuration(clip));
 
         if (clip.type === 'video') {
           renderVideo.src = clip.url;
@@ -983,6 +1010,7 @@ export default function CreadorDeMontajes() {
           });
 
           renderVideo.currentTime = clip.start;
+          renderVideo.playbackRate = playbackRate;
           await new Promise((r) => {
             renderVideo.onseeked = r;
           });
@@ -998,7 +1026,7 @@ export default function CreadorDeMontajes() {
               }
 
               const currentPos = renderVideo.currentTime;
-              const elapsedInClip = currentPos - clip.start;
+              const elapsedInClip = (currentPos - clip.start) / playbackRate;
 
               ctx.fillStyle = '#000';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1224,6 +1252,7 @@ export default function CreadorDeMontajes() {
             if (clips[0]?.type === 'video' && globalVideoRef.current) {
               globalVideoRef.current.src = clips[0].url;
               globalVideoRef.current.currentTime = clips[0].start;
+              globalVideoRef.current.playbackRate = clips[0].playbackRate || 1;
             }
           }}
           disabled={clips.length === 0}
@@ -1385,7 +1414,7 @@ export default function CreadorDeMontajes() {
           <div className="timeline-clips-track">
             {clips.map((clip, index) => {
               const isSelected = clip.id === selectedClip?.id;
-              const effectiveDuration = Math.max(0, clip.end - clip.start);
+              const effectiveDuration = getClipMontageDuration(clip);
               return (
                 <div
                   key={clip.id}
@@ -1418,6 +1447,9 @@ export default function CreadorDeMontajes() {
                       <span className={`badge-tag ${clip.type === 'image' ? 'type-photo' : 'type-video'}`}>
                         {clip.type === 'image' ? '📷 FOTO' : '🎬 VÍDEO'}
                       </span>
+                      {clip.type === 'video' && (clip.playbackRate || 1) !== 1 && (
+                        <span className="badge-tag">{clip.playbackRate}x</span>
+                      )}
                       {clip.texts.length > 0 && (
                         <span className="badge-tag has-texts">📝 {clip.texts.length}</span>
                       )}
@@ -1609,7 +1641,7 @@ export default function CreadorDeMontajes() {
                       <span>
                         Duración del recorte:{' '}
                         <strong style={{ color: 'var(--accent)' }}>
-                          {formatSeconds(Math.max(0, selectedClip.end - selectedClip.start))}
+                          {formatSeconds(getClipMontageDuration(selectedClip))}
                         </strong>
                       </span>
                       <button
@@ -1702,6 +1734,25 @@ export default function CreadorDeMontajes() {
 
                   {selectedClip.type === 'video' && (
                     <>
+                      <div className="clip-speed-control">
+                        <label>Velocidad del corte:</label>
+                        <div className="clip-speed-options" role="group" aria-label="Velocidad de reproducción del corte">
+                          {[0.5, 1, 1.5, 2].map((rate) => (
+                            <button
+                              key={rate}
+                              type="button"
+                              className={`ctrl-btn${(selectedClip.playbackRate || 1) === rate ? ' primary' : ''}`}
+                              aria-pressed={(selectedClip.playbackRate || 1) === rate}
+                              onClick={() => updateSelectedClip({ playbackRate: rate })}
+                            >
+                              {rate}x
+                            </button>
+                          ))}
+                        </div>
+                        <span className="clip-speed-duration">
+                          Duración en montaje: {formatSeconds(getClipMontageDuration(selectedClip))}
+                        </span>
+                      </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <label style={{ fontSize: '0.85rem' }}>Silenciar audio original:</label>
                         <input
@@ -1823,7 +1874,7 @@ export default function CreadorDeMontajes() {
                       {isPlaying ? '⏸️ Pausar' : '▶️ Reproducir'}
                     </button>
                     <div className="time-display">
-                      Posición: <strong>{formatSeconds(Math.max(0, currentTime - selectedClip.start))}</strong> (total: {formatSeconds(selectedClip.end - selectedClip.start)})
+                      Posición: <strong>{formatSeconds(Math.max(0, currentTime - selectedClip.start) / (selectedClip.playbackRate || 1))}</strong> (total: {formatSeconds(getClipMontageDuration(selectedClip))})
                     </div>
                   </div>
                 </div>
@@ -1851,7 +1902,7 @@ export default function CreadorDeMontajes() {
                 ) : (
                   <div className="text-overlays-list">
                     {selectedClip.texts.map((txt, index) => {
-                      const clipDuration = Math.max(0.5, selectedClip.end - selectedClip.start);
+                      const clipDuration = Math.max(0.5, getClipMontageDuration(selectedClip));
                       return (
                         <div key={txt.id} className="text-item-card">
                           <div className="text-item-header">
@@ -2184,7 +2235,7 @@ export default function CreadorDeMontajes() {
               <div className="global-timeline-bar-wrapper">
                 <div className="global-timeline-segments">
                   {clips.map((c, idx) => {
-                    const dur = Math.max(0.1, c.end - c.start);
+                    const dur = Math.max(0.1, getClipMontageDuration(c));
                     const pct = (dur / totalMontageDuration) * 100;
                     return (
                       <div
@@ -2196,6 +2247,7 @@ export default function CreadorDeMontajes() {
                           if (c.type === 'video' && globalVideoRef.current) {
                             globalVideoRef.current.src = c.url;
                             globalVideoRef.current.currentTime = c.start;
+                            globalVideoRef.current.playbackRate = c.playbackRate || 1;
                             globalVideoRef.current.volume = c.muted ? 0 : c.volume;
                           } else if (c.type === 'image') {
                             globalPhotoStartTimeRef.current = performance.now();
@@ -2231,6 +2283,7 @@ export default function CreadorDeMontajes() {
                       if (clips[0]?.type === 'video' && globalVideoRef.current) {
                         globalVideoRef.current.src = clips[0].url;
                         globalVideoRef.current.currentTime = clips[0].start;
+                        globalVideoRef.current.playbackRate = clips[0].playbackRate || 1;
                         if (isGlobalPlaying) globalVideoRef.current.play();
                       } else if (clips[0]?.type === 'image') {
                         globalPhotoStartTimeRef.current = performance.now();

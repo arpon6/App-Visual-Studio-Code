@@ -8,6 +8,7 @@ export type SavedClip = {
   duration: number;
   start: number;
   end: number;
+  playbackRate?: number;
   volume: number;
   muted: boolean;
   texts: TextOverlay[];

@@ -809,6 +809,39 @@
   padding-top: 4px;
 }
 
+.clip-speed-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.clip-speed-control > label {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.clip-speed-options {
+  display: flex;
+  gap: 6px;
+}
+
+.clip-speed-options .ctrl-btn {
+  min-width: 54px;
+  justify-content: center;
+  padding: 6px 10px;
+}
+
+.clip-speed-duration {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 /* Sidebar / Side Editor Panel */
 .side-editor-card {
   background: var(--surface-1);
