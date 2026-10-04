@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
+import { parseFederationActa } from '../lib/parseFederationActa';
 import { useSharedState } from '../lib/useSharedState';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -375,25 +376,44 @@ function Estadisticas() {
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         const buffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-        let texto = '';
+        const page = await pdf.getPage(1);
+        const content = await page.getTextContent();
+        const items = content.items.flatMap((item) => {
+          if (!('str' in item) || !('transform' in item)) return [];
+          return [{ str: item.str, x: item.transform[4], y: item.transform[5] }];
+        });
+        const parsed = parseFederationActa(items, page.getViewport({ scale: 1 }).width, players);
 
-        for (let i = 1; i <= pdf.numPages; i += 1) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const pageText = content.items
-            .map((item: any) => ('str' in item ? item.str : ''))
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (pageText) texto += `${pageText}\n`;
+        if (!parsed) {
+          setParseMsg('⚠ No se ha podido reconocer el acta. Asegúrate de que sea un PDF con texto seleccionable y del formato oficial de partido.');
+          return;
         }
 
-        if (!texto.trim()) {
-          setParseMsg('⚠ El PDF se ha leído pero no se ha obtenido texto útil. Copia el texto manualmente o prueba con otro archivo.');
-        } else {
-          aplicarParser(texto);
-        }
+        const normalizeName = (value: string) => value
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+        const existingActa = actas.find((acta) =>
+          acta.fecha === parsed.fecha && normalizeName(acta.rival) === normalizeName(parsed.rival));
+        const jugadoresConMinutos = parsed.jugadores.filter((player) => player.minutos > 0).length;
+
+        setEditingActaId(existingActa?.id ?? null);
+        setSaveError('');
+        setForm({
+          fecha: parsed.fecha,
+          rival: parsed.rival,
+          resultado: parsed.resultado,
+          competicion: parsed.competicion,
+          jugadores: parsed.jugadores.map(({ id, ...player }) => ({ ...player, playerId: id })),
+        });
+        setParseMsg(
+          `✓ Acta leída: ${parsed.rival} ${parsed.resultado} · ${jugadoresConMinutos} jugadores con minutos, `
+          + `${parsed.jugadores.reduce((total, player) => total + player.goles, 0)} goles y `
+          + `${parsed.jugadores.reduce((total, player) => total + player.tarjetas, 0)} tarjetas. `
+          + `${existingActa ? 'Al guardar se actualizará el partido existente.' : 'Revisa los datos y guarda para registrar el partido.'}`,
+        );
         return;
       }
 
@@ -406,8 +426,10 @@ function Estadisticas() {
     } catch (error) {
       console.error('Error leyendo archivo del acta:', error);
       setParseMsg('Error al leer el archivo. Comprueba que el PDF no esté corrupto o intenta pegar el texto manualmente.');
+    } finally {
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
-    setParsing(false);
   };
 
   const handleUrl = async () => {
@@ -594,9 +616,9 @@ function Estadisticas() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube un archivo (.txt, .html):</span>
+                    <span style={{ color: '#7f96bc', fontSize: '0.85rem' }}>O sube el acta oficial (PDF recomendado):</span>
                     <input ref={fileRef} type="file" accept=".pdf,.txt,.html,.csv" style={{ display: 'none' }} onChange={handleArchivo} />
-                    <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>Seleccionar archivo</button>
+                    <button onClick={() => fileRef.current?.click()} disabled={parsing} style={{ padding: '8px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', fontSize: '0.85rem' }}>{parsing ? 'Leyendo acta...' : 'Seleccionar acta'}</button>
                   </div>
                   {parseMsg && <p style={{ margin: 0, fontSize: '0.85rem', color: parseMsg.startsWith('✓') ? '#90f4ae' : '#f4c842' }}>{parseMsg}</p>}
                 </div>
