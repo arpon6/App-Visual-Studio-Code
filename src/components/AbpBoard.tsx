@@ -687,16 +687,8 @@ export function AbpSection({ title, badge, storageKey, supabaseTitle, players, r
 
     void syncFromRemote();
 
-    const channel = supabase
-      .channel(`abp_repo_sync_${supabaseTitle}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_plans', filter: `title=eq.${supabaseTitle}` }, () => {
-        void syncFromRemote();
-      })
-      .subscribe();
-
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
     };
   }, [includeGoalkeeper, storageKey, supabaseTitle]);
 

@@ -172,17 +172,6 @@ function Estadisticas() {
   useEffect(() => {
     fetchActas();
     fetchPlayers();
-
-    const channel = supabase
-      .channel('estadisticas_plantilla_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plantilla' }, () => {
-        fetchPlayers();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   const fetchActas = async () => {

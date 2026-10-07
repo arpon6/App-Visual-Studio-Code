@@ -104,13 +104,6 @@ export function useAppNotifications(user: AppUser | null) {
 
     void loadWellness();
     const wellnessInterval = window.setInterval(() => void loadWellness(), 300000);
-    const wellnessChannel = isJugador
-      ? supabase.channel(`app-notifications-wellness-${user.id}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'wellness_responses', filter: `player_id=eq.${user.player_id}` }, () => void loadWellness())
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_events' }, () => void loadWellness())
-          .subscribe()
-      : null;
-
     // Mensajes (tablon/chat) via Firestore en tiempo real: ya no consumen cuota de Supabase.
     let tablonMessages: Message[] = [];
     let chatMessages: Message[] = [];
@@ -146,7 +139,6 @@ export function useAppNotifications(user: AppUser | null) {
     return () => {
       cancelled = true;
       window.clearInterval(wellnessInterval);
-      if (wellnessChannel) void supabase.removeChannel(wellnessChannel);
       unsubscribeTablon();
       unsubscribeChat();
     };

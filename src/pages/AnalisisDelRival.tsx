@@ -459,47 +459,6 @@ function AnalisisDelRival() {
     }, 700);
   }, [selectedTeam, sharedStateKey, teamsData]);
 
-  // Escucha en tiempo real: cuando otro entrenador guarde, se recarga desde Supabase.
-  useEffect(() => {
-    const channel = supabase
-      .channel(`analisis_rival_sync_${sharedStateKey}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'shared_state', filter: `key=eq.${sharedStateKey}` },
-        () => {
-          void supabase
-            .from('shared_state')
-            .select('value, updated_at')
-            .eq('key', sharedStateKey)
-            .maybeSingle()
-            .then(({ data }) => {
-              if (!data?.value || typeof data.value !== 'object') return;
-              const remoteUpdatedAt = typeof data.updated_at === 'string' ? new Date(data.updated_at).getTime() : 0;
-              if (localChangeAtRef.current > persistedChangeAtRef.current && remoteUpdatedAt < localChangeAtRef.current) {
-                return;
-              }
-              const remote = data.value as Partial<RivalGlobalState>;
-              const remoteTeams = remote.teams && typeof remote.teams === 'object' ? remote.teams : {};
-              const sanitized = Object.entries(remoteTeams).reduce<Record<string, RivalTeamData>>((acc, [team, value]) => {
-                acc[team] = sanitizeLoadedTeamData(value as Partial<RivalTeamData>);
-                return acc;
-              }, {});
-              setTeamsData(sanitized);
-              localStorage.setItem(getDraftStorageKey(sharedStateKey), JSON.stringify(remote));
-              if (typeof remote.selectedTeam === 'string' && availableTeams.includes(remote.selectedTeam)) {
-                setSelectedTeam(remote.selectedTeam);
-                setTeamFilter(remote.selectedTeam);
-              }
-            });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [sharedStateKey, availableTeams]);
-
   useEffect(() => {
     if (!selectedTeam) return;
     if (teamsData[selectedTeam]) return;
