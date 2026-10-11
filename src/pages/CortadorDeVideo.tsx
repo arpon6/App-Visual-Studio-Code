@@ -172,7 +172,10 @@ function CortadorDeVideo() {
   // compartido entre partidos al ser la misma instancia de hook) para que un guardado pendiente de
   // un partido nunca cancele ni se mezcle con el de otro.
   const saveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Con la carga fallida (p.ej. cuota agotada) guardar sobrescribiria el dato real con uno vacio.
+  const loadFailedRef = useRef(false);
   const persistValue = (key: string, value: unknown) => {
+    if (loadFailedRef.current) return;
     if (saveTimeoutsRef.current[key]) clearTimeout(saveTimeoutsRef.current[key]);
     saveTimeoutsRef.current[key] = setTimeout(() => {
       delete saveTimeoutsRef.current[key];
@@ -207,6 +210,8 @@ function CortadorDeVideo() {
       supabase.from('shared_state').select('value').eq('key', cutsStateKey).maybeSingle(),
     ]).then(([videoRes, cutsRes]) => {
       if (cancelled) return;
+      loadFailedRef.current = Boolean(videoRes.error || cutsRes.error);
+      if (loadFailedRef.current) return;
       const url = typeof videoRes.data?.value === 'string' ? videoRes.data.value : '';
       setVideoUrlState(url);
       setVideoId(url ? extractYouTubeVideoId(url) : null);

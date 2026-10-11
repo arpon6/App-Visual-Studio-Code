@@ -384,8 +384,12 @@ function AnalisisDelRival() {
         .select('value, updated_at')
         .eq('key', targetKey)
         .maybeSingle();
-      if (error) {
-        console.error('Error cargando analisis del rival:', error);
+      if (error || seasonError) {
+        console.error('Error cargando analisis del rival:', error || seasonError);
+        // Sin hydratedRef no se guarda nada: evita sobrescribir los datos reales con un estado vacio.
+        setSaveError('No se pudo cargar desde la nube. El guardado queda desactivado hasta recargar la pagina.');
+        setLoading(false);
+        return;
       }
 
       const storedValue: unknown = readRemoteStoredValue(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { LEAGUE_TEAMS, MY_TEAM_NAME } from '../lib/leagueTeams';
 import { supabase } from '../lib/supabaseClient';
 import { usePlantilla } from '../lib/usePlantilla';
@@ -472,6 +472,7 @@ function SeasonEventPlayerHeatmap({ stats }: { stats: ReturnType<typeof buildSta
 function RegistroDeEventos() {
   const jugadores = usePlantilla();
   const [loading, setLoading] = useState(true);
+  const loadFailedRef = useRef(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [selectedMatchId, setSelectedMatchId] = useState('');
   const [matchTitleInput, setMatchTitleInput] = useState('');
@@ -531,6 +532,8 @@ function RegistroDeEventos() {
         if (sorted[0]) setSelectedMatchId(sorted[0].meta.id);
       }
 
+      loadFailedRef.current = Boolean(matchesResult.error || eventsResult.error);
+
       if (!eventsResult.error && eventsResult.data?.value && typeof eventsResult.data.value === 'object') {
         const parsed = eventsResult.data.value as { items?: string[] };
         setCustomEvents(Array.isArray(parsed.items) ? parsed.items.filter((item) => item && typeof item === 'string') : []);
@@ -543,6 +546,7 @@ function RegistroDeEventos() {
   }, []);
 
   useEffect(() => {
+    if (loading || loadFailedRef.current) return;
     const timer = setTimeout(() => {
       void supabase
         .from('shared_state')
@@ -556,10 +560,10 @@ function RegistroDeEventos() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [customEvents]);
+  }, [customEvents, loading]);
 
   useEffect(() => {
-    if (!selectedMatchId) return;
+    if (!selectedMatchId || loadFailedRef.current) return;
     const snapshot = snapshots[selectedMatchId];
     if (!snapshot) return;
 

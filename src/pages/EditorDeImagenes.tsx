@@ -86,6 +86,43 @@ function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+const MAX_IMAGE_WIDTH = 1280;
+const HEAVY_IMAGE_CHARS = 300_000;
+
+// El lienzo nunca pasa de 1280px de ancho, asi que guardar mas resolucion solo gasta ancho de banda.
+function compressImageSource(src: string): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, MAX_IMAGE_WIDTH / image.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(src);
+        return;
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.72);
+      resolve(compressed.length < src.length ? compressed : src);
+    };
+    image.onerror = () => resolve(src);
+    image.src = src;
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 function cloneAnnotation(annotation: Annotation): Annotation {
   return JSON.parse(JSON.stringify(annotation)) as Annotation;
 }
@@ -718,20 +755,32 @@ function EditorDeImagenes() {
     setImageUrlInput(activeBoard?.background || '');
   }, [activeBoardId]);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit || !activeBoard) return;
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === 'string' ? reader.result : null;
-      if (!dataUrl) return;
-      updateActiveBoard((board) => ({ ...board, background: dataUrl }));
-      setStatus(`Imagen cargada en ${activeBoard.name}: ${file.name}`);
-    };
-    reader.readAsDataURL(file);
+    const rawDataUrl = await readFileAsDataUrl(file);
+    if (!rawDataUrl) return;
+    const dataUrl = await compressImageSource(rawDataUrl);
+    updateActiveBoard((board) => ({ ...board, background: dataUrl }));
+    setStatus(`Imagen cargada en ${activeBoard.name}: ${file.name}`);
   };
+
+  // Las imagenes ya guardadas sin comprimir (varios MB) se optimizan una sola vez al abrir un editor.
+  const optimizedRef = useRef(false);
+  useEffect(() => {
+    if (!canEdit || loadingShared || optimizedRef.current) return;
+    const heavy = sharedState.boards.filter((board) => board.background?.startsWith('data:image') && board.background.length > HEAVY_IMAGE_CHARS);
+    if (heavy.length === 0) return;
+    optimizedRef.current = true;
+    void Promise.all(sharedState.boards.map(async (board) => (
+      heavy.includes(board) && board.background ? { ...board, background: await compressImageSource(board.background) } : board
+    ))).then((boards) => {
+      applySharedState({ ...sharedState, boards });
+      setStatus('Imagenes optimizadas para reducir el consumo de datos.');
+    });
+  }, [canEdit, loadingShared, sharedState]);
 
   const applyImageUrl = () => {
     if (!canEdit || !activeBoard) return;
