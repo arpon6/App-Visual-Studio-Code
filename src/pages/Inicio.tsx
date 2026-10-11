@@ -77,10 +77,11 @@ function Inicio({ quickAccessSections }: InicioProps) {
         }
 
         if (configMap[BADGE_STORAGE_KEY]) {
-          const { data: signedData, error: signedErr } = await supabase.storage.from('fotos').createSignedUrl(configMap[BADGE_STORAGE_KEY], SIGNED_URL_EXPIRY);
-          if (!signedErr && signedData?.signedUrl) {
-            setBadgeUrl(signedData.signedUrl);
-            try { localStorage.setItem('team_badge_url', signedData.signedUrl); } catch {};
+          // URL publica estable (la firmada cambia en cada carga y el navegador nunca reutiliza la cache).
+          const { data: publicData } = supabase.storage.from('fotos').getPublicUrl(configMap[BADGE_STORAGE_KEY]);
+          if (publicData?.publicUrl) {
+            setBadgeUrl(publicData.publicUrl);
+            try { localStorage.setItem('team_badge_url', publicData.publicUrl); } catch {};
             return;
           }
         }
