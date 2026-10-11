@@ -296,7 +296,7 @@ function Calendario() {
       const filePath = `eventos/${fileName}`;
       const { error: uploadError, data: uploadData } = await supabase.storage
         .from('documentos')
-        .upload(filePath, selectedFile);
+        .upload(filePath, selectedFile, { cacheControl: '31536000' });
       if (uploadError) {
         alert('Error al subir el archivo: ' + uploadError.message);
         return;

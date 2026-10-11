@@ -62,6 +62,8 @@ function PeriodoAdaptativo() {
   const isReadOnly = user?.role === 'jugador';
   const [data, setData, loading] = useSharedState<PeriodoAdaptativoData>(SHARED_KEY, DEFAULT_DATA);
   const [uploading, setUploading] = useState(false);
+  // El PDF solo se descarga al pulsar "Ver aqui"; incrustarlo siempre lo bajaba entero en cada visita.
+  const [showPdf, setShowPdf] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -97,7 +99,7 @@ function PeriodoAdaptativo() {
     const safeName = file.name.replace(/\s+/g, '-').toLowerCase();
     const path = `periodo-adaptativo/${Date.now()}-${safeName}`;
 
-    const { error: uploadError } = await supabase.storage.from('documentos').upload(path, file, { upsert: true });
+    const { error: uploadError } = await supabase.storage.from('documentos').upload(path, file, { upsert: true, cacheControl: '31536000' });
 
     if (uploadError) {
       setError(`No se pudo subir el PDF: ${uploadError.message}`);
@@ -176,6 +178,9 @@ function PeriodoAdaptativo() {
             <div className="pdf-actions">
               <span>{currentPdf.name}</span>
               <div className="pdf-actions-buttons">
+                <button type="button" onClick={() => setShowPdf((prev) => !prev)}>
+                  {showPdf ? 'Ocultar' : 'Ver aquí'}
+                </button>
                 <a href={currentPdf.url} target="_blank" rel="noopener noreferrer">
                   <button type="button">Abrir</button>
                 </a>
@@ -184,11 +189,13 @@ function PeriodoAdaptativo() {
                 </a>
               </div>
             </div>
-            <iframe
-              title="Explicación del trabajo PDF"
-              src={currentPdf.url}
-              className="periodo-pdf-frame"
-            />
+            {showPdf ? (
+              <iframe
+                title="Explicación del trabajo PDF"
+                src={currentPdf.url}
+                className="periodo-pdf-frame"
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

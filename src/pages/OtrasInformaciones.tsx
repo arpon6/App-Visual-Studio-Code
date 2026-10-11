@@ -53,7 +53,7 @@ function OtrasInformaciones() {
 
     const { error: storageError } = await supabase.storage
       .from('documentos')
-      .upload(path, file);
+      .upload(path, file, { cacheControl: '31536000' });
 
     if (storageError) {
       setError('Error al subir el archivo: ' + storageError.message);
