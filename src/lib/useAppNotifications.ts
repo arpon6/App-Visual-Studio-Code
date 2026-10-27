@@ -26,6 +26,28 @@ export type AppNotification = {
   detail: string;
 };
 
+const READ_MESSAGE_IDS_STORAGE_PREFIX = 'app_read_message_ids:';
+const MAX_STORED_READ_MESSAGE_IDS = 500;
+
+function readMessageIds(userId: string) {
+  const stored = localStorage.getItem(`${READ_MESSAGE_IDS_STORAGE_PREFIX}${userId}`);
+  if (!stored) return new Set<string>();
+
+  try {
+    const ids = JSON.parse(stored) as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function persistReadMessageIds(userId: string, ids: Set<string>) {
+  localStorage.setItem(
+    `${READ_MESSAGE_IDS_STORAGE_PREFIX}${userId}`,
+    JSON.stringify([...ids].slice(-MAX_STORED_READ_MESSAGE_IDS))
+  );
+}
+
 function todayISO() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -68,6 +90,7 @@ export function useAppNotifications(user: AppUser | null) {
 
     let cancelled = false;
     const isJugador = user.role === 'jugador' && Boolean(user.player_id);
+    const readIds = readMessageIds(user.id);
 
     // Wellness/calendario siguen en Supabase (ya acotados a hoy y al propio jugador); solo aplica a rol jugador.
     const loadWellness = async () => {
@@ -113,9 +136,14 @@ export function useAppNotifications(user: AppUser | null) {
         ...chatMessages.filter((m) => isRecipient(m, user)).map((message) => ({ message, section: 'Desarrollo Individual' as const })),
       ];
       const currentIds = new Set(combined.map(({ message }) => message.id));
-      const newOnes = previousIdsRef.current ? combined.filter(({ message }) => !previousIdsRef.current!.has(message.id)) : [];
+      const newOnes = (previousIdsRef.current
+        ? combined.filter(({ message }) => !previousIdsRef.current!.has(message.id))
+        : combined
+      ).filter(({ message }) => !readIds.has(message.id));
       previousIdsRef.current = currentIds;
       if (newOnes.length === 0) return;
+      newOnes.forEach(({ message }) => readIds.add(message.id));
+      persistReadMessageIds(user.id, readIds);
       const messageNotifications = newOnes.map(({ message, section }) => ({
         id: `message-${message.id}`,
         section,
@@ -144,6 +172,13 @@ export function useAppNotifications(user: AppUser | null) {
     };
   }, [user]);
 
-  const dismissNotification = (id: string) => setNotifications((previous) => previous.filter((item) => item.id !== id));
+  const dismissNotification = (id: string) => {
+    if (id.startsWith('message-') && user) {
+      const ids = readMessageIds(user.id);
+      ids.add(id.slice('message-'.length));
+      persistReadMessageIds(user.id, ids);
+    }
+    setNotifications((previous) => previous.filter((item) => item.id !== id));
+  };
   return { notifications, dismissNotification };
 }
