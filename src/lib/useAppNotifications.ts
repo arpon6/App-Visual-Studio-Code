@@ -80,11 +80,13 @@ function responseHasType(response: { event_type?: string; molestias?: string | n
 export function useAppNotifications(user: AppUser | null) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const previousIdsRef = useRef<Set<string> | null>(null);
+  const messageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) {
       setNotifications([]);
       previousIdsRef.current = null;
+      messageIdsRef.current = new Set();
       return;
     }
 
@@ -136,14 +138,13 @@ export function useAppNotifications(user: AppUser | null) {
         ...chatMessages.filter((m) => isRecipient(m, user)).map((message) => ({ message, section: 'Desarrollo Individual' as const })),
       ];
       const currentIds = new Set(combined.map(({ message }) => message.id));
+      messageIdsRef.current = currentIds;
       const newOnes = (previousIdsRef.current
         ? combined.filter(({ message }) => !previousIdsRef.current!.has(message.id))
         : combined
       ).filter(({ message }) => !readIds.has(message.id));
       previousIdsRef.current = currentIds;
       if (newOnes.length === 0) return;
-      newOnes.forEach(({ message }) => readIds.add(message.id));
-      persistReadMessageIds(user.id, readIds);
       const messageNotifications = newOnes.map(({ message, section }) => ({
         id: `message-${message.id}`,
         section,
@@ -180,5 +181,15 @@ export function useAppNotifications(user: AppUser | null) {
     }
     setNotifications((previous) => previous.filter((item) => item.id !== id));
   };
-  return { notifications, dismissNotification };
+
+  const markAllNotificationsAsRead = () => {
+    if (user && messageIdsRef.current.size > 0) {
+      const ids = readMessageIds(user.id);
+      messageIdsRef.current.forEach((id) => ids.add(id));
+      persistReadMessageIds(user.id, ids);
+    }
+    setNotifications((previous) => previous.filter((item) => !item.id.startsWith('message-')));
+  };
+
+  return { notifications, dismissNotification, markAllNotificationsAsRead };
 }

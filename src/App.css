@@ -46,6 +46,21 @@
   cursor: pointer;
 }
 
+.app-notifications-dismiss-all {
+  justify-self: end;
+  padding: 7px 10px;
+  border: 1px solid rgba(245, 197, 24, 0.55);
+  border-radius: 6px;
+  background: #25314a;
+  color: var(--text, #f4f7ff);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.app-notifications-dismiss-all:hover {
+  background: #30405f;
+}
+
 .app-notification strong {
   font-size: 13px;
 }

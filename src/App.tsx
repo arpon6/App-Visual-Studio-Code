@@ -8,7 +8,7 @@ import './App.css';
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
-  const { notifications, dismissNotification } = useAppNotifications(user);
+  const { notifications, dismissNotification, markAllNotificationsAsRead } = useAppNotifications(user);
   const mainRef = useRef<HTMLElement | null>(null);
   
   // LOG DE DEPURACIÓN
@@ -91,6 +91,15 @@ function AppShell() {
       />
       <main ref={mainRef} className="app-main">
         <div className="app-notifications" aria-live="polite">
+          {notifications.some((notification) => notification.id.startsWith('message-')) && (
+            <button
+              type="button"
+              className="app-notifications-dismiss-all"
+              onClick={markAllNotificationsAsRead}
+            >
+              Marcar todas las alertas como vistas
+            </button>
+          )}
           {notifications.slice(0, 3).map((notification) => (
             <button
               key={notification.id}
