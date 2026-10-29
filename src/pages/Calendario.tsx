@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthContext';
 import { DEFAULT_MATCH_TYPE, LEAGUE_TEAMS } from '../lib/leagueTeams';
 import { getYouTubeEmbedUrl } from '../lib/youtube';
+import { doc, setDoc } from 'firebase/firestore';
+import { firestore } from '../lib/firebaseClient';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Calendario.css';
@@ -345,8 +347,32 @@ function Calendario() {
       alert('Error al guardar el evento: ' + error.message);
       return;
     }
+
+    let announcementError: unknown;
+    if (formData.type === 'entrenamiento' && selectedFile) {
+      const messageId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      try {
+        await setDoc(doc(firestore, 'tablon_messages', messageId), {
+          senderId: user.id,
+          senderName: user.username,
+          senderRole: user.role,
+          text: 'Tareas del entrenamiento de hoy subidas.',
+          recipients: ['all_players', 'staff_admin'],
+          sent: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('Error al publicar el aviso de tareas en el tablón:', error);
+        announcementError = error;
+      }
+    }
+
     await loadEvents();
     resetModal();
+    if (announcementError) {
+      const message = announcementError instanceof Error ? announcementError.message : 'Error desconocido';
+      alert(`El evento se guardó, pero no se pudo publicar el aviso en el tablón: ${message}`);
+    }
   };
 
   const resetModal = () => {
