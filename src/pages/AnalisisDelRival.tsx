@@ -6,7 +6,7 @@ import './AnalisisDelRival.css';
 import rivalPlayersCsv from '../../Base de datos de jugadores - Matriz.csv?raw';
 import TacticalBoard, { FORMATIONS, type FieldPlayer, type Player } from '../components/TacticalBoard';
 import { AbpSection } from '../components/AbpBoard';
-import { LEAGUE_TEAMS, MY_TEAM_NAME } from '../lib/leagueTeams';
+import { LEAGUE_TEAMS } from '../lib/leagueTeams';
 import { supabase } from '../lib/supabaseClient';
 
 type RivalBoardState = {
@@ -317,10 +317,7 @@ function AnalisisDelRival() {
   const localChangeAtRef = useRef(0);
   const persistedChangeAtRef = useRef(0);
 
-  const availableTeams = useMemo(
-    () => LEAGUE_TEAMS.filter((team) => normalizeTeamName(team) !== normalizeTeamName(MY_TEAM_NAME)),
-    []
-  );
+  const availableTeams = useMemo(() => LEAGUE_TEAMS, []);
 
   const filteredTeams = useMemo(() => {
     const term = normalizeTeamName(teamFilter);
