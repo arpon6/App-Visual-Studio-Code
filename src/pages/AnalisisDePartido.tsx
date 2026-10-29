@@ -4,6 +4,7 @@ import { useSharedState } from '../lib/useSharedState';
 import { useFirestoreMessages } from '../lib/useFirestoreMessages';
 import { supabase } from '../lib/supabaseClient';
 import { usePlantilla } from '../lib/usePlantilla';
+import { getVideoCutFilename } from '../lib/videoCutFilename';
 
 type AnalysisCut = {
   id: string;
@@ -518,7 +519,7 @@ function AnalisisDePartido() {
     setExporting(true);
     try {
       const blob = await captureSegmentToMp4(cut.start, cut.end);
-      downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+      downloadVideoBlob(getVideoCutFilename(cut.label, cut.id), blob);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error exportando el corte en MP4.';
       alert(message);
@@ -540,7 +541,7 @@ function AnalisisDePartido() {
     try {
       for (const cut of visibleCuts) {
         const blob = await captureSegmentToMp4(cut.start, cut.end);
-        downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+        downloadVideoBlob(getVideoCutFilename(cut.label, cut.id), blob);
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
     } catch (error) {

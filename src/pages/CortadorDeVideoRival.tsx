@@ -3,6 +3,7 @@ import './CortadorDeVideo.css';
 import { usePlantilla } from '../lib/usePlantilla';
 import { useSharedState } from '../lib/useSharedState';
 import { supabase } from '../lib/supabaseClient';
+import { getVideoCutFilename } from '../lib/videoCutFilename';
 
 declare global {
   interface Window {
@@ -655,7 +656,7 @@ function CortadorDeVideoRival() {
     setExporting(true);
     try {
       const blob = await captureSegmentToMp4(cut.start, cut.end);
-      downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+      downloadVideoBlob(getVideoCutFilename(cut.label, cut.id), blob);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error exportando el MP4.';
       setStatusMessage(message);
@@ -678,7 +679,7 @@ function CortadorDeVideoRival() {
     try {
       for (const cut of cuts) {
         const blob = await captureSegmentToMp4(cut.start, cut.end);
-        downloadVideoBlob(`corte-${cut.id}.mp4`, blob);
+        downloadVideoBlob(getVideoCutFilename(cut.label, cut.id), blob);
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
     } catch (error) {
