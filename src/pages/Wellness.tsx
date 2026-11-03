@@ -1237,6 +1237,10 @@ function WellnessDashboard() {
   const monthTo = addDays(addMonths(monthFrom, 1), -1);
   const monthWeeks = useMemo(() => monthWeekStarts(monthFrom, monthTo), [monthFrom, monthTo]);
   const selectedWeekTo = addDays(selectedWeekStart, 6);
+  // Las semanas que cruzan de mes necesitan respuestas de fuera del mes natural.
+  const lastWeekEnd = addDays(monthWeeks[monthWeeks.length - 1], 6);
+  const loadFrom = monthWeeks[0] < monthFrom ? monthWeeks[0] : monthFrom;
+  const loadTo = lastWeekEnd > monthTo ? lastWeekEnd : monthTo;
 
   const weekLabel = `${isoToDisplay(weekFrom)} - ${isoToDisplay(weekTo)}`;
   const selectedWeekLabel = `${isoToDisplay(selectedWeekStart)} - ${isoToDisplay(selectedWeekTo)}`;
@@ -1255,16 +1259,17 @@ function WellnessDashboard() {
       const { data, error } = await supabase
         .from('wellness_responses')
         .select('*')
-        .gte('event_date', monthFrom)
-        .lte('event_date', monthTo);
+        .gte('event_date', loadFrom)
+        .lte('event_date', loadTo)
+        .limit(5000);
 
       const remoteResponses = (data as WellnessResponse[]) || [];
       const localResponses = readLocalWellnessResponses()
-        .filter(item => item.event_date >= monthFrom && item.event_date <= monthTo)
+        .filter(item => item.event_date >= loadFrom && item.event_date <= loadTo)
         .map(item => buildLocalWellnessResponse(item));
 
       const merged = new Map<string, WellnessResponse>();
-      [...remoteResponses, ...localResponses].forEach(response => {
+      [...localResponses, ...remoteResponses].forEach(response => {
         const key = `${response.player_id}-${response.event_date}-${response.event_type}`;
         merged.set(key, response);
       });
@@ -1279,7 +1284,7 @@ function WellnessDashboard() {
     };
 
     void loadResponses();
-  }, [monthFrom, monthTo]);
+  }, [loadFrom, loadTo]);
 
   const navigate = (dir: 1 | -1) => setRefDate(d => addDays(d, dir));
 
@@ -1304,7 +1309,11 @@ function WellnessDashboard() {
       .filter(response => response.event_date >= selectedWeekStart && response.event_date <= selectedWeekTo)
       .forEach(response => {
         const key = String(response.player_id);
-        weeklyCounts.set(key, (weeklyCounts.get(key) || 0) + 1);
+        const payload = parseWellnessStoredPayload(response);
+        const forms = response.event_type === 'partido'
+          ? Number(Boolean(payload.partidoPre || payload.partido)) + Number(Boolean(payload.partidoPost || payload.partido))
+          : 1;
+        weeklyCounts.set(key, (weeklyCounts.get(key) || 0) + forms);
       });
 
     return jugadores
@@ -1320,7 +1329,10 @@ function WellnessDashboard() {
       });
   }, [responses, selectedWeekStart, selectedWeekTo, jugadores]);
 
-  const monthResponses = responsesByType;
+  const monthResponses = useMemo(
+    () => responsesByType.filter(r => r.event_date >= monthFrom && r.event_date <= monthTo),
+    [responsesByType, monthFrom, monthTo],
+  );
   const playersById = useMemo(() => new Map(jugadores.map(j => [String(j.id), j.nombre])), [jugadores]);
 
   const buildPlayerAverageRows = (periodResponses: WellnessResponse[]) => {
