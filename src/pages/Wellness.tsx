@@ -662,6 +662,8 @@ function WellnessJugador({ playerId }: { playerId: string }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!hasTrainingToday || !playerId) {
       setAlreadySent(false);
       setRpe(3);
@@ -683,6 +685,8 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           .eq('event_type', testType)
           .order('created_at', { ascending: false })
           .limit(1);
+
+        if (cancelled) return;
 
         if (!error && data && data.length > 0) {
           const existing = data[0] as WellnessResponse;
@@ -714,6 +718,7 @@ function WellnessJugador({ playerId }: { playerId: string }) {
         setFisico(3);
         setComentario('');
       } catch (err) {
+        if (cancelled) return;
         console.error('Error cargando wellness:', err);
         const local = readLocalWellnessRecord(playerId, today, testType);
         if (local) {
@@ -730,11 +735,12 @@ function WellnessJugador({ playerId }: { playerId: string }) {
           setComentario('');
         }
       } finally {
-        setLoadingExisting(false);
+        if (!cancelled) setLoadingExisting(false);
       }
     };
 
     void loadExisting();
+    return () => { cancelled = true; };
   }, [hasTrainingToday, playerId, testType, today]);
 
   useEffect(() => {
